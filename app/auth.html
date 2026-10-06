@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en" data-theme="graphite">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neuralbase, sign in or create an account</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<script type="importmap">
+{
+  "imports": {
+    "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm"
+  }
+}
+</script>
+<style>
+/* ---------- Auth page ---------- */
+.auth-body{min-height:100dvh;display:flex;flex-direction:column}
+.auth-glow{
+  position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(680px 440px at 80% 8%, var(--accent-glow), transparent 68%),
+    radial-gradient(520px 380px at 4% 96%, var(--lime-soft), transparent 70%);
+}
+.auth-top{
+  width:100%;max-width:1180px;margin:0 auto;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:16px 22px;
+}
+.auth-brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:600;font-size:16px;letter-spacing:-.01em}
+.auth-mark{
+  width:26px;height:26px;flex:none;display:grid;place-items:center;
+  color:var(--lime);
+}
+.auth-mark svg{width:26px;height:26px;display:block}
+.auth-back{
+  font-size:13px;color:var(--muted);text-decoration:none;white-space:nowrap;
+  border:1px solid var(--line2);padding:7px 12px;border-radius:8px;
+  transition:border-color .15s ease,color .15s ease;
+}
+.auth-back:hover{border-color:var(--lime-edge);color:var(--lime)}
+
+.auth-main{
+  flex:1;width:100%;max-width:1180px;margin:0 auto;
+  padding:6px 22px 34px;
+  display:grid;grid-template-columns:1.05fr .95fr;gap:52px;align-items:center;
+}
+.auth-pitch{display:flex;flex-direction:column;gap:18px;max-width:520px;min-width:0}
+.auth-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--lime)}
+.auth-h1{margin:0;font-size:clamp(30px,4.4vw,46px);line-height:1.05;letter-spacing:-.03em;font-weight:600}
+.auth-lead{margin:0;color:var(--muted);font-size:15px;line-height:1.6;max-width:46ch}
+.auth-chips{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.auth-chips li{
+  font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+  color:var(--muted);background:var(--panel);border:1px solid var(--line);
+  border-radius:999px;padding:6px 11px;
+}
+.auth-points{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
+.auth-points li{display:flex;gap:11px;align-items:flex-start;font-size:13.5px;color:var(--muted);line-height:1.5}
+.auth-points .dot{
+  width:8px;height:8px;border-radius:50%;flex:none;margin-top:6px;
+  background:var(--lime);box-shadow:0 0 0 3px var(--accent-glow);
+}
+
+.auth-card{
+  width:100%;max-width:440px;justify-self:end;min-width:0;
+  background:var(--panel);border:1px solid var(--line);border-radius:16px;
+  padding:24px;box-shadow:0 30px 70px rgba(0,0,0,.42);
+}
+
+.demo-banner{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  border:1px dashed var(--lime-edge);background:var(--lime-soft);
+  border-radius:11px;padding:12px 14px;margin-bottom:18px;
+}
+.demo-banner p{margin:0;font-size:12.5px;line-height:1.5;color:var(--ink);max-width:30ch}
+.demo-banner .cap{display:block;color:var(--muted);margin-top:2px}
+
+.auth-tabs{
+  position:relative;display:grid;grid-template-columns:1fr 1fr;gap:4px;
+  background:var(--panel2);border:1px solid var(--line);border-radius:11px;
+  padding:4px;margin-bottom:20px;
+}
+.auth-tab{
+  position:relative;z-index:1;background:transparent;border:0;
+  padding:9px 8px;border-radius:8px;font-weight:600;font-size:13.5px;color:var(--muted);
+  transition:color .16s ease;
+}
+.auth-tab:hover{color:var(--ink)}
+.auth-tab[aria-selected="true"]{color:var(--ink)}
+.auth-tab-ind{
+  position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 6px);
+  background:var(--panel);border:1px solid var(--line2);border-radius:8px;
+  box-shadow:0 2px 10px rgba(0,0,0,.25);
+  transition:transform .22s cubic-bezier(.3,.9,.3,1);
+}
+.auth-tabs[data-mode="signup"] .auth-tab-ind{transform:translateX(calc(100% + 4px))}
+
+.alert{
+  border:1px solid rgba(217,130,95,.45);background:rgba(217,130,95,.08);
+  color:var(--ink);border-radius:9px;padding:10px 12px;font-size:12.5px;line-height:1.5;
+  margin:0 0 14px;
+}
+.alert.ok{border-color:var(--lime-edge);background:var(--lime-soft)}
+
+.age-note{
+  display:flex;gap:10px;align-items:flex-start;
+  background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+  padding:10px 12px;margin-bottom:16px;font-size:12.5px;line-height:1.5;color:var(--muted);
+}
+.age-note svg{width:16px;height:16px;flex:none;margin-top:1px;color:var(--lime)}
+
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.field label{font-size:12.5px;font-weight:600;color:var(--ink)}
+.field .hint{font-size:11.5px;color:var(--dim)}
+.input{
+  width:100%;background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
+  border-radius:9px;padding:11px 12px;font:inherit;font-size:14px;
+  transition:border-color .15s ease,box-shadow .15s ease;
+}
+.input::placeholder{color:var(--dim)}
+.input:focus{outline:none;border-color:var(--lime-edge);box-shadow:0 0 0 3px var(--accent-glow)}
+.input[aria-invalid="true"]{border-color:rgba(217,130,95,.62)}
+.input[type="date"]{min-height:42px}
+.err{margin:0;font-size:12px;line-height:1.4;color:var(--warn)}
+.err:empty{display:none}
+
+.btn-google{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
+  border-radius:9px;padding:11px 14px;font-weight:600;font-size:13.5px;
+  transition:border-color .15s ease,transform .12s ease;
+}
+.btn-google:hover{border-color:var(--lime-edge)}
+.btn-google:active{transform:translateY(1px)}
+.btn-google svg{width:17px;height:17px;flex:none}
+.btn-block{width:100%;padding:12px;font-size:14px;border-radius:9px}
+
+.or{
+  display:flex;align-items:center;gap:12px;margin:18px 0;
+  color:var(--dim);font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+}
+.or::before,.or::after{content:"";height:1px;flex:1;background:var(--line)}
+
+.panel-foot{margin:14px 0 0;font-size:12.5px;color:var(--muted);text-align:center}
+.panel-foot button{
+  background:none;border:0;padding:0;color:var(--lime);font-weight:600;font-size:12.5px;
+  text-decoration:underline;text-underline-offset:2px;
+}
+.panel-foot button[disabled]{color:var(--dim);text-decoration:none;cursor:not-allowed}
+
+/* The code path is the fallback, so it stays folded away until it is asked for. */
+.vf-code{margin:0 0 4px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)}
+.vf-code>summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.vf-code>summary::-webkit-details-marker{display:none}
+.vf-code>summary:hover{color:var(--ink)}
+.vf-code[open]>summary{color:var(--ink);border-bottom:1px solid var(--line)}
+.vf-code form{padding:12px}
+.vf-code .field{margin-bottom:10px}
+.auth-h2{margin:0 0 4px;font-size:19px;font-weight:600;letter-spacing:-.02em}
+.auth-sub{margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.5}
+
+@media (max-width:900px){
+  .auth-main{grid-template-columns:1fr;gap:30px;align-items:start;padding-top:0}
+  .auth-pitch{max-width:none}
+  .auth-card{justify-self:stretch;max-width:none}
+}
+@media (max-width:520px){
+  .auth-top{padding:14px 16px}
+  .auth-main{padding:4px 16px 34px}
+  .auth-card{padding:18px;border-radius:14px}
+  .auth-brand span{display:none}
+}
+
+/* Fit one screen: compact the card, two-column signup fields, drop the pitch on short viewports */
+.auth-card{padding:20px}
+.auth-tabs{margin-bottom:16px}
+.auth-sub{margin:0 0 14px}
+.age-note{padding:8px 11px;margin-bottom:12px}
+.field{margin-bottom:10px}
+.input{padding:9px 11px}
+.or{margin:14px 0}
+#signupForm{display:grid;grid-template-columns:1fr 1fr;column-gap:12px}
+#signupForm .btn-block{grid-column:1 / -1}
+@media (max-width:560px){
+  #signupForm{grid-template-columns:1fr}
+}
+@media (max-height:680px){
+  .auth-card{padding:16px}
+  .age-note{margin-bottom:9px}
+  .field{margin-bottom:8px}
+  .auth-h2{font-size:17px}
+  .auth-sub{margin-bottom:11px}
+  .or{margin:11px 0}
+}
+</style>
+</head>
+<body class="auth-body">
+
+<div class="auth-glow" aria-hidden="true"></div>
+
+<header class="auth-top">
+  <a class="auth-brand" href="landing.html">
+    <span class="auth-mark" aria-hidden="true">
+      <svg viewBox="0 0 64 64" width="19" height="19" fill="currentColor">
+        <rect x="7" y="7" width="8" height="8"/><rect x="7" y="17" width="8" height="8"/><rect x="7" y="27" width="8" height="8"/><rect x="7" y="37" width="8" height="8"/><rect x="7" y="47" width="8" height="8"/>
+        <rect x="47" y="7" width="8" height="8"/><rect x="47" y="17" width="8" height="8"/><rect x="47" y="27" width="8" height="8"/><rect x="47" y="37" width="8" height="8"/><rect x="47" y="47" width="8" height="8"/>
+        <rect x="17" y="17" width="8" height="8"/><rect x="27" y="27" width="8" height="8"/><rect x="37" y="37" width="8" height="8"/>
+      </svg>
+    </span>
+    <span>Neuralbase</span>
+  </a>
+  <a class="auth-back" href="landing.html">Back to landing</a>
+</header>
+
+<main class="auth-main">
+
+  <section class="auth-pitch" aria-label="About Neuralbase">
+    <p class="auth-eyebrow">Daily cognitive training</p>
+    <h1 class="auth-h1">A little training every day.</h1>
+    <p class="auth-lead">Six short drills drawn from cognitive-training research. Sign in to sync your progress across devices, or start with a local demo account.</p>
+    <ul class="auth-chips">
+      <li>Executive N-Back</li>
+      <li>Processing speed</li>
+      <li>Memory palace</li>
+      <li>Reasoning</li>
+      <li>Spaced recall</li>
+      <li>Task switching</li>
+    </ul>
+    <ul class="auth-points">
+      <li><span class="dot" aria-hidden="true"></span><span>Near transfer to similar tasks is reliable. Broad transfer to general intelligence is not claimed.</span></li>
+      <li><span class="dot" aria-hidden="true"></span><span>Progress, settings, and plan stay with your account.</span></li>
+      <li><span class="dot" aria-hidden="true"></span><span>Neuralbase is for adults. Accounts are for people 18 and older.</span></li>
+    </ul>
+  </section>
+
+  <section class="auth-card" aria-label="Account access">
+
+    <div class="demo-banner" id="demoBanner" hidden>
+      <p>Demo mode. Progress stays in this browser only.<span class="cap">Add Supabase keys in app/config.js to sync.</span></p>
+      <button class="btn-primary" type="button" id="demoContinue">Continue in demo</button>
+    </div>
+
+    <div class="auth-tabs" role="tablist" aria-label="Sign in or create account" id="tabs" data-mode="signin">
+      <span class="auth-tab-ind" aria-hidden="true"></span>
+      <button class="auth-tab" type="button" role="tab" id="tab-signin" aria-selected="true" aria-controls="panel-signin">Sign in</button>
+      <button class="auth-tab" type="button" role="tab" id="tab-signup" aria-selected="false" aria-controls="panel-signup" tabindex="-1">Create account</button>
+    </div>
+
+    <!-- ===== Sign in ===== -->
+    <div id="panel-signin" role="tabpanel" aria-labelledby="tab-signin">
+      <h2 class="auth-h2">Welcome back</h2>
+      <p class="auth-sub">Sign in to pick up where you left off.</p>
+
+      <p class="alert" id="si-alert" role="alert" hidden></p>
+
+      <form id="signinForm" novalidate>
+        <div class="field">
+          <label for="si-email">Email</label>
+          <input class="input" id="si-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" aria-describedby="si-email-err">
+          <p class="err" id="si-email-err" role="alert"></p>
+        </div>
+        <div class="field">
+          <label for="si-password">Password</label>
+          <input class="input" id="si-password" name="password" type="password" autocomplete="current-password" placeholder="Your password" aria-describedby="si-password-err">
+          <p class="err" id="si-password-err" role="alert"></p>
+        </div>
+        <button class="btn-primary btn-block" type="submit" id="si-submit">Sign in</button>
+      </form>
+
+      <div class="or">or</div>
+      <button class="btn-google" type="button" id="si-google">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.35 11.1H12v2.9h5.35c-.23 1.4-1.66 4.1-5.35 4.1-3.22 0-5.85-2.66-5.85-5.95S8.78 6.2 12 6.2c1.83 0 3.06.78 3.76 1.45l2.56-2.47C16.71 3.7 14.56 2.8 12 2.8 6.98 2.8 2.9 6.88 2.9 11.9S6.98 21 12 21c5.53 0 9.2-3.89 9.2-9.36 0-.63-.07-1.11-.15-1.54z"/></svg>
+        Continue with Google
+      </button>
+
+      <p class="panel-foot">New here? <button type="button" data-goto="signup">Create an account</button></p>
+    </div>
+
+    <!-- ===== Create account ===== -->
+    <div id="panel-signup" role="tabpanel" aria-labelledby="tab-signup" hidden>
+      <h2 class="auth-h2">Create your account</h2>
+      <p class="auth-sub">Takes under a minute. Your progress saves to the cloud.</p>
+
+      <p class="age-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><path d="M12 16h.01"></path></svg>
+        <span>You must be 18 or older to create an account. Your date of birth is used only for age-group leaderboards.</span>
+      </p>
+
+      <p class="alert" id="su-alert" role="alert" hidden></p>
+
+      <form id="signupForm" novalidate>
+        <div class="field">
+          <label for="su-email">Email</label>
+          <input class="input" id="su-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" aria-describedby="su-email-err">
+          <p class="err" id="su-email-err" role="alert"></p>
+        </div>
+        <div class="field">
+          <label for="su-password">Password</label>
+          <input class="input" id="su-password" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" aria-describedby="su-password-err">
+          <p class="err" id="su-password-err" role="alert"></p>
+        </div>
+        <div class="field">
+          <label for="su-username">Username</label>
+          <input class="input" id="su-username" name="username" type="text" autocomplete="username" placeholder="Letters, numbers, underscore" maxlength="24" aria-describedby="su-username-err">
+          <p class="err" id="su-username-err" role="alert"></p>
+        </div>
+        <div class="field">
+          <label for="su-dob">Date of birth</label>
+          <input class="input" id="su-dob" name="dob" type="date" autocomplete="bday" aria-describedby="su-dob-err">
+          <p class="err" id="su-dob-err" role="alert"></p>
+        </div>
+        <button class="btn-primary btn-block" type="submit" id="su-submit">Create account</button>
+      </form>
+
+      <div class="or">or</div>
+      <button class="btn-google" type="button" id="su-google">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.35 11.1H12v2.9h5.35c-.23 1.4-1.66 4.1-5.35 4.1-3.22 0-5.85-2.66-5.85-5.95S8.78 6.2 12 6.2c1.83 0 3.06.78 3.76 1.45l2.56-2.47C16.71 3.7 14.56 2.8 12 2.8 6.98 2.8 2.9 6.88 2.9 11.9S6.98 21 12 21c5.53 0 9.2-3.89 9.2-9.36 0-.63-.07-1.11-.15-1.54z"/></svg>
+        Sign up with Google
+      </button>
+
+      <p class="panel-foot">Already have an account? <button type="button" data-goto="signin">Sign in</button></p>
+    </div>
+
+    <!-- ===== Verify email (confirmation link first, code as a fallback) ===== -->
+    <div id="panel-verify" hidden>
+      <h2 class="auth-h2">Check your email</h2>
+      <p class="auth-sub">Open the confirmation link sent to <span class="mono" id="vf-email"></span> to finish signing up. The link expires, so use it soon.</p>
+
+      <p class="alert" id="vf-alert" role="alert" hidden></p>
+
+      <p class="panel-foot">Did not get it? <button type="button" id="vf-resend">Resend the email</button></p>
+      <p class="panel-foot" id="vf-resend-note" hidden></p>
+      <p class="panel-foot">Wrong address? <button type="button" data-goto="signin" id="vf-back">Back to sign in</button></p>
+
+      <details class="vf-code" id="vf-code-box">
+        <summary id="vf-code-open">Have a code instead?</summary>
+        <form id="verifyForm" novalidate>
+          <div class="field">
+            <label for="vf-code">Verification code</label>
+            <input class="input" id="vf-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" aria-describedby="vf-code-err">
+            <p class="err" id="vf-code-err" role="alert"></p>
+          </div>
+          <button class="btn-primary btn-block" type="submit" id="vf-submit">Verify and finish</button>
+        </form>
+      </details>
+    </div>
+
+    <!-- ===== Complete profile (Google) ===== -->
+    <div id="panel-complete" hidden>
+      <h2 class="auth-h2">One more step</h2>
+      <p class="auth-sub">Google did not share a username or date of birth. Add them to finish setting up your account.</p>
+
+      <p class="age-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><path d="M12 16h.01"></path></svg>
+        <span>You must be 18 or older. Your date of birth is used only for age-group leaderboards.</span>
+      </p>
+
+      <p class="alert" id="co-alert" role="alert" hidden></p>
+
+      <form id="completeForm" novalidate>
+        <div class="field">
+          <label for="co-username">Username</label>
+          <input class="input" id="co-username" name="username" type="text" autocomplete="username" placeholder="Letters, numbers, underscore" maxlength="24" aria-describedby="co-username-err">
+          <p class="err" id="co-username-err" role="alert"></p>
+        </div>
+        <div class="field">
+          <label for="co-dob">Date of birth</label>
+          <input class="input" id="co-dob" name="dob" type="date" autocomplete="bday" aria-describedby="co-dob-err">
+          <p class="err" id="co-dob-err" role="alert"></p>
+        </div>
+        <button class="btn-primary btn-block" type="submit" id="co-submit">Finish and continue</button>
+      </form>
+    </div>
+
+  </section>
+</main>
+
+<div class="sr" id="live" aria-live="polite"></div>
+
+<noscript>
+  <p style="max-width:640px;margin:0 auto;padding:20px 22px;color:var(--muted)">Neuralbase needs JavaScript to sign you in. Enable it and reload.</p>
+</noscript>
+
+<script src="ui/themes.js"></script>
+<script type="module" src="views/auth.js"></script>
+</body>
+</html>

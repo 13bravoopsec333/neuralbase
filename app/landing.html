@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="en" data-theme="graphite">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neuralbase</title>
+<meta name="description" content="Nine short cognitive drills. Train one, run the daily circuit, or build your own. A set takes about three minutes, and your scores save to your account.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+/* ---------- Neuralbase landing: precision instrument, live telemetry, full scroll ---------- */
+html{scroll-behavior:smooth}
+body{overflow-x:clip}
+/* The shared sheet styles the app shell's main as a rail-offset flex column.
+   The landing has no rail, so neutralise it and let sections centre at 1180px. */
+.lp main{margin-left:0;display:block}
+.lp a.btn-primary,.lp a.btn-ghost{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:1.15;white-space:nowrap;text-align:center}
+.lp .btn-primary{color:var(--bg)}
+
+/* ---------- Sticky top bar + scroll ruler ---------- */
+.lp-top{position:sticky;top:0;z-index:40;background:var(--topbar-bg);border-bottom:1px solid var(--line)}
+.lp-top-in{max-width:1180px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:clamp(9px,1.6vh,14px) clamp(14px,3vw,28px)}
+.lp-brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink)}
+.lp-brand .rail-mark{margin-bottom:0;background:none;border:0;width:26px;height:26px;color:var(--lime)}
+.lp-brand .rail-mark svg{width:26px;height:26px;display:block}
+.lp-word{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.lp-nav{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+/* Scroll ruler. Hidden at the top of the page, then a scrub control:
+   click the track to jump, drag the mark to scrub, arrows to nudge. */
+.lp-prog{position:relative;height:10px;border-top:1px solid var(--line);cursor:pointer;touch-action:none;user-select:none;
+  background-image:repeating-linear-gradient(90deg,var(--line) 0 1px,transparent 1px 100%);
+  background-size:calc(100% / 60) 100%;
+  opacity:0;transform:translateY(-100%);pointer-events:none;
+  transition:opacity .2s ease,transform .24s cubic-bezier(.3,.9,.3,1)}
+.lp-prog.on,.lp-prog:focus-visible{opacity:1;transform:none;pointer-events:auto}
+/* No ring on the track. The control is 10px tall and full width, so any outline
+   reads as a bar across the row. Focus is shown on the mark instead, and only
+   when the keyboard drove it (the .kb class), so a pointer drag moves the line
+   and nothing else. */
+.lp-prog:focus-visible{outline:none}
+.lp-prog.kb .lp-prog-mark{top:-4px;bottom:-4px;box-shadow:0 0 0 2px var(--accent-glow)}
+.lp-prog.drag{cursor:grabbing}
+.lp-prog.drag .lp-prog-mark{transition:none}
+/* Just the line. No progress fill and no glow, so dragging only moves the mark. */
+.lp-prog-mark{position:absolute;top:-1px;bottom:-1px;left:calc(var(--p,0) * (100% - 2px));width:2px;background:var(--lime);
+  transition:left .12s linear}
+
+/* ---------- Section frame ---------- */
+.lp-sec{max-width:1180px;margin:0 auto;padding:clamp(34px,7vh,84px) clamp(14px,3vw,28px);scroll-margin-top:80px}
+.lp-eyebrow{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+.lp-eyebrow::after{content:"";flex:1;height:1px;background:var(--line)}
+.lp-h2{margin:12px 0 0;font-size:clamp(19px,2.3vw,28px);line-height:1.16;font-weight:600;letter-spacing:-.028em;max-width:32ch}
+.lp-lead{margin:12px 0 0;color:var(--muted);font-size:clamp(13px,1.15vw,15px);line-height:1.6;max-width:58ch}
+
+/* ---------- Centred sections (method, plans, faq) ----------
+   One reading axis down the middle of the page. The eyebrow turns into a
+   symmetric rule pair, the heading and body sit on a centred measure, and
+   block content (claims, tiers, questions) is centred as a group rather
+   than as ragged centred text. */
+.lp-sec-mid{display:flex;flex-direction:column;align-items:center;text-align:center}
+.lp-sec-mid .lp-eyebrow{display:inline-flex;justify-content:center;width:auto;max-width:100%}
+.lp-sec-mid .lp-eyebrow::before{content:"";flex:none;width:clamp(14px,4vw,42px);height:1px;background:var(--line)}
+.lp-sec-mid .lp-eyebrow::after{flex:none;width:clamp(14px,4vw,42px)}
+.lp-sec-mid .lp-h2{margin-left:auto;margin-right:auto;max-width:min(38ch,100%)}
+.lp-sec-mid .lp-lead{margin-left:auto;margin-right:auto;max-width:min(58ch,100%)}
+
+/* ---------- Hero: instrument rig + fixed copy ---------- */
+.lp-hero{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr);
+  gap:clamp(22px,4vw,56px);align-items:center;
+  padding:clamp(26px,6vh,72px) clamp(14px,3vw,28px) clamp(28px,7vh,70px);scroll-margin-top:80px}
+
+.lp-rig{min-width:0;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  padding:clamp(11px,1.6vh,16px) clamp(12px,1.4vw,18px);position:relative;
+  --tick:var(--line2);--tick-minor:var(--line);--sig:var(--lime);--screen:var(--panel2);--cell:clamp(30px,4.6vh,48px)}
+.lp-rig-plate{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.lp-plate-name{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.lp-plate-live{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.lp-led{width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 3px var(--accent-glow);animation:lpBlip 2.4s ease-in-out infinite}
+@keyframes lpBlip{0%,100%{opacity:1}50%{opacity:.35}}
+
+.lp-ruler-x{position:relative;height:15px;margin-top:19px;border-bottom:1px solid var(--line)}
+.lp-ruler-x::before,.lp-ruler-y::before{content:"";position:absolute;background-image:repeating-linear-gradient(90deg,var(--tick-minor) 0 1px,transparent 1px 100%);background-size:calc(100% / 36) 100%;opacity:.85}
+.lp-ruler-x::before{left:0;right:0;bottom:0;height:5px}
+.lp-ruler-x::after,.lp-ruler-y::after{content:"";position:absolute;background-image:repeating-linear-gradient(90deg,var(--tick) 0 1px,transparent 1px 100%);background-size:calc(100% / 6) 100%}
+.lp-ruler-x::after{left:0;right:0;bottom:0;height:10px}
+.lp-ruler-mark{position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--sig);border-radius:1px;transition:left .35s cubic-bezier(.3,.9,.3,1);box-shadow:0 0 0 2px var(--accent-glow)}
+/* End labels sit above the ruler, never inside the tick field. bottom:100% plus
+   a 3px gap keeps them clear of the 15px ruler at every width, so the scrub
+   mark can travel the full width without ever meeting them. */
+.lp-ruler-cap{position:absolute;bottom:calc(100% + 3px);font-family:var(--mono);font-size:8.5px;line-height:1;letter-spacing:.1em;color:var(--dim)}
+.lp-ruler-cap.l{left:0}.lp-ruler-cap.r{right:0}
+
+.lp-rig-mid{display:grid;grid-template-columns:15px minmax(0,1fr) auto;grid-template-areas:"ry stage readout";gap:clamp(9px,1.4vw,16px);align-items:stretch;padding:clamp(11px,1.8vh,18px) 0 0}
+.lp-ruler-y{grid-area:ry;position:relative;width:15px;border-right:1px solid var(--line)}
+.lp-ruler-y::before,.lp-ruler-y::after{background-image:repeating-linear-gradient(180deg,var(--tick-minor) 0 1px,transparent 1px 100%);background-size:100% calc(100% / 30);left:auto;right:0}
+.lp-ruler-y::before{top:0;bottom:0;width:5px}
+.lp-ruler-y::after{top:0;bottom:0;width:10px;background-image:repeating-linear-gradient(180deg,var(--tick) 0 1px,transparent 1px 100%);background-size:100% calc(100% / 5)}
+
+.lp-stage{grid-area:stage;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(8px,1.3vh,13px)}
+.lp-cue{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;border:1px solid var(--lime-edge);background:var(--lime-soft);border-radius:6px;padding:4px 9px;color:var(--ink)}
+.lp-cue-k{color:var(--dim);font-size:9px;letter-spacing:.14em}
+.lp-grid{display:grid;grid-template-columns:repeat(3,var(--cell));grid-template-rows:repeat(3,var(--cell));gap:clamp(6px,.9vh,9px);padding:clamp(7px,.9vh,10px);border:1px solid var(--line);border-radius:8px;background:var(--screen)}
+.lp-cell{border-radius:5px;background:var(--panel);border:1px solid var(--line);transition:background .14s ease,border-color .14s ease,box-shadow .14s ease}
+.lp-cell.on{background:var(--sig);border-color:var(--sig);box-shadow:0 0 0 1px var(--sig),0 0 14px var(--accent-glow)}
+.lp-stim{display:flex;align-items:baseline;gap:8px;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.lp-stim-v{font-size:17px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--ink);min-width:1ch}
+
+.lp-readout{grid-area:readout;align-self:center;display:flex;flex-direction:column;width:clamp(120px,11vw,152px);border:1px solid var(--line);border-radius:8px;background:var(--screen);overflow:hidden}
+.lp-ro{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line)}
+.lp-ro:last-child{border-bottom:0}
+.lp-ro-k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.lp-ro-v{font-family:var(--mono);font-size:16px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+
+.lp-trace{position:relative;height:clamp(34px,4.4vh,46px);margin-top:clamp(9px,1.5vh,15px);border-top:1px solid var(--line)}
+.lp-trace svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.lp-trace-line{fill:none;stroke:var(--sig);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.lp-trace-base{stroke:var(--line2);stroke-width:1;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.lp-trace-cap{position:absolute;left:0;top:50%;transform:translateY(-155%);font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;color:var(--dim);background:var(--panel);padding:0 4px}
+.lp-rig-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+
+.lp-copy{min-width:0;display:flex;flex-direction:column;gap:clamp(12px,2vh,20px)}
+.lp-h1{margin:0;font-size:clamp(24px,3.2vw,40px);line-height:1.12;font-weight:600;letter-spacing:-.03em;max-width:17ch}
+.lp-lede{margin:0;color:var(--muted);font-size:clamp(13px,1.15vw,15px);line-height:1.58;max-width:50ch}
+.lp-cta{display:flex;gap:10px;flex-wrap:wrap}
+
+.lp-spec{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden}
+.lp-spec-cell{padding:8px 11px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.lp-spec-cell+.lp-spec-cell{border-left:1px solid var(--line)}
+.lp-spec-k{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.lp-spec-v{font-family:var(--mono);font-size:14.5px;font-weight:500;letter-spacing:-.01em;white-space:nowrap}
+
+.lp-cue-scroll{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);text-decoration:none}
+.lp-cue-scroll:hover{color:var(--lime)}
+.lp-cue-scroll svg{width:14px;height:14px}
+
+/* ---------- Telemetry panel (signature) ---------- */
+.lp-tele{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden}
+.lp-tele-plate{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.lp-tele-live{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.lp-tele-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}
+.lp-spark,.lp-hist{padding:clamp(13px,2vh,18px) 14px;min-width:0}
+.lp-hist{border-left:1px solid var(--line)}
+.lp-panel-h{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.lp-panel-k{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.lp-panel-v{font-family:var(--mono);font-size:clamp(17px,2vw,21px);font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.lp-panel-v small{font-size:10.5px;color:var(--dim);font-weight:400}
+.lp-spark-scale{display:grid;grid-template-columns:auto minmax(0,1fr);gap:clamp(9px,1.1vw,13px);align-items:stretch;min-width:0}
+/* Scale labels live in their own gutter, so nothing sits on top of the plot
+   and nothing crosses a gridline. */
+.lp-spark-axis{display:flex;flex-direction:column;justify-content:space-between;padding:1px 0;
+  font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;color:var(--dim);white-space:nowrap}
+.lp-spark-field{position:relative;min-width:0}
+.lp-spark-svg{display:block;width:100%;height:clamp(120px,19vh,168px)}
+.lp-spark-grid{stroke:var(--line);stroke-width:1;vector-effect:non-scaling-stroke}
+.lp-spark-base{stroke:var(--line2);stroke-width:1;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.lp-spark-line{fill:none;stroke:var(--lime);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.lp-spark-dot{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 3px var(--accent-glow);transform:translate(-50%,-50%)}
+/* The halo pulses, not the dot: the dot's transform is what centres it on the
+   last vertex, so animating that would drift it off the line end. */
+.lp-spark-dot::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--lime);opacity:.4;animation:lpDotPulse 2.1s ease-out infinite}
+@keyframes lpDotPulse{0%{transform:scale(1);opacity:.42}70%{transform:scale(2.7);opacity:0}100%{transform:scale(2.7);opacity:0}}
+
+.lp-hist-plot{display:flex;align-items:flex-end;gap:clamp(3px,.7vw,7px);height:clamp(96px,15vh,132px);border-bottom:1px solid var(--line2)}
+.lp-bar{flex:1;min-width:0;background:var(--bar);border-radius:2px 2px 0 0;height:100%;transform:scaleY(0);transform-origin:bottom center;
+  transition:transform .6s cubic-bezier(.3,.9,.3,1)}
+.lp-bar.hot{background:var(--lime)}
+.lp-hist.in .lp-bar{transform:scaleY(1)}
+.lp-hist.in .lp-bar:nth-child(2){transition-delay:.04s}
+.lp-hist.in .lp-bar:nth-child(3){transition-delay:.08s}
+.lp-hist.in .lp-bar:nth-child(4){transition-delay:.12s}
+.lp-hist.in .lp-bar:nth-child(5){transition-delay:.16s}
+.lp-hist.in .lp-bar:nth-child(6){transition-delay:.2s}
+.lp-hist.in .lp-bar:nth-child(7){transition-delay:.24s}
+.lp-hist.in .lp-bar:nth-child(8){transition-delay:.28s}
+.lp-hist.in .lp-bar:nth-child(9){transition-delay:.32s}
+.lp-hist.in .lp-bar:nth-child(10){transition-delay:.36s}
+.lp-hist-axis{display:flex;justify-content:space-between;margin-top:7px;font-family:var(--mono);font-size:9px;color:var(--dim)}
+
+.lp-strip{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}
+.lp-stat{padding:clamp(14px,2.4vh,20px) 16px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.lp-stat+.lp-stat{border-left:1px solid var(--line)}
+.lp-stat-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.lp-stat-v{font-family:var(--mono);font-size:clamp(20px,2.8vw,30px);font-weight:500;letter-spacing:-.02em;line-height:1.1;font-variant-numeric:tabular-nums}
+.lp-stat-v small{font-size:11px;color:var(--muted);font-weight:400}
+.lp-stat-d{font-size:12px;line-height:1.45;color:var(--muted)}
+
+/* ---------- Drill breakdown ---------- */
+.lp-drills{list-style:none;margin:clamp(20px,3vh,32px) 0 0;padding:0;border-top:1px solid var(--line)}
+.lp-drill{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,220px) minmax(0,1.15fr);gap:clamp(14px,3vw,40px);align-items:center;
+  padding:clamp(16px,2.6vh,26px) 0;border-bottom:1px solid var(--line)}
+.lp-drill-id{min-width:0}
+.lp-drill-name{margin:0;font-size:clamp(15px,1.5vw,18px);font-weight:600;letter-spacing:-.015em}
+.lp-drill-desc{margin:6px 0 0;color:var(--muted);font-size:12.5px;line-height:1.45;max-width:34ch}
+.lp-drill-tag{display:inline-block;margin-top:9px;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);border:1px solid var(--line);border-radius:5px;padding:3px 7px}
+.lp-drill-tag.pro{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}
+.lp-drill-info{display:flex;flex-direction:column;gap:10px;min-width:0}
+.lp-line{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}
+.lp-line .k{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:2px}
+.lp-line .k+.lp-line-t{color:var(--ink)}
+
+/* mini demos */
+.lp-viz{position:relative;height:118px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);display:grid;place-items:center;overflow:hidden}
+.lp-mini-grid{display:grid;grid-template-columns:repeat(3,20px);gap:4px}
+.lp-mini-grid span{width:20px;height:20px;border-radius:3px;background:var(--panel);border:1px solid var(--line);transition:background .14s ease,border-color .14s ease}
+.lp-mini-grid span.on{background:var(--lime);border-color:var(--lime)}
+.lp-uf-shape{width:26px;height:26px;background:var(--lime);border-radius:50%;transition:border-radius .2s ease}
+.lp-uf-shape.s1{border-radius:4px}
+.lp-uf-shape.s2{border-radius:0;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.lp-uf-dot{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--ink);opacity:.22;left:var(--x);top:var(--y);transform:translate(-50%,-50%);transition:opacity .18s ease}
+.lp-uf-dot.on{opacity:1;background:var(--lime)}
+.lp-pal{width:100%;height:100%}
+.lp-pal-path{fill:none;stroke:var(--line2);stroke-width:1.5;stroke-dasharray:3 4;stroke-linejoin:round}
+.lp-pal-locus{fill:var(--panel);stroke:var(--line2);stroke-width:1.5;transition:fill .2s ease,stroke .2s ease}
+.lp-pal-locus.on{fill:var(--lime);stroke:var(--lime)}
+.lp-rz{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:15px;color:var(--muted)}
+.lp-rz-t.q{color:var(--lime);border:1px dashed var(--lime-edge);border-radius:5px;padding:1px 7px}
+.lp-rz-opts{position:absolute;bottom:11px;left:0;right:0;display:flex;justify-content:center;gap:8px}
+.lp-rz-opt{font-family:var(--mono);font-size:12px;border:1px solid var(--line2);border-radius:5px;padding:2px 9px;color:var(--muted);transition:border-color .18s ease,color .18s ease,background .18s ease}
+.lp-rz-opt.on{border-color:var(--lime-edge);color:var(--lime);background:var(--lime-soft)}
+.lp-sp-rail{position:absolute;left:16%;right:16%;top:50%;height:1px;background:var(--line2);display:flex;justify-content:space-between}
+.lp-sp-rail span{width:1px;height:11px;background:var(--line2);transform:translateY(-5px)}
+.lp-sp-card{position:absolute;top:50%;left:calc(16% + var(--i,0) * 22.66%);transform:translate(-50%,-50%);width:26px;height:32px;border-radius:4px;background:var(--lime);color:var(--bg);display:grid;place-items:center;font-family:var(--mono);font-weight:600;transition:left .3s cubic-bezier(.3,.9,.3,1)}
+.lp-sw-shape{width:34px;height:34px;background:var(--lime);border-radius:50%;transition:border-radius .2s ease,background .2s ease}
+.lp-sw-shape.t1{border-radius:5px}
+.lp-sw-shape.t2{border-radius:50%;background:var(--warn)}
+.lp-sw-shape.t3{border-radius:5px;background:var(--warn)}
+.lp-sw-label{position:absolute;bottom:11px;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+/* Signal Alert, Simple Reaction and Mental Arithmetic had no viz at all, so
+   their panels rendered empty while the other six animated. */
+.lp-sa{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:15px}
+.lp-sa-digit{width:22px;height:27px;display:grid;place-items:center;border:1px solid var(--line);border-radius:4px;color:var(--muted);
+  transition:border-color .18s ease,color .18s ease,background .18s ease}
+.lp-sa-digit.stop{border-style:dashed}
+.lp-sa-digit.on{border-color:var(--lime-edge);color:var(--lime);background:var(--lime-soft)}
+.lp-sa-digit.stop.on{border-color:var(--warn);color:var(--warn);background:transparent}
+.lp-sa-cap{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim)}
+.lp-crt{position:relative;width:58px;height:58px;border-radius:50%;border:1px solid var(--line2);display:grid;place-items:center;
+  transition:border-color .14s ease}
+.lp-crt.on{border-color:var(--lime)}
+.lp-crt-target{width:22px;height:22px;border-radius:50%;background:var(--panel);border:1px solid var(--line);
+  transition:background .14s ease,border-color .14s ease,transform .14s ease}
+.lp-crt.on .lp-crt-target{background:var(--lime);border-color:var(--lime);transform:scale(1.12)}
+.lp-ma{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:17px;color:var(--muted)}
+.lp-ma-op{color:var(--dim)}
+.lp-ma-t.ans{border:1px solid var(--line2);border-radius:5px;padding:1px 8px;
+  transition:border-color .18s ease,color .18s ease,background .18s ease}
+.lp-ma-t.ans.on{border-color:var(--lime-edge);color:var(--lime);background:var(--lime-soft)}
+
+/* ---------- Method note ---------- */
+.lp-note{margin:clamp(20px,3vh,30px) auto 0;width:100%;max-width:min(700px,100%);border:1px solid var(--line);border-top:2px solid var(--lime-edge);
+  border-radius:var(--r);background:var(--panel);padding:clamp(18px,3vh,28px) clamp(16px,3vw,30px)}
+.lp-note p{margin:0;color:var(--muted);line-height:1.62}
+.lp-note p+p{margin-top:12px}
+.lp-note p.lead{color:var(--ink);font-size:clamp(14px,1.3vw,16px);line-height:1.5}
+.lp-claims{margin:18px 0 0;padding:16px 0 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:15px;max-width:min(44ch,100%);margin-left:auto;margin-right:auto}
+.lp-claims>div{display:flex;flex-direction:column;gap:5px;align-items:center;text-align:center}
+.lp-claims>div+div{border-top:1px solid var(--line);padding-top:15px}
+.lp-claims dt{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.lp-claims dd{margin:0;color:var(--ink);font-size:13.5px;line-height:1.45}
+
+/* ---------- Plans ---------- */
+.lp-tiers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;width:100%;max-width:min(700px,100%);margin:clamp(20px,3vh,30px) auto 0}
+.lp-tier{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px}
+.lp-tier.pro{border-color:var(--lime-edge);background:var(--lime-soft)}
+.lp-tier-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.lp-tier-name{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.lp-tier.pro .lp-tier-name{color:var(--lime)}
+.lp-tier-price{font-family:var(--mono);font-size:19px;font-weight:500;letter-spacing:-.01em;white-space:nowrap}
+.lp-tier-price span{font-size:10px;color:var(--dim)}
+.lp-tier-feat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.lp-tier-feat li{display:flex;gap:8px;align-items:baseline;font-size:12.5px;color:var(--muted);line-height:1.35}
+.lp-tier-feat li::before{content:"";flex:none;width:5px;height:5px;border-radius:1px;background:var(--line2);transform:translateY(3px)}
+.lp-tier.pro .lp-tier-feat li::before{background:var(--lime)}
+.lp-tier .btn-ghost,.lp-tier .btn-primary{width:100%;margin-top:auto}
+
+/* ---------- FAQ ---------- */
+/* One heading only. It carries the symmetric rule pair the eyebrow used to
+   draw, so the section keeps its frame without printing a label twice. */
+.lp-faq-h2{display:flex;align-items:center;justify-content:center;gap:10px;width:auto;max-width:100%;
+  font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+.lp-faq-h2::before,.lp-faq-h2::after{content:"";flex:none;width:clamp(14px,4vw,42px);height:1px;background:var(--line)}
+.lp-faq{margin:clamp(20px,3vh,30px) auto 0;width:100%;max-width:min(720px,100%);border-top:1px solid var(--line)}
+.lp-faq-item{border-bottom:1px solid var(--line)}
+/* Glyph pinned to a fixed right edge and centred on the row, so every toggle
+   lines up in one column. Plus means more, minus means less: each row is an
+   independent toggle and any number of them can be open at once. */
+.lp-faq-q{position:relative;display:block;cursor:pointer;list-style:none;text-align:center;
+  padding:clamp(15px,2.2vh,20px) 34px clamp(15px,2.2vh,20px) 2px;font-size:clamp(14px,1.45vw,16.5px);font-weight:600;letter-spacing:-.015em;color:var(--ink);
+  transition:color .15s ease}
+.lp-faq-q::-webkit-details-marker{display:none}
+.lp-faq-q::before,.lp-faq-q::after{content:"";position:absolute;right:2px;top:50%;background:var(--dim);
+  transition:transform .22s cubic-bezier(.3,.9,.3,1),background-color .15s ease}
+.lp-faq-q::before{width:11px;height:1.5px;margin-top:-.75px}
+.lp-faq-q::after{right:6.75px;width:1.5px;height:11px;margin-top:-5.5px}
+.lp-faq-q:hover{color:var(--lime)}
+.lp-faq-q:hover::before,.lp-faq-q:hover::after{background:var(--lime)}
+.lp-faq-item[open] .lp-faq-q::before,.lp-faq-item[open] .lp-faq-q::after{background:var(--lime)}
+.lp-faq-item[open] .lp-faq-q::after{transform:scaleY(0)}
+.lp-faq-a{margin:0 auto;padding:0 34px clamp(16px,2.4vh,21px) 2px;color:var(--muted);font-size:13.5px;line-height:1.62;max-width:min(58ch,100%)}
+
+/* ---------- Footer ---------- */
+.lp-foot{border-top:1px solid var(--line);margin-top:clamp(24px,5vh,56px)}
+.lp-foot-in{max-width:1180px;margin:0 auto;padding:clamp(20px,3vh,30px) clamp(14px,3vw,28px);
+  display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.lp-foot-brand{display:flex;align-items:center;gap:9px;color:var(--ink);font-size:14px;font-weight:600;letter-spacing:-.01em}
+.lp-foot-line{flex:1;min-width:180px;margin:0;color:var(--muted);font-size:12.5px}
+.lp-foot-nav{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.lp-foot-nav a{color:var(--muted);font-size:12.5px;text-decoration:none}
+.lp-foot-nav a:hover{color:var(--lime)}
+.lp-foot-copy{width:100%;margin:0;padding-top:14px;border-top:1px solid var(--line);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--dim)}
+
+/* ---------- Reveal ---------- */
+[data-reveal]{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
+[data-reveal].in{opacity:1;transform:none}
+
+/* ---------- Responsive ---------- */
+@media(max-width:900px){
+  .lp-hero{grid-template-columns:1fr;gap:clamp(14px,2.6vh,24px)}
+  .lp-rig{order:-1}
+  .lp-h1{font-size:clamp(22px,5.4vw,32px);max-width:22ch}
+  .lp-tele-grid{grid-template-columns:1fr}
+  .lp-hist{border-left:0;border-top:1px solid var(--line)}
+  .lp-drill{grid-template-columns:minmax(0,1fr) minmax(0,180px);grid-template-areas:"id viz" "info viz";row-gap:12px}
+  .lp-drill-id{grid-area:id}
+  .lp-viz{grid-area:viz;align-self:start}
+  .lp-drill-info{grid-area:info}
+}
+@media(max-width:640px){
+  .lp-rig{--cell:clamp(27px,8.8vw,40px)}
+  .lp-rig-mid{grid-template-columns:13px minmax(0,1fr) auto;grid-template-areas:"ry stage readout";gap:10px}
+  .lp-readout{width:clamp(84px,22vw,116px)}
+  .lp-ro{flex-direction:column;align-items:flex-start;gap:1px;padding:6px 8px}
+  .lp-ro-v{font-size:14px}
+  .lp-rig-foot{display:none}
+  .lp-trace{height:26px}
+  .lp-spec-v{font-size:13.5px}
+  .lp-drill{grid-template-columns:1fr;grid-template-areas:"id" "viz" "info"}
+  .lp-viz{width:100%;max-width:260px}
+  .lp-tier{padding:13px}
+  .lp-tier-feat li{font-size:12px}
+}
+@media(max-width:420px){
+  .lp-top-in{padding-top:8px;padding-bottom:8px}
+  .lp-word{font-size:14px}
+  .lp-nav .btn-ghost,.lp-nav .btn-primary{padding:6px 9px;font-size:12px}
+  .lp .btn-primary,.lp .btn-ghost{padding:7px 11px;font-size:12.5px}
+  .lp-stat{padding:10px 8px}
+  .lp-stat-v{font-size:18px}
+  .lp-spec-cell{padding:6px 8px}
+  .lp-tiers{gap:10px}
+  .lp-tier{padding:12px 11px}
+  .lp-tier-top{flex-direction:column;align-items:flex-start;gap:2px}
+  .lp-tier-price{font-size:17px}
+}
+@media(prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  html{scroll-behavior:auto}
+  [data-reveal]{opacity:1!important;transform:none!important}
+  .lp-bar{transform:none!important}
+  .lp-spark-line{stroke-dashoffset:0!important}
+  .lp-prog-mark{transition:none!important}
+  /* `*` matches elements, not pseudo-elements, so the universal rule above
+     never reaches the dot's halo and it kept pulsing under reduced motion. */
+  .lp-spark-dot::after{animation:none!important}
+}
+</style>
+</head>
+<body>
+<div class="lp">
+
+  <header class="lp-top">
+    <div class="lp-top-in">
+      <a class="lp-brand" href="landing.html">
+        <span class="rail-mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64" width="20" height="20" fill="currentColor">
+            <rect x="7" y="7" width="8" height="8"/><rect x="7" y="17" width="8" height="8"/><rect x="7" y="27" width="8" height="8"/><rect x="7" y="37" width="8" height="8"/><rect x="7" y="47" width="8" height="8"/>
+            <rect x="47" y="7" width="8" height="8"/><rect x="47" y="17" width="8" height="8"/><rect x="47" y="27" width="8" height="8"/><rect x="47" y="37" width="8" height="8"/><rect x="47" y="47" width="8" height="8"/>
+            <rect x="17" y="17" width="8" height="8"/><rect x="27" y="27" width="8" height="8"/><rect x="37" y="37" width="8" height="8"/>
+          </svg>
+        </span>
+        <span class="lp-word">Neuralbase</span>
+      </a>
+      <nav class="lp-nav" aria-label="Account">
+        <a class="btn-ghost" href="auth.html">Sign in</a>
+        <a class="btn-primary" href="auth.html">Create account</a>
+      </nav>
+    </div>
+    <div class="lp-prog" id="lpProg" role="slider" tabindex="0"
+      aria-label="Page scroll position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Top of page">
+      <span class="lp-prog-mark"></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- 1. HERO -->
+    <section class="lp-hero" id="top">
+      <section class="lp-rig" role="img" aria-label="An executive n-back rig running live: a 3 by 3 grid lights one cell each trial, a rule cue switches between match position, match letter, and match vowel, with live level, d-prime, accuracy, and trial readouts.">
+        <div class="lp-rig-plate">
+          <span class="lp-plate-name">Exec N-Back</span>
+          <span class="lp-plate-live" aria-hidden="true"><span class="lp-led"></span>Running</span>
+        </div>
+        <div class="lp-ruler-x" aria-hidden="true">
+          <span class="lp-ruler-cap l">0</span><span class="lp-ruler-cap r">18</span>
+          <span class="lp-ruler-mark" id="trialMark"></span>
+        </div>
+        <div class="lp-rig-mid" aria-hidden="true">
+          <div class="lp-ruler-y"></div>
+          <div class="lp-stage">
+            <div class="lp-cue"><span class="lp-cue-k">Rule</span><span id="cueVal">Match position</span></div>
+            <div class="lp-grid" id="grid">
+              <span class="lp-cell"></span><span class="lp-cell"></span><span class="lp-cell"></span>
+              <span class="lp-cell"></span><span class="lp-cell"></span><span class="lp-cell"></span>
+              <span class="lp-cell"></span><span class="lp-cell"></span><span class="lp-cell"></span>
+            </div>
+            <div class="lp-stim">Letter <span class="lp-stim-v" id="stimVal">A</span></div>
+          </div>
+          <div class="lp-readout">
+            <div class="lp-ro"><span class="lp-ro-k">Level</span><span class="lp-ro-v" id="roLevel">2</span></div>
+            <div class="lp-ro"><span class="lp-ro-k">D-prime</span><span class="lp-ro-v" id="roDp">0.00</span></div>
+            <div class="lp-ro"><span class="lp-ro-k">Accuracy</span><span class="lp-ro-v" id="roAcc">0%</span></div>
+            <div class="lp-ro"><span class="lp-ro-k">Trial</span><span class="lp-ro-v" id="roTrial">00/18</span></div>
+          </div>
+        </div>
+        <div class="lp-trace" aria-hidden="true">
+          <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+            <line class="lp-trace-base" x1="0" y1="15" x2="100" y2="15"></line>
+            <polyline class="lp-trace-line" id="traceLine" points=""></polyline>
+          </svg>
+          <span class="lp-trace-cap">Baseline 0.50</span>
+        </div>
+        <div class="lp-rig-foot"><span>Ref 0.00 ms</span><span>Series A</span></div>
+      </section>
+
+      <section class="lp-copy">
+        <h1 class="lp-h1">Nine short drills for working memory, speed, and recall.</h1>
+        <p class="lp-lede">Train one drill, run the daily circuit, or build your own. A set takes about three minutes, and your scores save to your account.</p>
+        <div class="lp-cta">
+          <a class="btn-primary" href="auth.html">Create account</a>
+          <a class="btn-ghost" href="auth.html">Sign in</a>
+        </div>
+        <div class="lp-spec" aria-label="Training specification">
+          <div class="lp-spec-cell"><span class="lp-spec-k">Drills</span><span class="lp-spec-v">09</span></div>
+          <div class="lp-spec-cell"><span class="lp-spec-k">Set length</span><span class="lp-spec-v">03:00</span></div>
+          <div class="lp-spec-cell"><span class="lp-spec-k">Scoring</span><span class="lp-spec-v">D-prime</span></div>
+        </div>
+        <a class="lp-cue-scroll" href="#telemetry">Telemetry
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"></path></svg>
+        </a>
+      </section>
+    </section>
+
+    <!-- 2. LIVE TELEMETRY -->
+    <section class="lp-sec" id="telemetry" data-reveal>
+      <p class="lp-eyebrow">Telemetry</p>
+      <h2 class="lp-h2">Reaction times, plotted as you train.</h2>
+      <p class="lp-lead">Every attempt lands on the trace. The histogram shows where your times cluster, and the strip keeps the running count.</p>
+
+      <div class="lp-tele" style="margin-top:clamp(18px,3vh,28px)">
+        <div class="lp-tele-plate">
+          <span class="lp-plate-name">Session Trace</span>
+          <span class="lp-tele-live"><span class="lp-led"></span>Live</span>
+        </div>
+        <div class="lp-tele-grid">
+          <div class="lp-spark">
+            <div class="lp-panel-h">
+              <span class="lp-panel-k">Reaction time</span>
+              <span class="lp-panel-v">412 <small>ms &middot; avg 445</small></span>
+            </div>
+            <div class="lp-spark-scale">
+              <div class="lp-spark-axis" aria-hidden="true"><span>600 ms</span><span>350 ms</span></div>
+              <div class="lp-spark-field">
+                <svg class="lp-spark-svg" viewBox="0 0 320 100" preserveAspectRatio="none" aria-hidden="true">
+                  <line class="lp-spark-grid" x1="0" y1="8" x2="320" y2="8"></line>
+                  <line class="lp-spark-grid" x1="0" y1="92" x2="320" y2="92"></line>
+                  <line class="lp-spark-base" id="sparkBase" x1="0" y1="60" x2="320" y2="60"></line>
+                  <polyline class="lp-spark-line" id="sparkLine" points=""></polyline>
+                </svg>
+                <span class="lp-spark-dot" id="sparkDot" style="left:100%;top:81%"></span>
+              </div>
+            </div>
+          </div>
+          <div class="lp-hist" id="hist">
+            <div class="lp-panel-h">
+              <span class="lp-panel-k">Distribution</span>
+              <span class="lp-panel-v"><span class="lp-count" data-to="18">0</span> <small>attempts</small></span>
+            </div>
+            <div class="lp-hist-plot" aria-hidden="true">
+              <span class="lp-bar" style="height:8%"></span>
+              <span class="lp-bar" style="height:16%"></span>
+              <span class="lp-bar" style="height:30%"></span>
+              <span class="lp-bar" style="height:52%"></span>
+              <span class="lp-bar hot" style="height:78%"></span>
+              <span class="lp-bar hot" style="height:96%"></span>
+              <span class="lp-bar" style="height:72%"></span>
+              <span class="lp-bar" style="height:44%"></span>
+              <span class="lp-bar" style="height:26%"></span>
+              <span class="lp-bar" style="height:14%"></span>
+            </div>
+            <div class="lp-hist-axis"><span>350</span><span>475</span><span>600 ms</span></div>
+          </div>
+        </div>
+        <div class="lp-strip">
+          <div class="lp-stat"><span class="lp-stat-k">Sessions</span><span class="lp-stat-v lp-count" data-to="128">0</span><span class="lp-stat-d">this month</span></div>
+          <div class="lp-stat"><span class="lp-stat-k">Streak</span><span class="lp-stat-v"><span class="lp-count" data-to="12">0</span> <small>days</small></span><span class="lp-stat-d">current run</span></div>
+          <div class="lp-stat"><span class="lp-stat-k">Best</span><span class="lp-stat-v lp-count" data-to="384">0</span><span class="lp-stat-d">ms, n-back</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. DRILL BREAKDOWN -->
+    <section class="lp-sec" id="drills">
+      <p class="lp-eyebrow">Drills</p>
+      <h2 class="lp-h2">What each drill trains, and the evidence behind it.</h2>
+      <ul class="lp-drills" id="drillList"></ul>
+    </section>
+
+    <!-- 4. METHOD -->
+    <section class="lp-sec lp-sec-mid" id="method">
+      <p class="lp-eyebrow">Method</p>
+      <h2 class="lp-h2">What Neuralbase claims, and what it does not.</h2>
+      <div class="lp-note">
+        <p class="lead" id="methodLead"></p>
+        <p id="methodHonest"></p>
+        <dl class="lp-claims">
+          <div><dt>Near transfer</dt><dd>Reliable for similar tasks.</dd></div>
+          <div><dt>Broad transfer</dt><dd>Not demonstrated. Not claimed.</dd></div>
+          <div><dt>IQ</dt><dd>No claim is made.</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- 5. PLANS -->
+    <section class="lp-sec lp-sec-mid" id="plans">
+      <p class="lp-eyebrow">Pricing</p>
+      <h2 class="lp-h2">Plans</h2>
+      <div class="lp-tiers">
+        <div class="lp-tier">
+          <div class="lp-tier-top"><span class="lp-tier-name">Free</span><span class="lp-tier-price">$0</span></div>
+          <ul class="lp-tier-feat"><li>Three drills</li><li>Daily circuit</li><li>Seven days of history</li></ul>
+          <a class="btn-ghost" href="auth.html">Create account</a>
+        </div>
+        <div class="lp-tier pro">
+          <div class="lp-tier-top"><span class="lp-tier-name">Pro</span><span class="lp-tier-price">$4.99 <span>/ month</span></span></div>
+          <ul class="lp-tier-feat"><li>All nine drills</li><li>Circuit builder</li><li>Full history and leaderboards</li></ul>
+          <a class="btn-primary" href="auth.html">Create account</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. FAQ -->
+    <section class="lp-sec lp-sec-mid" id="faq" data-reveal>
+      <h2 class="lp-h2 lp-faq-h2">FAQ</h2>
+      <div class="lp-faq">
+        <details class="lp-faq-item" open>
+          <summary class="lp-faq-q">Is Neuralbase a game?</summary>
+          <p class="lp-faq-a">It borrows the shape of one. Each drill has a score, a timer, and a level that moves with your accuracy. The point is repeatable practice you can measure.</p>
+        </details>
+        <details class="lp-faq-item">
+          <summary class="lp-faq-q">Will it raise my IQ?</summary>
+          <p class="lp-faq-a">Neuralbase makes no claim about IQ. Near transfer to similar tasks is reliable, and that is what the drills train. Broad transfer to general intelligence has not been demonstrated, so it is not claimed.</p>
+        </details>
+        <details class="lp-faq-item">
+          <summary class="lp-faq-q">How long is a session?</summary>
+          <p class="lp-faq-a">A set takes about three minutes. You can also run a single drill if you have less time, or build a longer circuit on Pro.</p>
+        </details>
+        <details class="lp-faq-item">
+          <summary class="lp-faq-q">Can I cancel?</summary>
+          <p class="lp-faq-a">Pro is billed monthly and you can cancel from settings at any time. When you cancel, your account returns to the free plan and your history stays.</p>
+        </details>
+        <details class="lp-faq-item">
+          <summary class="lp-faq-q">Is my data saved?</summary>
+          <p class="lp-faq-a">Yes. Your scores, settings, and plan save to your account and sync across devices. In demo mode, everything stays in this browser.</p>
+        </details>
+        <details class="lp-faq-item">
+          <summary class="lp-faq-q">What does it cost?</summary>
+          <p class="lp-faq-a">Free is $0 and includes three drills, the daily circuit, and seven days of history. Pro is $4.99 per month and adds all nine drills, the circuit builder, and full history with leaderboards.</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <!-- 7. FOOTER -->
+  <footer class="lp-foot">
+    <div class="lp-foot-in">
+      <span class="lp-foot-brand">
+        <span class="rail-mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64" width="20" height="20" fill="currentColor">
+            <rect x="7" y="7" width="8" height="8"/><rect x="7" y="17" width="8" height="8"/><rect x="7" y="27" width="8" height="8"/><rect x="7" y="37" width="8" height="8"/><rect x="7" y="47" width="8" height="8"/>
+            <rect x="47" y="7" width="8" height="8"/><rect x="47" y="17" width="8" height="8"/><rect x="47" y="27" width="8" height="8"/><rect x="47" y="37" width="8" height="8"/><rect x="47" y="47" width="8" height="8"/>
+            <rect x="17" y="17" width="8" height="8"/><rect x="27" y="27" width="8" height="8"/><rect x="37" y="37" width="8" height="8"/>
+          </svg>
+        </span>
+        Neuralbase
+      </span>
+      <p class="lp-foot-line">Neuralbase, a little training every day.</p>
+      <nav class="lp-foot-nav" aria-label="Footer">
+        <a href="auth.html">Sign in</a>
+        <a href="auth.html">Create account</a>
+        <a href="#method">Method</a>
+      </nav>
+      <p class="lp-foot-copy">&copy; 2026 Neuralbase</p>
+    </div>
+  </footer>
+
+</div>
+
+<script src="ui/themes.js"></script>
+<script src="content.js"></script>
+<script>
+/* Live executive n-back rig. Real sequence, simulated operator. Pauses when the
+   tab is hidden; holds a single static frame under prefers-reduced-motion. */
+(function () {
+  "use strict";
+  var grid = document.getElementById("grid");
+  if (!grid) return;
+  var cells = grid.children;
+  var cueVal = document.getElementById("cueVal");
+  var stimVal = document.getElementById("stimVal");
+  var roLevel = document.getElementById("roLevel");
+  var roDp = document.getElementById("roDp");
+  var roAcc = document.getElementById("roAcc");
+  var roTrial = document.getElementById("roTrial");
+  var trialMark = document.getElementById("trialMark");
+  var traceLine = document.getElementById("traceLine");
+
+  var RULES = ["position", "letter", "vowel"];
+  var LABEL = { position: "Match position", letter: "Match letter", vowel: "Match vowel" };
+  var LET = ["A", "E", "I", "O", "U", "C", "H", "K", "L", "Q", "R", "S", "T"];
+  var TRIALS = 18;
+  var STEP = 1700;
+
+  var reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var n = 2, posSeq = [], letSeq = [], rule = "position", cueLeft = 5;
+  var i = 0, correct = 0, hits = 0, fa = 0, blockCorrect = 0, blockCount = 0;
+  var trace = [1, 0, 1], timer = 0, active = false;
+
+  function pad(x) { return (x < 10 ? "0" : "") + x; }
+  function isMatch(seq) { return seq.length > n && seq[seq.length - 1] === seq[seq.length - 1 - n]; }
+  function isVowel(c) { return "AEIOU".indexOf(c) >= 0; }
+  function nextLevel(cur, c, t) {
+    var acc = t > 0 ? c / t : 0;
+    if (acc >= 0.8) return cur + 1;
+    if (acc <= 0.4) return Math.max(1, cur - 1);
+    return cur;
+  }
+  /* Acklam probit, same approximation the app uses for d-prime. */
+  function normInv(p) {
+    if (p <= 0) return -6; if (p >= 1) return 6;
+    var a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1, 2.506628277459239];
+    var b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
+    var c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+    var d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
+    var plow = 0.02425, phigh = 1 - plow, q, r;
+    if (p < plow) { q = Math.sqrt(-2 * Math.log(p)); return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+    if (p > phigh) { q = Math.sqrt(-2 * Math.log(1-p)); return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+    q = p - 0.5; r = q * q;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  }
+  function dPrime(h, f, t) {
+    if (t <= 0) return 0;
+    return normInv((h + 0.5) / (t + 1)) - normInv((f + 0.5) / (t + 1));
+  }
+
+  function drawTrace() {
+    var N = trace.length; if (N < 2) return;
+    var pts = [];
+    for (var k = 0; k < N; k++) pts.push(((k / (N - 1)) * 100).toFixed(2) + "," + (28 - trace[k] * 24).toFixed(2));
+    traceLine.setAttribute("points", pts.join(" "));
+  }
+
+  function paint() {
+    for (var k = 0; k < 9; k++) cells[k].classList.toggle("on", k === posSeq[i - 1]);
+    stimVal.textContent = letSeq[i - 1];
+    cueVal.textContent = LABEL[rule];
+    roTrial.textContent = pad(i) + "/" + TRIALS;
+    roLevel.textContent = n;
+    roDp.textContent = dPrime(hits, fa, i).toFixed(2);
+    roAcc.textContent = Math.round((correct / i) * 100) + "%";
+    trialMark.style.left = ((i / TRIALS) * 100) + "%";
+    drawTrace();
+  }
+
+  function trial() {
+    if (!active) return;
+    if (i >= TRIALS) { i = 0; correct = 0; hits = 0; fa = 0; posSeq = []; letSeq = []; trace = []; }
+    if (cueLeft <= 0) {
+      var set = n >= 2 ? RULES : ["position", "letter"];
+      var choices = set.filter(function (r) { return r !== rule; });
+      rule = choices[Math.floor(Math.random() * choices.length)];
+      cueLeft = 5 + Math.floor(Math.random() * 4);
+    }
+    cueLeft--;
+
+    var wantP = false, wantL = false;
+    if (i >= n) {
+      var r = Math.random();
+      if (r < 0.32) { if (rule === "position") wantP = true; else wantL = true; }
+      else if (r < 0.5) { if (rule === "position") wantL = true; else wantP = true; }
+    }
+    var p;
+    if (wantP) p = posSeq[i - n];
+    else { p = Math.floor(Math.random() * 9); if (i >= n && p === posSeq[i - n]) p = (p + 1) % 9; }
+    var l;
+    if (wantL) l = letSeq[i - n];
+    else { l = LET[Math.floor(Math.random() * LET.length)]; if (i >= n && l === letSeq[i - n]) l = LET[(LET.indexOf(l) + 1) % LET.length]; }
+    posSeq.push(p); letSeq.push(l);
+
+    var pMatch = isMatch(posSeq), lMatch = isMatch(letSeq);
+    var target = rule === "position" ? pMatch : (rule === "letter" ? lMatch : (lMatch && isVowel(l)));
+
+    /* Simulated operator: catches most matches, false-alarms occasionally. */
+    var responded = target ? Math.random() < 0.82 : Math.random() < 0.12;
+    var ok = responded === target;
+    if (target && responded) hits++;
+    if (!target && responded) fa++;
+    if (ok) { correct++; blockCorrect++; }
+    blockCount++;
+
+    i++;
+    trace.push(ok ? 1 : 0);
+    if (trace.length > 24) trace.shift();
+    paint();
+
+    if (blockCount >= 4) {
+      n = nextLevel(n, blockCorrect, blockCount);
+      blockCorrect = 0; blockCount = 0;
+    }
+    timer = setTimeout(trial, STEP);
+  }
+
+  function renderStatic() {
+    var pos = [4, 0, 7, 4, 2, 8, 5, 1, 6, 3, 7, 0, 4, 8, 2, 5, 1, 3];
+    var letters = ["A", "C", "E", "H", "A", "K", "O", "R", "C", "U", "E", "L", "I", "Q", "A", "T", "S", "E"];
+    posSeq = pos.slice(0, 7); letSeq = letters.slice(0, 7); i = 7; n = 3;
+    correct = 6; hits = 3; fa = 1;
+    trace = [1, 1, 0, 1, 1, 1, 0];
+    rule = "position";
+    paint();
+  }
+
+  function start() { if (active || reduced) return; active = true; timer = setTimeout(trial, 500); }
+  function stop() { active = false; clearTimeout(timer); }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) stop(); else start();
+  });
+
+  if (reduced) renderStatic(); else start();
+})();
+
+/* Landing: drill rows from content.js, telemetry reveal, mini demos, scroll ruler. */
+(function () {
+  "use strict";
+  var reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+  /* ---- Drill rows from content.js ---- */
+  var VIZ = {
+    nback: '<div class="lp-mini-grid"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>',
+    ufov: '<span class="lp-uf-shape s0"></span><span class="lp-uf-dot" style="--x:50%;--y:12%"></span><span class="lp-uf-dot" style="--x:88%;--y:50%"></span><span class="lp-uf-dot" style="--x:50%;--y:88%"></span><span class="lp-uf-dot" style="--x:12%;--y:50%"></span>',
+    palace: '<svg class="lp-pal" viewBox="0 0 200 120"><polyline class="lp-pal-path" points="28,92 66,54 104,76 146,30 172,58"/><circle class="lp-pal-locus" cx="28" cy="92" r="5"/><circle class="lp-pal-locus" cx="66" cy="54" r="5"/><circle class="lp-pal-locus" cx="104" cy="76" r="5"/><circle class="lp-pal-locus" cx="146" cy="30" r="5"/><circle class="lp-pal-locus" cx="172" cy="58" r="5"/></svg>',
+    reasoning: '<div class="lp-rz"><span class="lp-rz-t">A</span><span class="lp-rz-op">:</span><span class="lp-rz-t">B</span><span class="lp-rz-op">::</span><span class="lp-rz-t">C</span><span class="lp-rz-op">:</span><span class="lp-rz-t q">?</span></div><div class="lp-rz-opts"><span class="lp-rz-opt">D</span><span class="lp-rz-opt">E</span><span class="lp-rz-opt">F</span></div>',
+    spaced: '<div class="lp-sp-rail"><span></span><span></span><span></span><span></span></div><span class="lp-sp-card">+</span>',
+    switching: '<span class="lp-sw-shape t0"></span><span class="lp-sw-label">Rule</span>',
+    sart: '<div class="lp-sa"><span class="lp-sa-digit">1</span><span class="lp-sa-digit">7</span><span class="lp-sa-digit stop">3</span><span class="lp-sa-digit">5</span><span class="lp-sa-digit">9</span></div><span class="lp-sa-cap">withhold on 3</span>',
+    crt: '<span class="lp-crt"><span class="lp-crt-target"></span></span><span class="lp-sa-cap">respond on signal</span>',
+    math: '<div class="lp-ma"><span class="lp-ma-t">7</span><span class="lp-ma-op">+</span><span class="lp-ma-t">5</span><span class="lp-ma-op">=</span><span class="lp-ma-t ans">12</span><span class="lp-ma-t ans">11</span></div>'
+  };
+
+  var DRILLS = (window.Content && Content.DRILLS) || [];
+  var list = document.getElementById("drillList");
+  if (list) {
+    DRILLS.forEach(function (d) {
+      var li = document.createElement("li");
+      li.className = "lp-drill";
+      li.setAttribute("data-reveal", "");
+      li.innerHTML =
+        '<div class="lp-drill-id">' +
+          '<h3 class="lp-drill-name">' + d.name + '</h3>' +
+          '<p class="lp-drill-desc">' + d.desc + '</p>' +
+          '<span class="lp-drill-tag' + (d.pro ? ' pro' : '') + '">' + (d.pro ? 'Pro' : 'Free') + '</span>' +
+        '</div>' +
+        '<div class="lp-viz lp-viz-' + d.id + '" aria-hidden="true">' + (VIZ[d.id] || '') + '</div>' +
+        '<div class="lp-drill-info">' +
+          '<p class="lp-line"><span class="k">Trains</span><span class="lp-line-t">' + d.trains + '</span></p>' +
+          '<p class="lp-line"><span class="k">Evidence</span><span class="lp-line-t">' + d.evidence + '</span></p>' +
+        '</div>';
+      list.appendChild(li);
+    });
+  }
+
+  /* ---- Method copy from content.js ---- */
+  var C = (window.Content && Content.COPY) || {};
+  var ml = document.getElementById("methodLead");
+  var mh = document.getElementById("methodHonest");
+  if (ml && C.methodLead) ml.textContent = C.methodLead;
+  if (mh && C.methodHonest) mh.textContent = C.methodHonest;
+
+  /* ---- Sparkline of reaction times ---- */
+  var RT = [520, 505, 541, 494, 470, 489, 455, 463, 431, 442, 416, 428, 402, 413, 398, 406, 391, 384];
+  var W = 320, H = 100, PT = 8, PB = 8, VMIN = 350, VMAX = 600;
+  var line = document.getElementById("sparkLine");
+  var base = document.getElementById("sparkBase");
+  var dot = document.getElementById("sparkDot");
+  var pts = RT.map(function (v, i) {
+    var x = (i / (RT.length - 1)) * W;
+    var y = PT + (1 - (v - VMIN) / (VMAX - VMIN)) * (H - PT - PB);
+    return { x: x, y: y };
+  });
+  var ptsAttr = pts.map(function (p) { return p.x.toFixed(2) + "," + p.y.toFixed(2); });
+  if (line) line.setAttribute("points", ptsAttr.join(" "));
+  var avg = RT.reduce(function (a, b) { return a + b; }, 0) / RT.length;
+  var by = PT + (1 - (avg - VMIN) / (VMAX - VMIN)) * (H - PT - PB);
+  if (base) { base.setAttribute("y1", by.toFixed(2)); base.setAttribute("y2", by.toFixed(2)); }
+  var lastPt = pts[pts.length - 1];
+  if (dot) {
+    dot.style.left = (lastPt.x / W * 100) + "%";
+    dot.style.top = (lastPt.y / H * 100) + "%";
+  }
+
+  /* The stroke is non-scaling, so the dash pattern is measured in screen
+     pixels while getTotalLength reports user units, and the plot is stretched
+     by different amounts on each axis. Measure the real on screen length of
+     the polyline instead, or the reveal paints only part of the line and the
+     end dot sits orphaned.
+
+     The scale has to come from the SVG box, not the polyline's bounding box.
+     A polyline's bbox is the extent of its own data, so its height spans only
+     the lowest to highest point, about 73 of the 100 viewBox units here. Using
+     it as the y scale under-measured the path by 27px, so the dash ran out
+     before the final vertex and the line visibly stopped short of the dot. */
+  function sparkScreenLength() {
+    var svg = line && line.ownerSVGElement;
+    if (!line || !svg) return 0;
+    var b = svg.getBoundingClientRect();
+    var sx = b.width ? b.width / W : 1;
+    var sy = b.height ? b.height / H : 1;
+    var total = 0;
+    for (var i = 1; i < pts.length; i++) {
+      var dx = (pts[i].x - pts[i - 1].x) * sx;
+      var dy = (pts[i].y - pts[i - 1].y) * sy;
+      total += Math.sqrt(dx * dx + dy * dy);
+    }
+    /* A hair of slack, so a sub-pixel rounding difference can never leave the
+       last fragment unpainted. It cannot overrun, since the gap that follows
+       the dash starts beyond the path. */
+    return total + 1;
+  }
+
+  var sparkDone = false;
+  function drawSpark() {
+    if (!line || sparkDone || document.hidden) return;
+    sparkDone = true;
+    /* Dash length is screen based, so it is remeasured after the reveal and on
+       resize. Otherwise a wider window paints only the first slice of the line. */
+    function apply() {
+      var len = sparkScreenLength();
+      line.style.strokeDasharray = len + "px";
+      line.style.strokeDashoffset = 0;
+    }
+    if (reduced) { apply(); return; }
+    var len = sparkScreenLength();
+    line.style.strokeDasharray = len + "px";
+    line.style.strokeDashoffset = len + "px";
+    requestAnimationFrame(function () {
+      line.style.transition = "stroke-dashoffset 1.5s cubic-bezier(.3,.9,.3,1)";
+      line.style.strokeDashoffset = 0;
+    });
+    setTimeout(apply, 1700);
+    window.addEventListener("resize", apply);
+  }
+
+  /* ---- Stat count-up ---- */
+  function countUp() {
+    var els = document.querySelectorAll(".lp-count");
+    for (var i = 0; i < els.length; i++) (function (el) {
+      var to = parseFloat(el.getAttribute("data-to")) || 0;
+      if (reduced || document.hidden) { el.textContent = String(Math.round(to)); return; }
+      var start = null, dur = 900;
+      function step(ts) {
+        if (!start) start = ts;
+        var t = Math.min(1, (ts - start) / dur);
+        var e = 1 - Math.pow(1 - t, 3);
+        el.textContent = String(Math.round(to * e));
+        if (t < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    })(els[i]);
+  }
+
+  /* ---- Reveal on scroll ---- */
+  var revealEls = document.querySelectorAll("[data-reveal]");
+  if ("IntersectionObserver" in window && !reduced) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        e.target.classList.add("in");
+        if (e.target.id === "telemetry") { drawSpark(); countUp(); }
+        io.unobserve(e.target);
+      });
+    }, { threshold: 0.15, rootMargin: "0px 0px -6% 0px" });
+    for (var r = 0; r < revealEls.length; r++) io.observe(revealEls[r]);
+    var hist = document.getElementById("hist");
+    if (hist) io.observe(hist);
+  } else {
+    for (var r2 = 0; r2 < revealEls.length; r2++) revealEls[r2].classList.add("in");
+    var hist2 = document.getElementById("hist");
+    if (hist2) hist2.classList.add("in");
+    drawSpark();
+    countUp();
+  }
+
+  /* ---- Mini demos: one ticker, gated to the drills section ---- */
+  var SEQ_NB = [4, 0, 7, 4, 2, 8, 5, 1, 6, 3, 7, 0, 4, 8];
+  var vizStep = 0, vizTimer = 0, vizOn = false, drillsVisible = false;
+
+  function tickViz() {
+    vizStep++;
+    var nb = document.querySelectorAll(".lp-mini-grid span");
+    var li = SEQ_NB[vizStep % SEQ_NB.length];
+    for (var i = 0; i < nb.length; i++) nb[i].classList.toggle("on", i === li);
+
+    var shape = document.querySelector(".lp-uf-shape");
+    if (shape) shape.className = "lp-uf-shape s" + (vizStep % 3);
+    var dots = document.querySelectorAll(".lp-uf-dot");
+    for (var d = 0; d < dots.length; d++) dots[d].classList.toggle("on", d === (vizStep % dots.length));
+
+    var loci = document.querySelectorAll(".lp-pal-locus");
+    for (var l = 0; l < loci.length; l++) loci[l].classList.toggle("on", l === (vizStep % loci.length));
+
+    var opts = document.querySelectorAll(".lp-rz-opt");
+    for (var o = 0; o < opts.length; o++) opts[o].classList.toggle("on", o === (vizStep % opts.length));
+
+    var card = document.querySelector(".lp-sp-card");
+    if (card) card.style.setProperty("--i", vizStep % 4);
+
+    var sw = document.querySelector(".lp-sw-shape");
+    if (sw) sw.className = "lp-sw-shape t" + (vizStep % 4);
+
+    var sd = document.querySelectorAll(".lp-sa-digit");
+    for (var q = 0; q < sd.length; q++) sd[q].classList.toggle("on", q === (vizStep % sd.length));
+
+    /* Simple Reaction: the target is off most ticks, so the flash reads as a
+       signal to respond to rather than a steady lamp. */
+    var crt = document.querySelector(".lp-crt");
+    if (crt) crt.classList.toggle("on", (vizStep % 3) !== 0);
+
+    var ma = document.querySelectorAll(".lp-ma-t.ans");
+    for (var z = 0; z < ma.length; z++) ma[z].classList.toggle("on", z === (vizStep % ma.length));
+  }
+  function startViz() { if (vizOn || reduced) return; vizOn = true; vizTimer = setInterval(tickViz, 850); }
+  function stopViz() { vizOn = false; clearInterval(vizTimer); }
+
+  if (reduced) {
+    tickViz();
+  } else {
+    var drills = document.getElementById("drills");
+    if ("IntersectionObserver" in window && drills) {
+      var dio = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          drillsVisible = e.isIntersecting;
+          if (drillsVisible) startViz(); else stopViz();
+        });
+      }, { threshold: 0.05 });
+      dio.observe(drills);
+    } else { startViz(); }
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) stopViz(); else if (drillsVisible) startViz();
+    });
+  }
+
+  /* ---- Scroll ruler: hidden at the top, click or drag to move the page ---- */
+  var root = document.documentElement;
+  var prog = document.getElementById("lpProg");
+  var SHOW_AT = 24;   /* stay hidden through a slow first scroll */
+  var queued = false, dragging = false, wantTop = null;
+
+  function span() { return Math.max(0, root.scrollHeight - root.clientHeight); }
+  function paint(y) {
+    if (!prog) return;
+    var max = span();
+    var p = max > 0 ? Math.min(1, Math.max(0, y / max)) : 0;
+    prog.style.setProperty("--p", p.toFixed(4));
+    var show = y > SHOW_AT;
+    if (show !== prog.classList.contains("on")) prog.classList.toggle("on", show);
+    prog.setAttribute("aria-valuenow", String(Math.round(p * 100)));
+    prog.setAttribute("aria-valuetext", p <= 0.001 ? "Top of page" : p >= 0.999 ? "Bottom of page" : Math.round(p * 100) + " percent down the page");
+  }
+  function goTo(y) {
+    var max = span();
+    y = Math.min(max, Math.max(0, y));
+    if (reduced) root.scrollTop = y;
+    else root.scrollTo({ top: y, behavior: "smooth" });
+    wantTop = y;
+    paint(y);
+  }
+  function onScroll() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () {
+      queued = false;
+      if (dragging && wantTop !== null) { paint(wantTop); return; }
+      wantTop = null;
+      paint(root.scrollTop);
+    });
+  }
+  document.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  paint(root.scrollTop);
+
+  if (prog) {
+    var yAt = function (clientX) {
+      var r = prog.getBoundingClientRect();
+      var f = r.width > 0 ? (clientX - r.left) / r.width : 0;
+      return Math.min(1, Math.max(0, f)) * span();
+    };
+
+    prog.addEventListener("pointerdown", function (e) {
+      if (e.button !== undefined && e.button !== 0) return;
+      dragging = true; wantTop = yAt(e.clientX);
+      prog.classList.add("drag");
+      try { prog.setPointerCapture(e.pointerId); } catch (err) { /* degrade */ }
+      e.preventDefault();
+      goTo(wantTop);
+      prog.focus({ preventScroll: true });
+    });
+    prog.addEventListener("pointermove", function (e) {
+      if (!dragging) return;
+      wantTop = yAt(e.clientX);
+      /* Scrub tracks the pointer. The page uses smooth scrolling globally, so the
+         move is flagged instant or the mark would lag a half second behind. */
+      root.scrollTo({ top: wantTop, left: 0, behavior: "instant" });
+      paint(wantTop);
+    });
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      prog.classList.remove("drag");
+      try { prog.releasePointerCapture(e.pointerId); } catch (err) { /* degrade */ }
+      goTo(wantTop === null ? root.scrollTop : wantTop);
+      wantTop = null;
+    }
+    prog.addEventListener("pointerup", endDrag);
+    prog.addEventListener("pointercancel", endDrag);
+
+    prog.addEventListener("keydown", function (e) {
+      var max = span(), step = Math.max(40, Math.round(root.clientHeight * 0.1)), y = root.scrollTop;
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") y += step;
+      else if (e.key === "ArrowUp" || e.key === "ArrowLeft") y -= step;
+      else if (e.key === "PageDown") y += root.clientHeight;
+      else if (e.key === "PageUp") y -= root.clientHeight;
+      else if (e.key === "Home") y = 0;
+      else if (e.key === "End") y = max;
+      else return;
+      e.preventDefault();
+      goTo(y);
+    });
+    /* Focus ring on the mark, shown only for keyboard use. Chromium reports
+       :focus-visible on this control even after a pointer drag, so the class is
+       driven by input modality instead: .kb goes on for Tab and arrows, off on
+       the next pointer press. */
+    var kb = false;
+    document.addEventListener("keydown", function () { kb = true; }, true);
+    document.addEventListener("pointerdown", function () {
+      kb = false;
+      prog.classList.remove("kb");
+    }, true);
+    prog.addEventListener("focus", function () { prog.classList.toggle("kb", kb); });
+    prog.addEventListener("blur", function () { prog.classList.remove("kb"); });
+  }
+})();
+</script>
+</body>
+</html>

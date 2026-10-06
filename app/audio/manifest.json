@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "voice": {
+    "letter.a": "audio/voice/letter_a.wav",
+    "letter.e": "audio/voice/letter_e.wav",
+    "letter.i": "audio/voice/letter_i.wav",
+    "letter.o": "audio/voice/letter_o.wav",
+    "letter.u": "audio/voice/letter_u.wav",
+    "letter.c": "audio/voice/letter_c.wav",
+    "letter.h": "audio/voice/letter_h.wav",
+    "letter.k": "audio/voice/letter_k.wav",
+    "letter.l": "audio/voice/letter_l.wav",
+    "letter.q": "audio/voice/letter_q.wav",
+    "letter.r": "audio/voice/letter_r.wav",
+    "letter.s": "audio/voice/letter_s.wav",
+    "letter.t": "audio/voice/letter_t.wav",
+    "cue.match": "audio/voice/cue_match.wav",
+    "cue.go": "audio/voice/cue_go.wav",
+    "cue.ready": "audio/voice/cue_ready.wav",
+    "cue.position": "audio/voice/cue_position.wav",
+    "cue.letter": "audio/voice/cue_letter.wav"
+  },
+  "sfx": {
+    "correct": "audio/sfx/correct.wav",
+    "incorrect": "audio/sfx/incorrect.wav",
+    "complete": "audio/sfx/complete.wav",
+    "streak": "audio/sfx/streak.wav",
+    "tap": "audio/sfx/tap.wav"
+  }
+}
