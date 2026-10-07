@@ -3,9 +3,10 @@
    The first screen answers two questions and nothing else: how many cards are
    due, and how do I start. One number, one button, one plain line.
 
-   Everything else (adding a card, importing, statistics, the forecast, the
-   retention target, the deck list) lives behind one "Card tools" disclosure, so
-   it is reachable without competing for attention.
+   Everything else (adding a card, statistics, the forecast, the retention
+   target, the deck list) lives behind one "Card tools" disclosure, and the
+   importer sits behind a second disclosure inside it, so nothing is in the way
+   until the learner asks for it.
 
    The review flow is the card, a way to show the answer, then the grade
    choices. Two grades by default (Again, Good); the finer two are a setting.
@@ -226,6 +227,8 @@ function injectStyles() {
     ".sd-caret{flex:none;width:9px;height:9px;margin-right:2px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg);transition:transform .2s ease}",
     ".sd-tools[open]>summary .sd-caret{transform:rotate(-135deg)}",
     ".sd-tools-body{display:flex;flex-direction:column;padding:0 16px 16px}",
+    ".sd-sub{border-color:var(--line2);background:transparent}",
+    ".sd-sub>summary{padding:12px 14px;font-size:13px}",
     ".sd-sec{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}",
     ".sd-sec:first-child{border-top:0;padding-top:0;margin-top:4px}",
     ".sd-sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}",
@@ -498,24 +501,25 @@ function paintHero() {
   }
 
   if (!cards.length) {
-    ui.hero.line.textContent = "You have no cards yet. A card is a question you answer again later.";
+    ui.hero.line.textContent = "You have no cards yet.";
     ui.hero.start.textContent = "Add your first card";
     ui.hero.start.disabled = false;
   } else if (n > 0) {
-    ui.hero.line.textContent = "Cards come back just before you would forget them. Each pass is quick.";
+    ui.hero.line.textContent = "";
     ui.hero.start.textContent = "Start reviewing " + n + (n === 1 ? " card" : " cards");
     ui.hero.start.disabled = false;
   } else if (active === 0) {
-    ui.hero.line.textContent = "Every card is set aside right now. Open Card tools to bring one back.";
+    ui.hero.line.textContent = "All cards are suspended. Resume one in Card tools.";
     ui.hero.start.textContent = "Nothing due right now";
     ui.hero.start.disabled = true;
   } else {
     ui.hero.line.textContent = next === null
       ? "Nothing is due right now."
-      : "Nothing is due right now. Your next card comes back " + dueWord(next, Date.now()) + ", on " + fmtDate(next) + ".";
+      : "Nothing is due right now. Next card " + dueWord(next, Date.now()) + ", on " + fmtDate(next) + ".";
     ui.hero.start.textContent = "Nothing due right now";
     ui.hero.start.disabled = true;
   }
+  ui.hero.line.hidden = ui.hero.line.textContent === "";
 
   ui.hero.cta.hidden = !ui.review.el.hidden;
 }
@@ -712,8 +716,8 @@ function paintStats() {
   var sp = S();
   if (!sp) return;
   var r = sp.retention(cards, Date.now());
-  ui.statsLine.textContent = r.total + (r.total === 1 ? " card" : " cards") +
-    " in total, " + r.mature + (r.mature === 1 ? " well established." : " well established.");
+  ui.statsLine.textContent = r.total + (r.total === 1 ? " card" : " cards") + ". " +
+    r.mature + (r.mature === 1 ? " has a gap past three weeks." : " have gaps past three weeks.");
 }
 
 function paintForecast() {
@@ -749,9 +753,6 @@ function section(title, cap) {
 
 function buildBuilder() {
   var sec = section("Add a card", "by hand");
-  sec.appendChild(h("p", "sd-cap",
-    "A front you want to recall and the answer behind it. A cloze card is a sentence with a " +
-    "blank in it, written {{c1::answer}}, and the importer makes one card per number."));
 
   var row = h("div", "sd-row");
 
@@ -875,31 +876,31 @@ function separatorName(sep) {
   return sep.charAt(0) + " separated";
 }
 
-function columnName(i) { return "column " + (i + 1); }
-
 function describeFields(kind, fields) {
   if (!fields) return "no field map";
-  if (kind === "cloze") return "cloze markers, one card per number";
+  if (kind === "cloze") return "cloze";
   if (kind === "anki") {
-    return "anki export, " + separatorName(fields.separator) + " separated" +
-      (fields.html ? ", html stripped" : ", text kept") +
+    return "anki, " + separatorName(fields.separator) +
+      (fields.html ? ", html stripped" : "") +
       (fields.deck ? ", deck " + fields.deck : "");
   }
-  return separatorName(fields.separator) + " separated, " +
-    columnName(fields.frontIndex) + " is the front, " +
-    columnName(fields.backIndex) + " is the back" +
+  return separatorName(fields.separator) + ", col " + (fields.frontIndex + 1) + " front, col " +
+    (fields.backIndex + 1) + " back" +
     (fields.header && fields.header.length ? ", header row read" : "");
 }
 
 function buildImporter() {
-  var sec = section("Bring in a deck", "paste or file");
+  var d = h("details", "sd-tools sd-sub");
+  var summary = h("summary");
+  summary.appendChild(h("span", "sd-tools-label", "Import a deck"));
+  summary.appendChild(h("span", "sd-caret"));
+  d.appendChild(summary);
 
-  var copy = h("p", "sd-cap", "One card per line. A delimited file puts the front first, then the back. Nothing is dropped silently: skipped lines are listed below.");
-  copy.style.marginTop = "0";
-  sec.appendChild(copy);
+  var sec = h("div", "sd-tools-body");
+  d.appendChild(sec);
 
   var areaWrap = h("div");
-  areaWrap.style.marginTop = "11px";
+  areaWrap.style.marginTop = "0";
   var areaLabel = h("label", "sd-field", "cards");
   areaLabel.setAttribute("for", "sd-paste");
   var area = h("textarea", "sd-area");
@@ -1043,7 +1044,7 @@ function buildImporter() {
 
     if (!out.cards.length) {
       map.textContent = "No cards found. " + describeFields(used, out.fields) + ". " +
-        skippedCount + " of " + lines + " lines were skipped." +
+        skippedCount + " of " + lines + " lines skipped." +
         (alt ? " Reading the same text as " + alt.name + " gives " + alt.cards + " cards." : "");
     } else if (!kind && skippedCount > 0 && skippedCount + out.cards.length >= lines) {
       map.textContent = out.cards.length + (out.cards.length === 1 ? " card" : " cards") +
@@ -1054,7 +1055,7 @@ function buildImporter() {
         " ready · " + describeFields(used, out.fields) +
         (skippedCount
           ? " · " + skippedCount + " line" + (skippedCount === 1 ? "" : "s") + " skipped"
-          : " · no lines skipped");
+          : "");
     }
     addWarnings(cls.skipped.concat(cls.other));
 
@@ -1132,23 +1133,18 @@ function buildImporter() {
     file.value = "";
     previewImport();
     announce(made.length + (made.length === 1 ? " card" : " cards") + " added." +
-      (skippedCount
-        ? " " + skippedCount + " of " + total + " lines were skipped and are not in the deck."
-        : ""));
+      (skippedCount ? " " + skippedCount + " of " + total + " lines skipped." : ""));
     afterDeckChange();
   });
 
-  ui.importer = { el: sec, area: area };
-  return sec;
+  ui.importer = { el: d, area: area };
+  return d;
 }
 
 /* ---------------- card list ---------------- */
 
 function buildList() {
   var sec = section("Cards", "0");
-  sec.appendChild(h("p", "sd-cap",
-    "Every card in your deck, soonest first. Edit fixes the wording, suspend sets one aside " +
-    "for a while, delete removes it for good."));
   var list = h("div", "sd-list");
   sec.appendChild(list);
   ui.list = { el: sec, box: list, count: sec.querySelector(".cap") };
@@ -1342,9 +1338,7 @@ function buildRetention() {
   input.setAttribute("aria-valuetext", Math.round(retention * 1000) / 10 + " percent");
   sec.appendChild(input);
 
-  sec.appendChild(h("p", "sd-cap",
-    "A higher number keeps gaps short and reviews frequent. A lower number stretches the gaps " +
-    "and lets more forgetting happen between them."));
+  sec.appendChild(h("p", "sd-cap", "Higher means shorter gaps and more reviews."));
 
   input.addEventListener("input", function () {
     retention = clamp(num(input.value, retention), RETENTION_MIN, RETENTION_MAX);
@@ -1380,8 +1374,6 @@ function buildGradePref() {
   label.appendChild(cb);
   label.appendChild(h("span", null, "Show all four grade buttons: Again, Hard, Good, Easy"));
   sec.appendChild(label);
-  sec.appendChild(h("p", "sd-cap",
-    "Off shows two, Again and Good, which covers most reviews. Hard and Easy only shift the next gap by a little."));
 
   cb.addEventListener("change", function () {
     writeJSON(GRADES_ALL_KEY, cb.checked === true);
@@ -1417,13 +1409,12 @@ function buildStatsSection() {
   var sec = section("Your cards");
   var line = h("p", "sd-line", "");
   sec.appendChild(line);
-  sec.appendChild(h("p", "sd-cap", "Well established means its gaps have passed three weeks."));
   ui.statsLine = line;
   return sec;
 }
 
 function buildForecastSection() {
-  var sec = section("What is coming back", "two weeks");
+  var sec = section("Coming up", "two weeks");
   var line = h("p", "sd-line", "");
   sec.appendChild(line);
   ui.forecastLine = line;

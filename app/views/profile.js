@@ -964,10 +964,9 @@ export async function render(container, ctx) {
   if (requested && myId && d.user_id === myId) isOwn = true;
 
   /* The server decides what is shared, so nothing here writes a local cache of it.
-     The foot line is the only claim the view makes, and it is the honest one. */
-  paint(d, isOwn
-    ? 'You control each part in Settings. A hidden section says so instead of showing a zero.'
-    : 'Sections this person has hidden say so rather than showing a zero.');
+     Each hidden section already says so where it appears, so a foot line
+     explaining that a second time is noise. */
+  paint(d, '');
 }
 
 export default render;

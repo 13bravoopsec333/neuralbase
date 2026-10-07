@@ -8,8 +8,6 @@ var SELECT_KEY = 'cortex.train.select';
 var QUEUE_KEY = 'cortex.train.queue';
 var MODE_KEY = 'cortex.train.mode';
 var SEED_KEY = 'cortex.train.seed';
-var DAY = 86400000;
-var WLABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 /* Drills whose trials come from a seedable stream, so a seed means something
    for them. Spaced Retrieval is a due-card queue, Signal Alert and Simple
@@ -210,22 +208,28 @@ function injectStyles() {
     /* The topbar owns the view title now, so the panel head carries the drill's own
        name and one description line under it, not a second title block. */
     '.tr-desc{font-size:13px;color:var(--muted);line-height:1.45;margin:0 0 10px;max-width:62ch}',
-    /* Right rail. The session card sizes to its own content; a stretched card would
-       trail a quiet void below the week strip whenever the drill panel is taller. */
-    '.tr-side{align-self:start}',
-    /* One rhythm inside the card. The shared rules give these blocks their own
-       margins, which stacked into five uneven gaps; scoped here they all fall back
-       to the card's single gap so the panel reads as one object. */
-    '.tr-session{display:flex;flex-direction:column;gap:14px}',
+    /* Right rail. The session card stretches to the drill panel beside it, so the
+       two top cards share one height whichever drill is showing. */
+    '.tr-side{align-self:stretch}',
+    '.tr-session{display:flex;flex-direction:column;gap:14px;height:100%}',
     '.tr-session .card-head{margin-bottom:0}',
-    '.tr-session .pips{margin-bottom:0}',
-    '.tr-session .tr-today{margin-top:0}',
-    '.tr-session .tr-left{margin-top:0}',
-    '.tr-session .week-mini{margin-top:0;padding-top:0;border-top:0}',
+    /* The goal meter grows to fill the card, so the stretch reads as a meter
+       instead of empty space. While a set runs the panel grows to its own stage,
+       so the card stops stretching and the meter goes back to a slim row. */
+    '.tr-session .pips{margin-bottom:0;flex:1 1 auto;align-items:stretch;min-height:6px}',
+    '.tr-session .pip{height:auto}',
+    '.tr-side.tr-live{align-self:start}',
+    '.tr-live .tr-session{height:auto}',
+    '.tr-live .pips{flex:none}',
+    '.tr-live .pip{height:6px}',
+    /* Below the two-column breakpoint the cards stack, so the stretch is off and
+       the card hugs its own content again. */
+    '@media (max-width:820px){.tr-side{align-self:auto}.tr-session{height:auto}.tr-session .pips{flex:none}.tr-session .pip{height:6px}}',
     /* The programs band is a size container so the grid below it responds to the
        width it actually has. Viewport breakpoints cannot see that the rail eats
        208px between 821 and 900px and not below it. */
     '.tr-band{margin-top:14px;container-type:inline-size}',
+    '.tr-band-meta{display:flex;align-items:baseline;gap:12px}',
     '.tr-modes{margin-top:2px}',
     '.tr-field{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:7px}',
     '.tr-modeset{display:flex;gap:6px;flex-wrap:wrap}',
@@ -273,10 +277,7 @@ function injectStyles() {
     '.tr-prog-tag.locked{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
     /* margin-top:auto lands the skill line on the same baseline in every card. */
     '.tr-prog-trains{font-size:12px;color:var(--muted);line-height:1.4;margin-top:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
-    '.tr-empty{color:var(--dim);font-size:13px;margin:10px 0 0}',
-    /* Today's read: what ran, what it covered, what is still owed. */
-    '.tr-today{font-size:13px;color:var(--muted);margin:12px 0 0;line-height:1.5}',
-    '.tr-left{font-size:13px;color:var(--dim);margin:6px 0 0;line-height:1.5}'
+    '.tr-empty{color:var(--dim);font-size:13px;margin:10px 0 0}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -375,17 +376,10 @@ function buildDOM(container) {
   sch.appendChild(h('h3', null, "Today's session"));
   var sessionVal = h('span', 'mono cap', '0 of 3 today');
   sch.appendChild(sessionVal);
-  /* The pips are the daily goal, filled by sessions run today, so the row is a
-     real target meter instead of three fixed marks that meant nothing. */
+  /* The pips are the daily goal, filled by sessions run today. They say the same
+     thing as the count above, one look instead of one read. */
   var pips = h('div', 'pips');
-  var todayLine = h('p', 'tr-today', '');
-  var leftLine = h('p', 'tr-left', '');
-  var mini = h('div', 'mini-stats');
-  var streak = statCell('Streak'), level = statCell('Level');
-  mini.appendChild(streak.wrap); mini.appendChild(level.wrap);
-  var weekMini = h('div', 'week-mini');
-  sc.appendChild(sch); sc.appendChild(pips); sc.appendChild(todayLine); sc.appendChild(leftLine);
-  sc.appendChild(mini); sc.appendChild(weekMini);
+  sc.appendChild(sch); sc.appendChild(pips);
   col.appendChild(sc);
 
   /* Programs band. A full width card under the panel, so the nine drills get the
@@ -395,11 +389,20 @@ function buildDOM(container) {
   var pc = h('div', 'card programs-card tr-band');
   var pch = h('div', 'card-head');
   pch.appendChild(h('h3', null, 'Training programs'));
-  pch.appendChild(h('span', 'mono cap', D.length + ' drills'));
+  var bandMeta = h('span', 'tr-band-meta');
+  var bandLevel = h('span', 'mono cap', 'Level 1');
+  bandMeta.appendChild(bandLevel);
+  bandMeta.appendChild(h('span', 'mono cap', D.length + ' drills'));
+  pch.appendChild(bandMeta);
   pc.appendChild(pch);
   var plist = h('ul', 'tr-progs');
   var progBtns = {};
-  D.forEach(function (p) {
+  /* Free drills first, then Pro, each keeping the registry order. Every card
+     already carries its Free or Pro tag, so the order does the grouping and no
+     second heading repeats the tags. */
+  var ordered = D.filter(function (p) { return !p.pro; })
+    .concat(D.filter(function (p) { return p.pro; }));
+  ordered.forEach(function (p) {
     (function (p) {
       var li = h('li');
       var b = h('button', 'tr-prog');
@@ -438,9 +441,7 @@ function buildDOM(container) {
     drillName: dn, drillIcon: dicon, drillTag: tag, drillDesc: ddesc, mount: mount,
     sLast: last.v, sBest: best.v, sAvg: avg.v,
     statLAvg: avg.l, statLBest: best.l, live: live,
-    startBtn: start, sessionVal: sessionVal, pips: pips,
-    todayLine: todayLine, leftLine: leftLine,
-    sStreak: streak.v, sLevel: level.v, weekMini: weekMini,
+    startBtn: start, sessionVal: sessionVal, pips: pips, bandLevel: bandLevel, sideCol: col,
     modesBlock: modesBlock, modeBtns: modeBtns, modeBlurb: modeBlurb,
     seedRow: seedRow, seedVal: seedVal, seedBtn: seedBtn, seedNote: seedNote,
     pr: pr, prCopy: prCopy, progBtns: progBtns
@@ -456,7 +457,7 @@ function buildDOM(container) {
     seed = newSeed();
     writeSeed(seed);
     paintAll();
-    say(seed + ' set. The next run replays that sequence.');
+    say(seed + ' set.');
   });
 }
 
@@ -484,29 +485,23 @@ function dailyGoal() {
   if (!isFinite(g) || g < 1) g = 3;
   return Math.round(g);
 }
-/* The card answers three questions about today, from the runs and sessions already
-   in state: how many sessions ran, which drills they covered, and how many are
-   still owed to the target. Nothing here is invented; an empty day says so. */
+/* The card answers one question about today: how much of the plan is done. The
+   count and the pips are the same fact, one read and one look. */
 function paintToday() {
   var Store = globalThis.Store;
   if (!ui.sessionVal) return;
   var todayKey = Store.iso(new Date());
   var goal = dailyGoal();
-  var today = 0, done = {}, order = [];
+  var today = 0;
   for (var i = 0; i < state.sessions.length; i++) {
-    if (Store.iso(new Date(state.sessions[i].t)) !== todayKey) continue;
-    today++;
-    var drills = state.sessions[i].drills || [];
-    for (var j = 0; j < drills.length; j++) {
-      if (drills[j] && !done[drills[j]]) { done[drills[j]] = 1; order.push(drills[j]); }
-    }
+    if (Store.iso(new Date(state.sessions[i].t)) === todayKey) today++;
   }
   /* A run logged today counts even before its session write lands, so the meter
      never lags the drill the user just finished. */
-  for (var r = 0; r < state.records.length; r++) {
-    var rec = state.records[r];
-    if (!rec.drillId || Store.iso(new Date(rec.t)) !== todayKey) continue;
-    if (!done[rec.drillId]) { done[rec.drillId] = 1; order.push(rec.drillId); }
+  if (!today) {
+    for (var r = 0; r < state.records.length; r++) {
+      if (state.records[r].drillId && Store.iso(new Date(state.records[r].t)) === todayKey) { today = 1; break; }
+    }
   }
   /* Past the target the count is not a fraction of anything, so the chip stops
      reading like one. "9 of 3" is nonsense; the goal is met, and the day's total
@@ -521,45 +516,6 @@ function paintToday() {
     var shown = Math.min(goal, 8);
     var lit = Math.min(today, shown);
     for (var p = 0; p < shown; p++) ui.pips.appendChild(h('span', 'pip' + (p < lit ? ' on' : '')));
-  }
-  if (ui.todayLine) {
-    if (order.length) {
-      var names = order.slice(0, 4).map(function (id) { return drillById(id).name; });
-      var extra = order.length - names.length;
-      ui.todayLine.textContent = 'Trained today: ' + names.join(', ') +
-        (extra > 0 ? ' and ' + extra + ' more' : '') + '.';
-    } else {
-      ui.todayLine.textContent = 'Nothing trained yet today.';
-    }
-  }
-  if (ui.leftLine) {
-    var left = goal - today;
-    if (today <= 0) ui.leftLine.textContent = 'Run ' + goal + ' to close out today\u2019s target.';
-    else if (left > 0) ui.leftLine.textContent = left + (left === 1 ? ' more session' : ' more sessions') + ' to close out today\u2019s target.';
-    else ui.leftLine.textContent = 'Today\u2019s target is met. Anything past this is a bonus.';
-  }
-}
-
-function paintWeek(el) {
-  if (!el) return;
-  var Store = globalThis.Store;
-  el.innerHTML = '';
-  var counts = {};
-  for (var s = 0; s < state.sessions.length; s++) {
-    var k = Store.iso(new Date(state.sessions[s].t));
-    counts[k] = (counts[k] || 0) + 1;
-  }
-  var now = new Date(); now.setHours(0, 0, 0, 0);
-  var monday = new Date(now.getTime() - ((now.getDay() + 6) % 7) * DAY);
-  var ti = (new Date().getDay() + 6) % 7;
-  for (var i = 0; i < 7; i++) {
-    var day = new Date(monday.getTime() + i * DAY);
-    var n = counts[Store.iso(day)] || 0;
-    var c = h('div', 'wcell' + (n > 0 ? ' on' : '') + (i === ti ? ' today' : ''));
-    c.appendChild(h('span', 'wlab mono', WLABELS[i]));
-    c.appendChild(h('span', 'wbar'));
-    if (n > 0) c.title = n + (n > 1 ? ' sessions' : ' session');
-    el.appendChild(c);
   }
 }
 
@@ -655,7 +611,7 @@ function paintModes(d) {
   MODES.forEach(function (m) { if (m.id === mode) cur = m; });
   if (ui.modeBlurb) {
     ui.modeBlurb.textContent = running
-      ? 'Mode is locked while a set runs. It unlocks when the set ends.'
+      ? 'Locked while a set runs.'
       : (cur ? cur.blurb : '');
   }
 }
@@ -668,8 +624,8 @@ function paintSeed(d) {
   ui.seedVal.textContent = seed || '--------';
   if (ui.seedBtn) ui.seedBtn.disabled = running;
   ui.seedNote.textContent = running
-    ? 'Seed is locked while a set runs. It unlocks when the set ends.'
-    : 'Same seed, same trial sequence. Change it to draw a new one.';
+    ? 'Locked while a set runs.'
+    : 'Same seed, same sequence.';
 }
 
 function paintAll() {
@@ -696,9 +652,7 @@ function paintAll() {
   setNum(ui.sLast, a.recent.length ? a.recent[a.recent.length - 1] : null, suffix);
   setNum(ui.sBest, a.best, suffix);
   setNum(ui.sAvg, a.avg, suffix);
-  var st = Store.streak(state);
-  setNum(ui.sStreak, st, st === 1 ? ' day' : ' days');
-  setNum(ui.sLevel, Store.level(state));
+  if (ui.bandLevel) ui.bandLevel.textContent = 'Level ' + Store.level(state);
 
   if (ui.progBtns) {
     var plan = planOf(ctxRef);
@@ -707,7 +661,11 @@ function paintAll() {
       var locked = Engine && typeof Engine.canAccess === 'function' && !Engine.canAccess(id, plan);
       var tagEl = b.querySelector('.tr-prog-tag');
       if (tagEl) {
-        tagEl.textContent = locked ? 'Pro' : 'Free';
+        /* The label states the drill's own tier, so the free-then-pro order
+           stays legible on every plan. `locked` only styles the card for someone
+           who cannot open it yet. Relabelling by access made a Pro account read
+           "Free" on all nine drills. */
+        tagEl.textContent = drillById(id).pro ? 'Pro' : 'Free';
         tagEl.className = 'tr-prog-tag' + (locked ? ' locked' : '');
       }
       b.setAttribute('aria-current', id === currentDrill ? 'true' : 'false');
@@ -717,7 +675,6 @@ function paintAll() {
   paintModes(d);
   paintSeed(d);
   paintToday();
-  paintWeek(ui.weekMini);
 }
 
 function runDrills(ids, interleave) {
@@ -741,6 +698,7 @@ function nextDrill() {
      unlocks them, so the running drill keeps the stream it started with. */
   var firstOfSet = !running;
   running = true;
+  if (ui.sideCol) ui.sideCol.classList.add('tr-live');
   setIdle(false);
   if (ui.startBtn) { ui.startBtn.disabled = false; ui.startBtn.textContent = 'Restart'; }
   hidePR();
@@ -811,6 +769,7 @@ function finishSession() {
   handle = null;
   /* The set is over, so the mode picker and seed control come back. */
   running = false;
+  if (ui.sideCol) ui.sideCol.classList.remove('tr-live');
   if (ui.startBtn) { ui.startBtn.disabled = false; ui.startBtn.textContent = 'Start'; }
   if (sessionDrills.length) {
     var Store = globalThis.Store;

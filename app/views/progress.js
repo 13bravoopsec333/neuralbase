@@ -235,9 +235,10 @@ function buildHeatmap(state, now) {
   }
   legend.appendChild(h('span', null, 'More'));
   foot.appendChild(legend);
-  foot.appendChild(h('p', 'pg-heat-note', data.max
-    ? 'Shading is relative to your own busiest day, ' + data.max + (data.max === 1 ? ' session' : ' sessions') + '. An empty cell is a day with no session.'
-    : 'No sessions recorded yet, so every day reads empty.'));
+  /* The legend is a key for four genuinely distinct levels, so it stays. The
+     sentence that used to sit beside it explained the scale instead of showing
+     it, and the legend already shows it. */
+  if (!data.max) foot.appendChild(h('p', 'pg-heat-note', 'No sessions yet.'));
   card.appendChild(foot);
 
   return card;
@@ -250,13 +251,12 @@ function buildRecords(reg, state, now) {
   var card = h('div', 'card');
   var head = h('div', 'card-head');
   head.appendChild(h('h3', null, 'Records'));
-  head.appendChild(h('span', 'cap', 'Every time you beat a best'));
   card.appendChild(head);
 
   if (!all.length) {
-    card.classList.add('pg-strip');
-    card.appendChild(h('p', 'pg-empty',
-      'No best beaten yet. A first run only sets the bar, and the run after it can beat it.'));
+    /* Nothing to show, so show nothing. An empty card carrying an explanation of
+       why it is empty is worse than no card. */
+    card.hidden = true;
     return card;
   }
 
@@ -301,7 +301,6 @@ function buildBests(reg, state) {
   var card = h('div', 'card');
   var head = h('div', 'card-head');
   head.appendChild(h('h3', null, 'Best per drill'));
-  head.appendChild(h('span', 'cap', 'Your own best, per drill'));
   card.appendChild(head);
 
   var ids = Object.keys(reg);
@@ -421,12 +420,10 @@ function renderRuns(ctx, reg, runs, given, counts, now) {
   var card = h('div', 'card');
   var head = h('div', 'card-head');
   head.appendChild(h('h3', null, 'Recent runs'));
-  head.appendChild(h('span', 'cap', RUN_CAP + ' latest'));
   card.appendChild(head);
 
   if (!runs.length) {
-    card.classList.add('pg-strip');
-    card.appendChild(h('p', 'pg-empty', 'Your runs will appear here.'));
+    card.hidden = true;
     return card;
   }
 

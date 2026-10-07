@@ -10,7 +10,6 @@ const LABELS = {
   train: 'Train',
   study: 'Study',
   circuit: 'Circuit',
-  programs: 'Programs',
   progress: 'Progress',
   leaderboards: 'Leaderboards',
   method: 'Method',
@@ -25,7 +24,6 @@ const SUBS = {
   train: 'Pick a drill and run a set.',
   study: 'Cards, due queue, and review.',
   circuit: 'Today\u2019s mix, built or adaptive.',
-  programs: 'The drills and what each trains.',
   progress: 'Trends over time.',
   leaderboards: 'Where you stand, per drill.',
   method: 'The evidence and its limits.',
@@ -35,7 +33,7 @@ const SUBS = {
 };
 
 /* Views reachable from the More sheet (everything that is not a bottom tab). */
-const MORE_VIEWS = ['study', 'programs', 'leaderboards', 'method', 'settings'];
+const MORE_VIEWS = ['study', 'leaderboards', 'method', 'settings'];
 
 function byId(id) {
   return document.getElementById(id);

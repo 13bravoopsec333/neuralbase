@@ -40,6 +40,10 @@
   --gap-6:32px;
   --sans:'Familjen Grotesk',system-ui,-apple-system,sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  /* The select chevron. An SVG background cannot read a token, and a bare
+     currentColor inside one resolves to black on every engine, so the light
+     stroke is baked into the URI here and porcelain overrides it below. */
+  --select-caret:url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1.5 2.25 6 6.25l4.5-4' stroke='%23E7EAEF' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 /* Carbon: OLED dark, high contrast. */
@@ -88,6 +92,8 @@
   --bar:rgba(26,29,25,.14);
   --bar-strong:rgba(26,29,25,.26);
   --scrim:rgba(20,24,18,.45);
+  /* Light theme: the same chevron drawn in ink, so it does not vanish on white. */
+  --select-caret:url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1.5 2.25 6 6.25l4.5-4' stroke='%231A1D19' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 /* Midnight: deep blue. */
@@ -395,27 +401,11 @@ body.rail-closed main{margin-left:0}
 .records .stat{padding:12px}
 .records .stat-v{font-size:20px}
 
-/* ---------- Programs view ---------- */
-.prog-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;align-items:start}
-.prog-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.prog-item{
-  width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);
-  border-radius:8px;padding:11px 12px;display:flex;flex-direction:column;gap:4px;
-  transition:border-color .15s ease,transform .15s ease;
-}
-.prog-item:hover{border-color:var(--line2);transform:translateX(2px)}
-.prog-item[aria-current="true"]{border-color:var(--lime-edge);background:var(--lime-soft)}
+/* .prog-top survives the Programs view: Train's programs band uses it. The
+   rest of that view's rules went with the view. */
 .prog-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .status-tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border-radius:8px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
 .status-tag.available{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}
-.detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
-.detail-name{margin:0;font-size:16px;font-weight:600;letter-spacing:-.01em}
-.detail-sec{margin-top:14px}
-.detail-l{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:5px}
-.detail-copy{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
-.detail-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
-.detail-empty{color:var(--dim);font-size:13px;margin:9px 0 0}
-.detail-actions{margin-top:16px;display:flex;gap:10px}
 
 /* ---------- Settings ---------- */
 .set-list{display:flex;flex-direction:column}
@@ -477,7 +467,6 @@ body.reduce *{transition:none!important;animation:none!important}
 @media (max-width:820px){
   .train-grid{grid-template-columns:1fr}
   .progress-grid{grid-template-columns:1fr}
-  .prog-grid{grid-template-columns:1fr}
   .summary{grid-template-columns:1fr 1fr}
   .records{grid-template-columns:1fr 1fr}
   .steps{grid-template-columns:1fr 1fr}
@@ -552,8 +541,8 @@ body.reduce *{transition:none!important;animation:none!important}
 .drill-ic{width:20px;height:20px;flex:none;display:inline-flex;align-items:center;justify-content:center;color:var(--lime)}
 .drill-ic svg{width:100%;height:100%;display:block;overflow:visible}
 .prog-name{display:flex;align-items:center;gap:9px;min-width:0}
-.detail-title,.card-title{display:flex;align-items:center;gap:9px;min-width:0}
-.detail-title .detail-name,.card-title h3{margin:0}
+.card-title{display:flex;align-items:center;gap:9px;min-width:0}
+.card-title h3{margin:0}
 @media (max-width:560px){.drill-ic{width:18px;height:18px}}
 
 /* ---------- Boot and view loader ---------- */
@@ -585,9 +574,10 @@ body.reduce .nb-loader .nb-c{animation:none;opacity:.5}
 /* ---------- Native selects ----------
    The closed control is a .btn-ghost in different clothes: same 13px/600 type,
    same 8px vertical padding, same 1px border on --line2, same 8px radius. The
-   chevron is drawn in currentColor from a data-URI SVG (percent-encoded
-   namespace, so nothing reads as an external URL). The element stays a native
-   select, so the popup, the keyboard and the accessibility tree survive. */
+   chevron is a data-URI SVG tinted by --select-caret, because a background image
+   cannot inherit currentColor and would otherwise paint black in every theme.
+   The element stays a native select, so the popup, the keyboard and the
+   accessibility tree survive. */
 select{
   -webkit-appearance:none;appearance:none;
   display:inline-block;align-self:center;
@@ -609,7 +599,7 @@ select{
   padding-right:2em !important;
   font-family:var(--sans) !important;font-weight:600 !important;
   font-size:13px !important;line-height:1.45 !important;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1.5 2.25 6 6.25l4.5-4' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-image:var(--select-caret) !important;
   background-repeat:no-repeat !important;
   background-position:right .7em center !important;
   background-size:.85em .55em !important;
@@ -637,4 +627,68 @@ optgroup option{background-color:var(--panel2);color:var(--ink)}
   select:disabled{color:GrayText}
   option,optgroup option{background-color:Canvas;color:CanvasText}
   optgroup{background-color:Canvas;color:CanvasText}
+}
+
+/* ---------- Native checkboxes and radios ----------
+   The same panel, border and radius contract as the select and the ghost
+   button, drawn with appearance:none so the mark matches the site in every
+   theme instead of the engine's default square. :where() holds the specificity
+   at zero, so a view that scopes its own control (Circuit's .cx-cb) keeps
+   winning on its own boxes. The element stays a real input, so the label, the
+   keyboard and the accessibility tree all survive. The mark is a mask filled
+   with currentColor, so it takes the theme accent without a per-theme image. */
+:where(input[type="checkbox"],input[type="radio"]){
+  -webkit-appearance:none;appearance:none;
+  width:18px;height:18px;flex:none;margin:0;
+  display:inline-grid;place-items:center;
+  background-color:var(--panel2);
+  border:1px solid var(--line2);
+  color:var(--lime);
+  cursor:pointer;
+  transition:border-color .15s ease,background-color .15s ease;
+}
+:where(input[type="checkbox"]){border-radius:5px}
+:where(input[type="radio"]){border-radius:50%}
+:where(input[type="checkbox"],input[type="radio"]):hover{border-color:var(--lime-edge)}
+:where(input[type="checkbox"],input[type="radio"]):focus-visible{
+  outline:2px solid var(--lime);outline-offset:2px;border-color:var(--lime-edge);
+}
+/* The global :focus-visible rule sets a 4px radius, so a radio is kept round here. */
+:where(input[type="checkbox"]):focus-visible{border-radius:5px}
+:where(input[type="radio"]):focus-visible{border-radius:50%}
+:where(input[type="checkbox"])::after,
+:where(input[type="radio"])::after{
+  content:"";width:11px;height:11px;background:currentColor;opacity:0;
+  transition:opacity .12s ease;
+}
+:where(input[type="checkbox"])::after{
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M20 6 9 17l-5-5' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M20 6 9 17l-5-5' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+:where(input[type="radio"])::after{border-radius:50%}
+:where(input[type="checkbox"]):checked,
+:where(input[type="radio"]):checked{background-color:var(--lime-soft);border-color:var(--lime-edge)}
+:where(input[type="checkbox"]):checked::after,
+:where(input[type="radio"]):checked::after{opacity:1}
+/* A mixed box draws a bar in place of the check. */
+:where(input[type="checkbox"]):indeterminate{background-color:var(--lime-soft);border-color:var(--lime-edge)}
+:where(input[type="checkbox"]):indeterminate::after{
+  opacity:1;width:10px;height:2px;border-radius:1px;
+  -webkit-mask:none;mask:none;
+}
+:where(input[type="checkbox"],input[type="radio"]):disabled,
+:where(input[type="checkbox"],input[type="radio"])[disabled]{
+  opacity:.45;cursor:not-allowed;
+}
+:where(input[type="checkbox"],input[type="radio"]):disabled:hover{border-color:var(--line2)}
+/* Forced colors: appearance:none takes the system mark away, so hand it back by
+   name. Plain selectors so the system colours win over any view-scoped rule. */
+@media (forced-colors:active){
+  input[type="checkbox"],input[type="radio"]{
+    forced-color-adjust:none;background-color:Canvas;border-color:CanvasText;color:CanvasText;
+  }
+  input[type="checkbox"]:checked,input[type="radio"]:checked{
+    background-color:Highlight;border-color:Highlight;color:HighlightText;
+  }
+  input[type="checkbox"]:disabled,input[type="radio"]:disabled{color:GrayText;border-color:GrayText}
 }

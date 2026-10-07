@@ -133,10 +133,6 @@ body.rail-open .account-chev{display:block}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h6a2.5 2.5 0 0 1 2 2.5v11a2 2 0 0 0-2-1.5H4z"></path><path d="M20 5.5h-6a2.5 2.5 0 0 0-2 2.5v11a2 2 0 0 1 2-1.5h6z"></path></svg>
         <span class="rail-label">Study</span>
       </button>
-      <button class="navbtn" type="button" data-view="programs">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"></rect></svg>
-        <span class="rail-label">Programs</span>
-      </button>
       <button class="navbtn" type="button" data-view="progress">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l5-5 4 4 9-9"></path><path d="M16 7h5v5"></path></svg>
         <span class="rail-label">Progress</span>
@@ -154,6 +150,8 @@ body.rail-open .account-chev{display:block}
 
   <span class="rail-spacer" aria-hidden="true"></span>
 
+  <div class="rail-divider" aria-hidden="true"></div>
+
   <button class="navbtn" type="button" data-view="settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
     <span class="rail-label">Settings</span>
@@ -168,7 +166,7 @@ body.rail-open .account-chev{display:block}
   <header class="topbar">
     <div class="tb-left">
       <button class="tb-reopen" id="railReopen" type="button" aria-label="Show navigation" aria-controls="rail" aria-expanded="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><path d="M9.5 4.5v15"></path><path d="M13.5 10l-2 2 2 2"></path></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><path d="M9.5 4.5v15"></path><path d="M11.5 10l2 2-2 2"></path></svg>
       </button>
       <button class="tb-mark" id="tbMark" type="button" aria-label="Go to dashboard">
         <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
@@ -196,7 +194,6 @@ body.rail-open .account-chev{display:block}
     <section class="view" id="view-train" tabindex="-1" aria-label="Train" hidden></section>
     <section class="view" id="view-study" tabindex="-1" aria-label="Study" hidden></section>
     <section class="view" id="view-circuit" tabindex="-1" aria-label="Circuit" hidden></section>
-    <section class="view" id="view-programs" tabindex="-1" aria-label="Programs" hidden></section>
     <section class="view" id="view-progress" tabindex="-1" aria-label="Progress" hidden></section>
     <section class="view" id="view-leaderboards" tabindex="-1" aria-label="Leaderboards" hidden></section>
     <section class="view" id="view-method" tabindex="-1" aria-label="Method" hidden></section>
@@ -233,7 +230,6 @@ body.rail-open .account-chev{display:block}
   <div class="sheet-card">
     <h2>More</h2>
     <button class="sheet-item" type="button" data-view="study">Study</button>
-    <button class="sheet-item" type="button" data-view="programs">Programs</button>
     <button class="sheet-item" type="button" data-view="leaderboards">Leaderboards</button>
     <button class="sheet-item" type="button" data-view="method">Method</button>
     <button class="sheet-item" type="button" data-view="settings">Settings</button>
@@ -276,7 +272,7 @@ body.rail-open .account-chev{display:block}
   /* View modules that exist in app/views/. The router imports only names listed here, so a
      view that is not built yet renders a placeholder instead of a failed network request.
      Add a name as its module lands, e.g. ["dashboard","train","circuit"]. */
-  window.CORTEX_VIEWS = ["dashboard","onboarding","train","study","circuit","programs","progress","leaderboards","method","profile","settings","pricing"];
+  window.CORTEX_VIEWS = ["dashboard","onboarding","train","study","circuit","progress","leaderboards","method","profile","settings","pricing"];
 </script>
 <script src="content.js"></script>
 <script src="store.js"></script>

@@ -9,7 +9,6 @@
     upgrade: "Upgrade",
     trainTitle: "Train",
     circuitTitle: "Circuit",
-    programsTitle: "Programs",
     progressTitle: "Progress",
     methodTitle: "Method",
     settingsTitle: "Settings",
@@ -64,7 +63,7 @@
     { id: "math", name: "Mental Arithmetic", icon: ICON_MATH, desc: "Work out short sums under time.", trains: "Mental arithmetic fluency.", works: "Two numbers appear, you answer with a choice, and the clock keeps moving.", evidence: "Mental math practice lifts the trained skill and shows some near transfer to numeracy, with no IQ change.", pro: true, direction: "higher", unit: "correct" }
   ];
 
-  var RAIL = ["train", "circuit", "programs", "progress", "method", "settings"];
+  var RAIL = ["train", "circuit", "progress", "method", "settings"];
 
   var api = { COPY: COPY, DRILLS: DRILLS, MODES: MODES, RAIL: RAIL };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

@@ -207,7 +207,7 @@ function showVerify(email) {
   clearFields(VERIFY_FIELDS);
   if ($('vf-code')) $('vf-code').value = '';
   stopResendCooldown();
-  $('vf-code-open').focus();
+  $('vf-title').focus();
 }
 
 /* ---------------- resend cooldown ---------------- */
@@ -296,8 +296,8 @@ async function onSignin(event) {
        step rather than a wall of text on the sign-in form. */
     if (isUnconfirmed(res.error)) {
       showVerify(email);
-      setAlert('vf-alert', 'That email is not confirmed yet. Enter the code we sent, or send a new one.');
-      announce('Email not confirmed. Enter your verification code.');
+      setAlert('vf-alert', 'That email is not confirmed yet. Open the confirmation link we sent, or resend it.');
+      announce('Email not confirmed. Open the confirmation link.');
       return;
     }
     setAlert('si-alert', friendly(res.error));
@@ -351,11 +351,11 @@ async function onSignup(event) {
     finish(res);
     return;
   }
-  /* Email confirmation is on: Supabase sent the code and holds the session until it
-     is entered. Stay on this page and collect it. */
+  /* Email confirmation is on: Supabase sent the link and holds the session until it
+     is opened. Stay on this page and say so. */
   showVerify(email);
   startResendCooldown();
-  announce('Account created. Enter the code sent to ' + email + '.');
+  announce('Account created. Open the confirmation link sent to ' + email + '.');
 }
 
 async function onVerify(event) {
@@ -397,9 +397,9 @@ async function onResend() {
     announce('Could not send a new code.');
     return;
   }
-  setAlert('vf-alert', 'A new code was sent to ' + pendingEmail + '.', true);
+  setAlert('vf-alert', 'A new email was sent to ' + pendingEmail + '.', true);
   startResendCooldown();
-  announce('A new code was sent.');
+  announce('A new email was sent.');
 }
 
 async function onComplete(event) {
@@ -537,17 +537,55 @@ function wire() {
   if (isDemo()) $('demoBanner').hidden = false;
 }
 
+/* A confirmation link lands here with tokens in the hash, and Supabase's
+   detectSessionInUrl turns them into a session. An expired or already used link lands
+   with an error in the hash instead. Read it before getSession, because the client
+   cleans the URL as it consumes it. */
+function readUrlAuth() {
+  const hash = String(location.hash || '');
+  if (hash.length < 2) return null;
+  const p = new URLSearchParams(hash.slice(1));
+  const err = p.get('error_description') || p.get('error_code') || p.get('error');
+  const token = p.get('access_token');
+  if (!err && !token) return null;
+  return { kind: err ? 'error' : 'session', text: err ? String(err) : '' };
+}
+
+function linkMessage(link) {
+  const s = String((link && link.text) || '');
+  if (/expired|invalid|already|otp_expired/i.test(s)) {
+    return 'That confirmation link has expired or was already used. Sign in with your email and password to get a new one.';
+  }
+  return 'That confirmation link did not work. Sign in with your email and password to try again.';
+}
+
 async function boot() {
   wire();
+  const link = readUrlAuth();
+  let res = null;
   try {
-    const res = await getSession();
-    const user = res && res.session && res.session.user;
-    if (user && !isDemo()) {
-      if (needsCompletion(user)) showComplete(user);
-      else go();
-    }
+    res = await getSession();
   } catch (e) {
     /* Stay on the form if the session check fails. */
+  }
+  if (link) {
+    /* The client has read the hash by now; drop it so a refresh does not replay it. */
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* best effort */ }
+  }
+  const user = res && res.session && res.session.user;
+  if (user && !isDemo()) {
+    finish({ user });
+    return;
+  }
+  if (link && link.kind === 'error') {
+    setAlert('si-alert', linkMessage(link));
+    announce(linkMessage(link));
+    return;
+  }
+  if (link && link.kind === 'session') {
+    /* Tokens were in the URL but no session came back, so the link did not finish. */
+    setAlert('si-alert', 'That confirmation link did not finish signing you in. Sign in with your email and password.');
+    announce('The confirmation link did not sign you in.');
   }
 }
 
