@@ -609,6 +609,9 @@ function paintModes(d) {
   });
   var cur = null;
   MODES.forEach(function (m) { if (m.id === mode) cur = m; });
+  /* The mode blurb carries the current mode's description, which a bare row of
+     six buttons does not. While a set runs the picker is disabled, so it says
+     why: a disabled control with no reason reads as broken. */
   if (ui.modeBlurb) {
     ui.modeBlurb.textContent = running
       ? 'Locked while a set runs.'

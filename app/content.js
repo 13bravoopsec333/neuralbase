@@ -23,7 +23,7 @@
     footer: "Neuralbase, a little training every day.",
     copyright: "© 2026 Neuralbase",
     methodLead: "Neuralbase runs nine short drills drawn from cognitive-training research: working memory, processing speed, memory strategy, reasoning, recall, mental flexibility, sustained attention, reaction speed, and mental arithmetic.",
-    methodHonest: "Each drill trains its own skill, and near transfer to similar tasks is reliable. Broad transfer to general intelligence is not demonstrated, so Neuralbase does not claim it."
+    methodHonest: "Each drill trains its own skill. Recent studies find that training carries over to closely related untrained tasks, and that is what these drills target. Whether it reaches further is still an open question, so we make no promise about it."
   };
 
   /* Drill icons: marks from the Neuralbase mark study, each drawn in currentColor

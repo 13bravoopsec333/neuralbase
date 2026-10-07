@@ -10,6 +10,7 @@ import {
   signInWithGoogle,
   saveProfile,
   ageOk,
+  MIN_AGE,
   getSession,
   verifySignupCode,
   resendSignupCode,
@@ -89,8 +90,14 @@ function busy(id, on, label) {
 /* Turn a raw Supabase or lib error string into something a person can act on. */
 function friendly(error) {
   const s = String(error == null ? '' : error);
-  if (/already registered|already been registered/i.test(s)) {
-    return 'That email is already registered. Try signing in instead.';
+  /* Supabase answers a signup for an address that already has an account with
+     "User already registered", which is an enumeration oracle: it turns the signup
+     form into a way to ask whether a given person has an account here. The address
+     is never named back, and the answer is the same shape as every other signup
+     refusal, so the form no longer confirms that the account exists. The two
+     actions a person can take are still both offered below the form. */
+  if (/signup_unavailable|already registered|already been registered|user already/i.test(s)) {
+    return 'Check the address and password, then try again. If you already have an account, sign in.';
   }
   if (/23505|duplicate|unique|username is taken/i.test(s)) {
     return 'That username is taken. Try another.';
@@ -333,7 +340,7 @@ async function onSignup(event) {
     setErr('su-dob', 'Enter your date of birth.');
     bad = true;
   } else if (!ageOk(dob)) {
-    setErr('su-dob', 'You must be 18 or older to create an account.');
+    setErr('su-dob', 'You must be ' + MIN_AGE + ' or older to create an account.');
     bad = true;
   }
   if (bad) return;
@@ -418,7 +425,7 @@ async function onComplete(event) {
     setErr('co-dob', 'Enter your date of birth.');
     bad = true;
   } else if (!ageOk(dob)) {
-    setErr('co-dob', 'You must be 18 or older.');
+    setErr('co-dob', 'You must be ' + MIN_AGE + ' or older.');
     bad = true;
   }
   if (bad) return;

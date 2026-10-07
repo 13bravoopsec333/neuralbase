@@ -436,21 +436,6 @@ function buildPanel(ctx, reg, state, sessionsToday, runsToday, goal, reduced, is
 
 /* ---------------- today's plan ---------------- */
 
-/* One line on why these three. It names the rule, not a promise. */
-function planReason(goal) {
-  if (goal === "focus") return "speed and task switching drills lead, then the ones you have not done in a while";
-  if (goal === "memory") return "recall drills lead, then the ones you have not done in a while";
-  if (goal === "study") return "reasoning and retrieval drills lead, then the ones you have not done in a while";
-  return "a rotation, so the drills you have not done in a while come first";
-}
-
-function goalLabel(goal) {
-  if (goal === "focus") return "Focus goal";
-  if (goal === "memory") return "Memory goal";
-  if (goal === "study") return "Study goal";
-  return "Your plan";
-}
-
 function accessibleIds(plan) {
   var list = (typeof globalThis !== "undefined" && globalThis.Content && globalThis.Content.DRILLS) || [];
   var ids = [];
@@ -538,7 +523,7 @@ function buildReadout(ctx, state, hasHistory, now, onSpend) {
   var notes = h("div", "dash-notes");
   if (atRisk) {
     notes.appendChild(h("p", "dash-note",
-      "Your " + cur + " day run is still open. One set today keeps it, and it does not have to be long."));
+      "Your " + cur + " day run is still open. One set today keeps it."));
   } else if (cur === 0 && hasHistory) {
     notes.appendChild(h("p", "dash-note",
       "The count starts again today. Your longest run was " + longest + " days."));
@@ -774,9 +759,9 @@ function paint(container, ctx, data) {
   var title = h("h1", "view-title dash-title", "Today");
   title.tabIndex = -1;
   head.appendChild(title);
-  head.appendChild(h("p", "view-sub dash-lead mid-text",
-    isNew ? "Start the plan below. Three drills is a good first day."
-          : goalLabel(state.goal) + ": " + planReason(state.goal) + "."));
+  /* No lead line. The reason the plan holds those three drills is a fact about the
+     software, not something the reader needs in order to start, and Train already
+     shows the actual drill names. The button below says what it does. */
   root.appendChild(head);
   root.appendChild(buildPanel(ctx, reg, state, sessionsToday, runsToday, goal, reduced, isNew));
   /* Spending a freeze writes the store and mutates state, so only the readout is

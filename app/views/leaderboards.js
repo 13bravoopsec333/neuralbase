@@ -240,21 +240,18 @@ const board = el("div", "lb-title");
     return list[0];
   }
 
-  function windowLabel() {
-    for (let i = 0; i < WINDOWS.length; i++) if (WINDOWS[i].id === state.window) return WINDOWS[i].label;
-    return state.window;
-  }
-
   function setTabs() {
     Object.keys(tabBtns).forEach((id) => {
       const on = id === state.window;
       tabBtns[id].classList.toggle("is-on", on);
       tabBtns[id].setAttribute("aria-selected", on ? "true" : "false");
     });
+    /* The board names itself over the list. The select and the tabs already chose
+       the drill and the window, so this repeats neither. It keeps only the one
+       thing the controls do not say on their own, which way round the score runs. */
     const drill = currentDrill();
     boardName.textContent = drill.name;
-    boardSub.textContent = windowLabel() + " board, " +
-      (HINTS[state.drillId] || "ranked by best value.");
+    boardSub.textContent = HINTS[state.drillId] || "Ranked by best value.";
   }
 
   /* "Ranks 11 to 42" rather than a row of dots, so the gap states the fact it hides

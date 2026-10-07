@@ -307,8 +307,7 @@ body{overflow-x:clip}
 .lp-foot-in{max-width:1180px;margin:0 auto;padding:clamp(20px,3vh,30px) clamp(14px,3vw,28px);
   display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .lp-foot-brand{display:flex;align-items:center;gap:9px;color:var(--ink);font-size:14px;font-weight:600;letter-spacing:-.01em}
-.lp-foot-line{flex:1;min-width:180px;margin:0;color:var(--muted);font-size:12.5px}
-.lp-foot-nav{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.lp-foot-nav{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-left:auto}
 .lp-foot-nav a{color:var(--muted);font-size:12.5px;text-decoration:none}
 .lp-foot-nav a:hover{color:var(--lime)}
 .lp-foot-copy{width:100%;margin:0;padding-top:14px;border-top:1px solid var(--line);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--dim)}
@@ -457,7 +456,7 @@ body{overflow-x:clip}
     <section class="lp-sec" id="telemetry" data-reveal>
       <p class="lp-eyebrow">Telemetry</p>
       <h2 class="lp-h2">Reaction times, plotted as you train.</h2>
-      <p class="lp-lead">Every attempt lands on the trace. The histogram shows where your times cluster, and the strip keeps the running count.</p>
+      <p class="lp-lead">The trace plots every attempt. The histogram shows where your times cluster.</p>
 
       <div class="lp-tele" style="margin-top:clamp(18px,3vh,28px)">
         <div class="lp-tele-plate">
@@ -531,12 +530,15 @@ body{overflow-x:clip}
           <div><dt>IQ</dt><dd>No claim is made.</dd></div>
         </dl>
       </div>
+      <!-- The claims above and the limits below are the honest core of this page.
+           Nothing in this block gets shortened for being verbose. -->
     </section>
 
     <!-- 5. PLANS -->
     <section class="lp-sec lp-sec-mid" id="plans">
-      <p class="lp-eyebrow">Pricing</p>
-      <h2 class="lp-h2">Plans</h2>
+      <!-- One heading, not an eyebrow and a heading saying the same word. The
+           FAQ heading below already carries the rule pair the eyebrow drew. -->
+      <h2 class="lp-h2 lp-faq-h2">Pricing</h2>
       <div class="lp-tiers">
         <div class="lp-tier">
           <div class="lp-tier-top"><span class="lp-tier-name">Free</span><span class="lp-tier-price">$0</span></div>
@@ -557,19 +559,19 @@ body{overflow-x:clip}
       <div class="lp-faq">
         <details class="lp-faq-item" open>
           <summary class="lp-faq-q">Is Neuralbase a game?</summary>
-          <p class="lp-faq-a">It borrows the shape of one. Each drill has a score, a timer, and a level that moves with your accuracy. The point is repeatable practice you can measure.</p>
+          <p class="lp-faq-a">It borrows the shape of one. Each drill has a score, a timer, and a level that moves with your accuracy.</p>
         </details>
         <details class="lp-faq-item">
           <summary class="lp-faq-q">Will it raise my IQ?</summary>
-          <p class="lp-faq-a">Neuralbase makes no claim about IQ. Near transfer to similar tasks is reliable, and that is what the drills train. Broad transfer to general intelligence has not been demonstrated, so it is not claimed.</p>
+          <p class="lp-faq-a">Neuralbase makes no claim about IQ, and we cannot promise you one. What the research supports is that training carries over to closely related untrained tasks, which is what these drills target. Whether that reaches general intelligence is an open question the current evidence does not settle.</p>
         </details>
         <details class="lp-faq-item">
           <summary class="lp-faq-q">How long is a session?</summary>
-          <p class="lp-faq-a">A set takes about three minutes. You can also run a single drill if you have less time, or build a longer circuit on Pro.</p>
+          <p class="lp-faq-a">A set takes about three minutes. Run a single drill if you have less time, or build a longer circuit on Pro.</p>
         </details>
         <details class="lp-faq-item">
           <summary class="lp-faq-q">Can I cancel?</summary>
-          <p class="lp-faq-a">Pro is billed monthly and you can cancel from settings at any time. When you cancel, your account returns to the free plan and your history stays.</p>
+          <p class="lp-faq-a">Yes, from settings at any time. Your account returns to the free plan and your history stays.</p>
         </details>
         <details class="lp-faq-item">
           <summary class="lp-faq-q">Is my data saved?</summary>
@@ -577,7 +579,7 @@ body{overflow-x:clip}
         </details>
         <details class="lp-faq-item">
           <summary class="lp-faq-q">What does it cost?</summary>
-          <p class="lp-faq-a">Free is $0 and includes three drills, the daily circuit, and seven days of history. Pro is $4.99 per month and adds all nine drills, the circuit builder, and full history with leaderboards.</p>
+          <p class="lp-faq-a">Free is $0. Pro is $4.99 per month. The plans above list what each one includes.</p>
         </details>
       </div>
     </section>
@@ -596,7 +598,6 @@ body{overflow-x:clip}
         </span>
         Neuralbase
       </span>
-      <p class="lp-foot-line">Neuralbase, a little training every day.</p>
       <nav class="lp-foot-nav" aria-label="Footer">
         <a href="auth.html">Sign in</a>
         <a href="auth.html">Create account</a>

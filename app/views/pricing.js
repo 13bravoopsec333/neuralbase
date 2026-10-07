@@ -4,8 +4,11 @@
    the thing they already bought. Free shows the upgrade choice. Pro shows the
    subscription: what it includes, what it costs, when it renews, and how to leave.
 
-   Every plan change on this page is a client-side seam. Nothing is charged, and
-   the page says so, because real entitlement checks need a server. */
+   This page cannot change anyone's plan. It used to write the plan straight to
+   the profile, which let any signed-in person claim Pro for nothing; the column
+   grant added for that now refuses the write, and with no payment integration
+   there is no honest way to sell Pro. So there is no upgrade button and no cancel
+   button, and the page says Pro is not purchasable yet. */
 
 var STYLE_ID = "nb-pricing-styles";
 
@@ -113,10 +116,13 @@ function backButton(ctx) {
 }
 
 /* ---------- Free: the upgrade choice, the only place Free versus Pro belongs ---------- */
-function buildFree(body, ctx, setPlan) {
+function buildFree(body, ctx) {
+  /* The drill names and the history length are on the Free card immediately below,
+     so the lead keeps only the one fact that card does not carry: how much of the
+     n-back mode set Free opens up. */
   body.appendChild(pageHead(
     "Free and Pro",
-    copy("freeNote", "Free includes three drills and seven days of history.")
+    "Free opens four of the six n-back modes."
   ));
 
   var grid = el("div", "price-grid pr-grid");
@@ -124,27 +130,28 @@ function buildFree(body, ctx, setPlan) {
   grid.appendChild(tierCard("pro"));
   body.appendChild(grid);
 
-  body.appendChild(el("p", "pr-note",
-    copy("proNote", "Pro unlocks all nine drills, the circuit builder, the adaptive mix, and the full history.")));
+  /* No restatement of the two tier cards above. The cards are the list of what
+     each plan includes, so a sentence naming the same items says it twice.
 
+     There is no upgrade button. It used to write the plan straight to the profile,
+     so anyone could claim Pro for nothing, and the column grant that closes that
+     hole now refuses the write. With no payment integration there is no honest
+     way to sell Pro, so the page says so rather than offering a button that
+     cannot work. */
   var actions = el("div", "pr-actions");
-  var go = el("button", "btn-primary", copy("proCta", "Go Pro"));
-  go.type = "button";
-  go.addEventListener("click", function () { setPlan("pro"); });
-  actions.appendChild(go);
   actions.appendChild(backButton(ctx));
   body.appendChild(actions);
 
   body.appendChild(el("p", "pr-note",
-    "Payments are a client-side seam. Going Pro changes the plan saved to your account and nothing is charged, because real entitlement checks need a server."));
+    "Pro is not purchasable yet. Payments are not connected, so there is nothing to buy here and no way to start a subscription. Nothing on this page can change your plan."));
 }
 
 /* ---------- Pro: a billing and subscription page, no tier comparison ---------- */
-function buildPro(body, ctx, setPlan) {
-  body.appendChild(pageHead(
-    "Your subscription",
-    "You are on Pro. This page covers what it includes, what you pay, and how to leave it."
-  ));
+function buildPro(body, ctx) {
+  /* One line, and it states the fact the page is about. The old lead finished by
+     listing the three sections below it, which is a table of contents for a page
+     a reader can already scroll. */
+  body.appendChild(pageHead("Your subscription", "You are on Pro."));
 
   /* Current plan: stated plainly, with what it includes. */
   var planCard = el("section", "card pr-sec");
@@ -175,29 +182,25 @@ function buildPro(body, ctx, setPlan) {
   /* Cancelling: the path, and what happens to the data. */
   var cancelCard = el("section", "card pr-sec");
   cancelCard.appendChild(el("h3", null, "Cancelling"));
+  /* There is no Cancel button. It wrote the plan from the browser, which the
+     column grant now refuses. Saying what cancelling would have done to the
+     data is still worth keeping, because that is the part a reader needs. */
   cancelCard.appendChild(el("p", "pr-prose",
-    "Cancel any time. Your runs, sessions, and cards stay on your account and your history stays readable. The account returns to Free, so the Pro-only drills and the circuit builder lock again."));
-  var cancelActions = el("div", "pr-actions");
-  var cancel = el("button", "btn-ghost", "Cancel Pro");
-  cancel.type = "button";
-  cancel.addEventListener("click", function () { setPlan("free"); });
-  cancelActions.appendChild(cancel);
-  cancelCard.appendChild(cancelActions);
+    "There is no subscription to cancel, because nothing has been charged. Your runs, sessions and cards stay on your account and your history stays readable either way."));
   body.appendChild(cancelCard);
 
-  /* Help and refunds: honest about there being no live charge to refund. */
+  /* Help and refunds: honest about there being no live charge to refund. The
+     second sentence described a provider that does not exist in this build, so
+     it went. The disclosure itself stays. */
   var helpCard = el("section", "card pr-sec");
   helpCard.appendChild(el("h3", null, "Help and refunds"));
   helpCard.appendChild(el("p", "pr-prose",
-    "Nothing has been charged, so there is nothing to refund yet. Once billing goes live, refunds and billing questions go through the payment provider that handles the charge."));
+    "Nothing has been charged, so there is nothing to refund yet."));
   body.appendChild(helpCard);
 
   var actions = el("div", "pr-actions");
   actions.appendChild(backButton(ctx));
   body.appendChild(actions);
-
-  body.appendChild(el("p", "pr-note",
-    "Payments here are a client-side seam. Cancelling changes the plan saved to your account and nothing is charged, because real entitlement checks need a server."));
 }
 
 export function render(container, ctx) {
@@ -208,39 +211,17 @@ export function render(container, ctx) {
 
   var col = el("div", "view-mid pr");
   var body = el("div");
-  var live = el("div", "sr");
-  live.setAttribute("aria-live", "polite");
   col.appendChild(body);
-  col.appendChild(live);
   container.appendChild(col);
-
-  function say(msg) { live.textContent = msg; }
 
   function paint(focusTitle) {
     body.replaceChildren();
     var plan = (ctx.profile && ctx.profile.plan) === "pro" ? "pro" : "free";
-    if (plan === "pro") buildPro(body, ctx, setPlan);
-    else buildFree(body, ctx, setPlan);
+    if (plan === "pro") buildPro(body, ctx);
+    else buildFree(body, ctx);
     if (focusTitle) {
       var h = body.querySelector(".view-title");
       if (h && h.focus) h.focus();
-    }
-  }
-
-  /* The one seam: it writes the plan to the profile, then repaints the state.
-     There is no charge and no server check, and the page says so. */
-  function setPlan(next) {
-    function apply() {
-      if (ctx.profile) ctx.profile.plan = next;
-      paint(true);
-      say(next === "pro"
-        ? "You are on Pro."
-        : "You are back on Free. Your history is still here.");
-    }
-    if (ctx.db && typeof ctx.db.updateProfile === "function") {
-      Promise.resolve(ctx.db.updateProfile({ plan: next })).then(apply, apply);
-    } else {
-      apply();
     }
   }
 

@@ -25,10 +25,13 @@ var NOT_CALIBRATABLE = { spaced: 1 };
 var STEP_NAMES = ["Goal", "Calibration", "Starting point"];
 var STEP_LABELS = ["goal", "calibrate", "start"];
 
+/* One sentence per goal. The old lines ran to two, and the second half restated
+   the first in different words, then the weights line under it named the same
+   drills again. The first half said it once, so that is all that is here. */
 var GOAL_META = [
-  { id: "focus", word: "Focus", line: "Leans on the speed and switching drills. The mix favors reacting quickly and changing rules without slipping." },
-  { id: "memory", word: "Memory", line: "Leans on the recall drills and n-back. The mix favors holding items and finding them again later." },
-  { id: "study", word: "Study", line: "Leans on reasoning, arithmetic, and spaced review. The mix favors material you have not met before." },
+  { id: "focus", word: "Focus", line: "Leans on the speed and switching drills." },
+  { id: "memory", word: "Memory", line: "Leans on the recall drills and n-back." },
+  { id: "study", word: "Study", line: "Leans on reasoning, arithmetic, and spaced review." },
   { id: "fresh", word: "Fresh", line: "Spreads evenly, so every drill gets its turn." }
 ];
 
@@ -324,11 +327,14 @@ function topWeight(goal) {
   return top;
 }
 
+/* The drills this goal counts most. For an unweighted goal this returns nothing,
+   because "Counts most:" with no names under it would be noise, and the even
+   weighting is already stated on the goal's own line. */
 function goalWeightLine(goal) {
   var w = weightsFor(goal);
   var top = 0, id;
   for (id in w) if (Object.prototype.hasOwnProperty.call(w, id) && w[id] > top) top = w[id];
-  if (top <= 1) return "Every drill counts once, so nothing is favored.";
+  if (top <= 1) return "";
   var names = [], D = drills();
   for (var i = 0; i < D.length; i++) if (w[D[i].id] === top) names.push(D[i].name);
   return "Counts most: " + names.join(", ") + ".";
@@ -339,7 +345,10 @@ function buildGoalStep() {
 
   box.appendChild(field("Step 01 of 03"));
   box.appendChild(h("h2", "onb-h", "What do you want to train?"));
-  box.appendChild(h("p", "onb-sub", "The goal sets which drills the daily plan reaches for first. Every drill stays available either way, and you can change it later in settings."));
+  /* Only what the choice does. The reassurance that every drill stays available
+     and the goal can be changed later was a paragraph about a decision the reader
+     has not made yet, and both facts are true in Settings. */
+  box.appendChild(h("p", "onb-sub", "The goal sets which drills the daily plan reaches for first."));
 
   var group = h("div", "onb-goals");
   group.setAttribute("role", "group");
@@ -354,7 +363,8 @@ function buildGoalStep() {
       b.appendChild(field("goal." + meta.id));
       b.appendChild(h("span", "onb-goal-word", meta.word));
       b.appendChild(h("span", "onb-goal-line", meta.line));
-      b.appendChild(h("span", "onb-goal-weights", goalWeightLine(meta.id)));
+      var wl = goalWeightLine(meta.id);
+      if (wl) b.appendChild(h("span", "onb-goal-weights", wl));
       b.addEventListener("click", function () {
         selectedGoal = meta.id;
         plannedIds = calibrationIds(meta.id);
@@ -394,16 +404,15 @@ function paintPreview() {
   var node = ui.preview;
   if (!node) return;
   node.textContent = "";
+  /* An empty box under a "Today's plan" label told the reader nothing they could
+     do, so the panel waits for a goal. Picking one brings it in. */
+  node.hidden = !selectedGoal;
+  if (!selectedGoal) return;
 
   var head = h("div", "onb-preview-head");
   head.appendChild(h("span", "onb-preview-title", "Today's plan"));
   head.appendChild(field("plan"));
   node.appendChild(head);
-
-  if (!selectedGoal) {
-    node.appendChild(h("p", "onb-preview-empty", "Pick a goal and the three drills for today appear here."));
-    return;
-  }
 
   var ids = planIds(selectedGoal);
   var top = topWeight(selectedGoal);
@@ -431,7 +440,7 @@ function planCaption(goal, ids) {
   var word = (GOAL_META.filter(function (m) { return m.id === goal; })[0] || { word: goal }).word.toLowerCase();
   var top = topWeight(goal);
   if (top <= 1) {
-    return ids.length + " drills with no weighting, so the plan rotates through all of them. The mix moves as your history fills in.";
+    return ids.length + " drills with no weighting, so the plan rotates through all of them.";
   }
   var wanted = [], counted = 0, i;
   for (i = 0; i < drills().length; i++) {
@@ -442,7 +451,11 @@ function planCaption(goal, ids) {
     + " drills that count most for this goal " + (counted === 1 ? "is" : "are") + " in today's mix";
   var outside = wanted.length - counted;
   if (outside > 0) out += outside === 1 ? ", one is Pro." : ", " + outside + " are Pro.";
-  return out + " The mix moves as your history fills in.";
+  /* The Pro count stays, because a reader on Free needs to know that a drill the
+     goal asks for is one they cannot open today. Only the closing sentence about
+     the mix moving with history went: it described a future the reader cannot
+     act on and the plan is on screen to show the same thing. */
+  return out + ".";
 }
 
 /* ---------------- step 2: the calibration block ---------------- */
@@ -453,7 +466,9 @@ function buildCalStep() {
   box.appendChild(field("Step 02 of 03"));
   box.appendChild(h("h2", "onb-h", "Calibrate"));
   var est = seconds(plannedIds);
-  box.appendChild(h("p", "onb-sub", plannedIds.length + " short block" + (plannedIds.length === 1 ? "" : "s") + ", about " + est + " seconds. Each one starts easy and adapts while you play, so you see a success before the plan starts stretching you."));
+  /* The count and the seconds, which is what a reader deciding whether to sit down
+     for this needs. The second sentence was a promise about how it will feel. */
+  box.appendChild(h("p", "onb-sub", plannedIds.length + " short block" + (plannedIds.length === 1 ? "" : "s") + ", about " + est + " seconds."));
 
   var rows = h("div", "onb-rows");
   ui.blockRow = [];
@@ -577,7 +592,7 @@ function buildSummaryStep() {
   box.appendChild(h("h2", "onb-h", "Your starting point"));
   box.appendChild(h("p", "onb-sub", done
     ? "Each number is one short block from the calibration, in that drill's own unit."
-    : "Nothing was measured, so every drill still starts at its default level. You can calibrate later from settings."));
+    : "Nothing was measured, so every drill still starts at its default level."));
 
   var idx = indexNow();
   var readout = h("div", "onb-readout");
@@ -586,7 +601,7 @@ function buildSummaryStep() {
   var value = h("div", "nb-readout onb-readout-v" + (idx == null ? " none" : ""), idx == null ? "--" : "0");
   line.appendChild(value);
   line.appendChild(h("p", "onb-readout-cap", idx == null
-    ? "Needs two runs in three drills before it means anything. It appears here and on progress once you have them."
+    ? "Needs two runs in three drills before it means anything."
     : "How close each drill sits to its own best, averaged across " + (histRecords.length ? "your runs" : "these blocks") + "."));
   readout.appendChild(line);
   box.appendChild(readout);
@@ -634,7 +649,10 @@ function buildSummaryStep() {
   }
   box.appendChild(skills);
 
-  box.appendChild(h("p", "onb-note", "These are starting points for the drills themselves, measured once, each in its own unit. They are not an intelligence score and they say nothing about ability outside training. The plan adapts from them as you play."));
+  /* What these numbers are and are not. This stays: it is the same disclosure as
+     the IQ claim on Method, told at the moment the reader first sees a score. Only
+     the last sentence, describing how the plan uses them afterwards, went. */
+  box.appendChild(h("p", "onb-note", "These are starting points for the drills themselves, measured once, each in its own unit. They are not an intelligence score and they say nothing about ability outside training."));
 
   var actions = h("div", "onb-actions");
   var dash = h("button", "btn-primary", "Go to dashboard");

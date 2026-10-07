@@ -138,7 +138,6 @@ export function render(container, ctx) {
   var build = h('div', 'card');
   var bh = h('div', 'card-head');
   bh.appendChild(h('h3', null, 'Build your own'));
-  bh.appendChild(h('span', 'cap', 'Pick drills, in order.'));
   var list = h('ul', 'programs cb-list cx-list');
   for (var k = 0; k < D.length; k++) {
     var d = D[k];
@@ -170,7 +169,6 @@ export function render(container, ctx) {
   var adapt = h('div', 'card');
   var ah = h('div', 'card-head');
   ah.appendChild(h('h3', null, 'Adaptive mix'));
-  ah.appendChild(h('span', 'cap', 'Weights drills you have skipped or are weakest at.'));
   var aacts = h('div', 'row-actions');
   var adaptive = h('button', 'btn-ghost', 'Build adaptive circuit');
   adaptive.type = 'button';

@@ -65,7 +65,12 @@ function parseDob(value) {
   return dt;
 }
 
-/* dob is a date string (YYYY-MM-DD). true only when the person is 18 or older today. */
+/* Minimum age to hold an account. One number on purpose: the auth page copy,
+   the field errors and the database trigger all have to agree, and three
+   separate copies of a threshold is how they quietly drift apart. */
+export const MIN_AGE = 16;
+
+/* dob is a date string (YYYY-MM-DD). true only when the person is MIN_AGE or older today. */
 export function ageOk(dob) {
   const birth = parseDob(dob);
   if (!birth) return false;
@@ -75,7 +80,7 @@ export function ageOk(dob) {
     now.getMonth() < birth.getMonth() ||
     (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
   if (beforeBirthday) age -= 1;
-  return age >= 18;
+  return age >= MIN_AGE;
 }
 
 /* ---------------- actions ---------------- */
@@ -91,8 +96,22 @@ function warn(op, error) {
   );
 }
 
+/* Signup is the one place the app can create an auth user, so it is also the one
+   place an email address can be checked against a list. Supabase rejects a
+   duplicate address with "User already registered"; that string is the
+   enumeration oracle and it is normalized here to a generic failure so it never
+   reaches a caller, whatever the caller does with the message. The UI (see
+   friendly() in views/auth.js) reads this and shows something neutral. */
+function normalizeSignupError(error) {
+  const s = typeof error === 'string' ? error : (error && error.message) || '';
+  if (/already registered|already been registered|user already exists|user_already/i.test(s)) {
+    return 'signup_unavailable';
+  }
+  return error;
+}
+
 export async function signUp({ email, password, username, dob } = {}) {
-  if (!ageOk(dob)) return { ok: false, error: 'You must be 18 or older.' };
+  if (!ageOk(dob)) return { ok: false, error: 'You must be ' + MIN_AGE + ' or older.' };
 
   if (isDemo()) {
     const user = demoUser({ email, username, dob });
@@ -116,7 +135,7 @@ export async function signUp({ email, password, username, dob } = {}) {
     });
     if (error) {
       warn('signUp', error);
-      return fail(error);
+      return fail(normalizeSignupError(error));
     }
     return { ok: true, data, session: data.session || null, user: data.user || null };
   } catch (e) {
@@ -297,7 +316,7 @@ export function onAuthChange(cb) {
 /* Upsert the signed-in user's profile. Used to finish Google signups (username + dob). */
 export async function saveProfile(patch = {}) {
   const { username, dob, display_name } = patch;
-  if (dob != null && dob !== '' && !ageOk(dob)) return { ok: false, error: 'You must be 18 or older.' };
+  if (dob != null && dob !== '' && !ageOk(dob)) return { ok: false, error: 'You must be ' + MIN_AGE + ' or older.' };
 
   if (isDemo()) {
     const user = readDemoUser() || demoUser({});

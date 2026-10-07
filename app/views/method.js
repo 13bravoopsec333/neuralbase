@@ -36,7 +36,6 @@ function injectStyles() {
   s.textContent = [
     '.mb{--mb-sec:26px;--mb-in:12px}',
     '.mb-answer{margin:9px 0 0;font-size:16px;line-height:1.55;color:var(--ink);text-wrap:pretty}',
-    '.mb-why{margin:var(--mb-in) 0 0;padding-top:var(--mb-in);border-top:1px solid var(--line);font-size:13px;line-height:1.55;color:var(--dim);text-wrap:pretty}',
     '.mb-sec{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:var(--mb-sec) 0 0;padding-bottom:8px;border-bottom:1px solid var(--line)}',
     '.mb-sec-t{margin:0;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}',
     '.mb-sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);text-align:right}',
@@ -104,9 +103,11 @@ export function render(container, ctx) {
   var title = h('h2', 'view-title', 'What each drill does, and what the research found');
   title.tabIndex = -1;
   head.appendChild(title);
-  head.appendChild(h('p', 'mb-answer', 'Each of the nine drills trains one specific skill, and training moves your score on that skill and on tasks much like it. How far that carries is the harder question, and the rest of this page answers it.'));
+  /* The near-transfer answer in one sentence, so a skeptical reader gets the claim
+     and its limit before any of the rows. The second half of the old lead only
+     announced what the rest of the page was about to say. */
+  head.appendChild(h('p', 'mb-answer', 'Each of the nine drills trains one specific skill, and training moves your score on that skill and on tasks much like it. How far that carries is the harder question.'));
   col.appendChild(head);
-  col.appendChild(h('p', 'mid-text mb-why', 'Every figure here comes from published research, so you can check the claims yourself.'));
 
   var rows = [];
   var section = h('section');
@@ -125,7 +126,7 @@ export function render(container, ctx) {
   var limitsSec = h('section');
   limitsSec.appendChild(sectionHead('Where the evidence stops'));
   var limits = h('div', 'card mb-limits');
-  limits.appendChild(h('p', 'mb-statement', COPY.methodHonest || 'Each drill trains its own skill, and near transfer to similar tasks is reliable. Broad transfer to general intelligence is not demonstrated, so Neuralbase does not claim it.'));
+  limits.appendChild(h('p', 'mb-statement', COPY.methodHonest || 'Each drill trains its own skill. Recent studies find that training carries over to closely related untrained tasks, and that is what these drills target. Whether it reaches further is still an open question, so we make no promise about it.'));
   var nc = h('dl', 'mb-nc');
   [
     ['Life outcomes', 'Grades, test scores, jobs, and income sit outside what any of this evidence measures.'],
@@ -140,7 +141,10 @@ export function render(container, ctx) {
 
   var practiceSec = h('section');
   practiceSec.appendChild(sectionHead('Practice', 'Spaced and interleaved'));
-  practiceSec.appendChild(h('p', 'mb-note', 'Train one drill, run the daily circuit, or build your own. Interleaving drills and spacing your reviews are the design choices with the most support.'));
+  /* Three ways to train, which the rail already offers as three buttons. The
+     sentence on interleaving and spacing stays, because it is the claim the
+     "Practice" heading above it is making. */
+  practiceSec.appendChild(h('p', 'mb-note', 'Interleaving drills and spacing your reviews are the design choices with the most support.'));
   col.appendChild(practiceSec);
 
   /* Rows arrive in sequence, so they read as a list being walked down rather than

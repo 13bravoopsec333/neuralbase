@@ -583,7 +583,15 @@ export async function getProfile() {
 /* Sends the patch verbatim: the columns are not whitelisted here, so the v3
    additions (goal, baseline, timezone, reminder_time, streak_freezes,
    onboarded_at) already pass through with no change. Unknown keys are rejected
-   by Postgres, which surfaces as { ok: false, error }. */
+   by Postgres, which surfaces as { ok: false, error }.
+
+   `plan` is sent verbatim too and is refused by the database, which is the point.
+   Profiles is granted UPDATE per column (migration 002) and plan is not in the
+   grant, so a client cannot self-upgrade by writing it here or by calling PostgREST
+   directly. Postgres answers 42501 for a column outside the grant; it is named
+   plainly below so the caller sees why the write did not land instead of a bare
+   permission error. In demo mode there is no grant and no server, so plan still
+   moves locally, which is what the demo pricing page is for. */
 export async function updateProfile(patch) {
   const p = patch || {};
 
@@ -608,6 +616,11 @@ export async function updateProfile(patch) {
       .maybeSingle();
     if (error) {
       if (error.code === '23505') return fail('That username is taken.');
+      /* 42501 on a column the caller asked for is the column grant saying no, and
+         `plan` is the one that matters: a client cannot grant itself the paid tier.
+         The pricing page writes plan through here, so it gets a sentence it can
+         show rather than "permission denied for table profiles". */
+      if (error.code === '42501') return fail(SERVER_OWNED_WRITE);
       warn('updateProfile', error);
       return fail(error);
     }
@@ -617,6 +630,9 @@ export async function updateProfile(patch) {
     return fail(e);
   }
 }
+
+export const SERVER_OWNED_WRITE =
+  'This field is set by the server and cannot be changed from the app.';
 
 /* ---------------- baseline (first-run calibration) ---------------- */
 
