@@ -178,6 +178,151 @@ var prShown = false;
    they are locked for the life of the set and unlocked at the finish. */
 var running = false;
 
+/* ---------- focus mode ----------
+   A running drill gets the whole screen. app/focus.css was written for this and
+   loaded, but nothing switched it on, so a set ran in a 320px box in the middle
+   of the Train page with the rail, the topbar and the session card all still
+   competing for attention. The stage is a real node here, not a CSS class on
+   body: the drill has to be moved into it, and moved back on exit, so the
+   running drill keeps its DOM and its timers. */
+var focus = { stage: null, scrim: null, on: false, drill: null, from: null };
+
+function enterFocus() {
+  if (focus.on) return;
+  var mount = ui.mount;
+  if (!mount || !mount.parentNode) return;
+  var drill = mount.querySelector('.drill');
+  if (!drill) return;
+
+  var scrim = document.createElement('div');
+  scrim.className = 'nb-focus-scrim';
+  var stage = document.createElement('div');
+  stage.className = 'nb-focus-stage';
+
+  var bar = h('div', 'nb-focus-bar');
+  var title = h('p', 'nb-focus-title', '');
+  var named = ui && ui.drillName ? (ui.drillName.textContent || '') : '';
+  title.textContent = named.trim();
+  bar.appendChild(title);
+
+  var fsHint = h('span', 'nb-fs-hint', '');
+  bar.appendChild(fsHint);
+
+  var spacer = h('div', 'nb-focus-spacer');
+  bar.appendChild(spacer);
+
+  var fsBtn = h('button', 'nb-focus-btn', 'Full screen');
+  fsBtn.type = 'button';
+  var exit = h('button', 'nb-exit-btn', 'Exit');
+  exit.type = 'button';
+  bar.appendChild(fsBtn);
+  bar.appendChild(exit);
+
+  var holder = h('div', 'drill-mount');
+  holder.appendChild(drill);
+
+  stage.appendChild(bar);
+  stage.appendChild(holder);
+  document.body.appendChild(scrim);
+  document.body.appendChild(stage);
+  document.body.classList.add('focus');
+
+  focus.stage = stage;
+  focus.scrim = scrim;
+  focus.drill = drill;
+  focus.from = mount;
+  focus.on = true;
+
+  /* Fullscreen is a hint, not a takeover. It needs a gesture and it is refused
+     in some embedded contexts, so the stage has to be usable without it and the
+     copy has to admit when it was not granted. */
+  var fs = document.fullscreenElement || document.webkitFullscreenElement;
+  fsHint.textContent = fs ? 'Full screen on' : '';
+  fsBtn.hidden = !!fs;
+  fsBtn.addEventListener('click', function () {
+    var el = stage;
+    var req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) { fsHint.textContent = 'Full screen is unavailable here'; fsBtn.hidden = true; return; }
+    req.call(el).then(function () {
+      fsHint.textContent = 'Full screen on';
+      fsBtn.hidden = true;
+    }).catch(function () {
+      fsHint.textContent = 'Full screen was refused';
+      fsBtn.hidden = true;
+    });
+  });
+
+  /* Leaving the stage ends the set. Putting a still-running drill back into the
+     320px box would be the complaint again with the fix halfway applied, and the
+     run was abandoned either way, so it is stopped rather than recorded. */
+  function out() {
+    /* Stage down first: leaveFocus puts the drill node back in the mount, and
+       stopSet then clears the mount and writes the idle placeholder, so the two
+       run in that order or a stale drill node ends up sitting beside the
+       placeholder. */
+    leaveFocus();
+    stopSet();
+    if (ctxRef && ctxRef.audio && ctxRef.audio.silence) {
+      try { ctxRef.audio.silence(); } catch (e) { /* degrade */ }
+    }
+  }
+  exit.addEventListener('click', out);
+
+  /* Escape leaves. It only applies while the stage is up, and the listener goes
+     away with it so it cannot fire on a normal page afterwards. */
+  focus.onKey = function (e) {
+    if (e.key === 'Escape') { e.preventDefault(); out(); }
+  };
+  document.addEventListener('keydown', focus.onKey, true);
+
+  if (exit.focus) exit.focus();
+}
+
+/* Stop a set without recording it. Distinct from finishSession, which banks the
+   runs and the session. Used when the player leaves focus mode mid-trial. */
+function stopSet() {
+  if (handle && handle.stop) handle.stop();
+  handle = null;
+  running = false;
+  pending = [];
+  sessionDrills = [];
+  if (ui.sideCol) ui.sideCol.classList.remove('tr-live');
+  if (ui.startBtn) { ui.startBtn.disabled = false; ui.startBtn.textContent = 'Start'; }
+  hidePR();
+  if (ui.mount) {
+    ui.mount.replaceChildren();
+    var ph = h('div', 'drill');
+    ph.appendChild(h('div', 'drill-note', 'Press start to begin.'));
+    ui.mount.appendChild(ph);
+  }
+  setIdle(true);
+  paintAll();
+}
+
+function leaveFocus() {
+  if (!focus.on) return;
+  if (focus.onKey) {
+    document.removeEventListener('keydown', focus.onKey, true);
+    focus.onKey = null;
+  }
+  /* Put the drill back where the Train page expects it before anything reads
+     ui.mount, so the page is intact whether or not anyone navigates next. */
+  if (focus.drill && focus.from) focus.from.appendChild(focus.drill);
+  if (focus.stage && focus.stage.parentNode) focus.stage.parentNode.removeChild(focus.stage);
+  if (focus.scrim && focus.scrim.parentNode) focus.scrim.parentNode.removeChild(focus.scrim);
+  document.body.classList.remove('focus');
+  var el = document.fullscreenElement || document.webkitFullscreenElement;
+  if (el && (document.exitFullscreen || document.webkitExitFullscreen)) {
+    var out = document.exitFullscreen || document.webkitExitFullscreen;
+    try { out.call(document); } catch (e) { /* already out */ }
+  }
+  focus.on = false;
+  focus.stage = null;
+  focus.scrim = null;
+  focus.drill = null;
+  focus.from = null;
+}
+
 /* Direction map for Store.personalBest / isPersonalBest, which take an explicit
    map so the store stays free of any knowledge of the drill registry. */
 function dirMap() {
@@ -208,23 +353,17 @@ function injectStyles() {
     /* The topbar owns the view title now, so the panel head carries the drill's own
        name and one description line under it, not a second title block. */
     '.tr-desc{font-size:13px;color:var(--muted);line-height:1.45;margin:0 0 10px;max-width:62ch}',
-    /* Right rail. The session card stretches to the drill panel beside it, so the
-       two top cards share one height whichever drill is showing. */
-    '.tr-side{align-self:stretch}',
-    '.tr-session{display:flex;flex-direction:column;gap:14px;height:100%}',
+    /* Right rail. It does not stretch to the drill panel beside it. Two attempts to
+       make the two top cards share one height both produced dead space: first the
+       meter stretched into three 340px empty columns, then the card held a header
+       and a 6px bar inside 250px of nothing. A rail that is simply shorter reads
+       as breathing room, where a stretched empty card reads as something missing. */
+    '.tr-side{align-self:start}',
+    '.tr-session{display:flex;flex-direction:column;gap:14px}',
     '.tr-session .card-head{margin-bottom:0}',
-    /* The goal meter grows to fill the card, so the stretch reads as a meter
-       instead of empty space. While a set runs the panel grows to its own stage,
-       so the card stops stretching and the meter goes back to a slim row. */
-    '.tr-session .pips{margin-bottom:0;flex:1 1 auto;align-items:stretch;min-height:6px}',
-    '.tr-session .pip{height:auto}',
-    '.tr-side.tr-live{align-self:start}',
-    '.tr-live .tr-session{height:auto}',
-    '.tr-live .pips{flex:none}',
-    '.tr-live .pip{height:6px}',
-    /* Below the two-column breakpoint the cards stack, so the stretch is off and
-       the card hugs its own content again. */
-    '@media (max-width:820px){.tr-side{align-self:auto}.tr-session{height:auto}.tr-session .pips{flex:none}.tr-session .pip{height:6px}}',
+    '.tr-session .pips{margin-bottom:0}',
+    /* Below the two-column breakpoint the cards stack anyway. */
+    '@media (max-width:820px){.tr-side{align-self:auto}.tr-session{height:auto}.tr-session .pips{flex:none}}',
     /* The programs band is a size container so the grid below it responds to the
        width it actually has. Viewport breakpoints cannot see that the rail eats
        208px between 821 and 900px and not below it. */
@@ -711,6 +850,9 @@ function nextDrill() {
   }
   var Drills = globalThis.Drills;
   handle = Drills.start(currentDrill, ui.mount, {
+    /* The stage is built after the drill mounts, because it moves the drill's own
+       node into it rather than copying it. Anything the drill drew is preserved,
+       so its timers and state are untouched by the move. */
     cards: state.cards,
     /* Mode and seed ride along so a run is reproducible: the same pair gives the
        same trial sequence. Spaced Retrieval reads cards, not a stream. */
@@ -732,6 +874,8 @@ function nextDrill() {
       recordRun(rec); nextDrill();
     }
   });
+  /* Entered after the drill is mounted so the stage can adopt its node. */
+  enterFocus();
 }
 
 function recordRun(rec) {
@@ -770,6 +914,8 @@ function recordRun(rec) {
 function finishSession() {
   if (handle && handle.stop) handle.stop();
   handle = null;
+  /* The set is over, so the stage comes down and the page comes back. */
+  leaveFocus();
   /* The set is over, so the mode picker and seed control come back. */
   running = false;
   if (ui.sideCol) ui.sideCol.classList.remove('tr-live');
@@ -790,6 +936,22 @@ function finishSession() {
   }
   sessionDrills = [];
   paintAll();
+}
+
+/* The router calls this when leaving Train. A drill owns timers, bound keys and
+   the shared audio context, none of which stop when its markup is detached, so
+   navigating away has to say so explicitly. Without it the previous drill keeps
+   firing into a detached tree and you still hear it. */
+export function teardown() {
+  if (handle && handle.stop) handle.stop();
+  handle = null;
+  pending = [];
+  sessionDrills = [];
+  running = false;
+  leaveFocus();
+  if (ctxRef && ctxRef.audio && ctxRef.audio.silence) {
+    try { ctxRef.audio.silence(); } catch (e) { /* degrade */ }
+  }
 }
 
 export function render(container, ctx) {

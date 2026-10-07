@@ -122,9 +122,29 @@ function placeholder(sec, name) {
   sec.appendChild(card);
 }
 
+/* A view that owns something outside its own DOM: a running drill, a bound key,
+   a timer. Replacing the children detaches the markup but does not stop any of
+   that, so the previous module gets told to let go first. */
+function teardown(name) {
+  const mod = modules[name];
+  if (!mod || typeof mod.teardown !== 'function') return;
+  try {
+    mod.teardown();
+  } catch (e) {
+    console.warn('[cortex] view "' + name + '" failed to tear down:', e && e.message ? e.message : e);
+  }
+}
+
 export async function navigate(view) {
   const name = VIEWS.indexOf(view) !== -1 ? view : 'dashboard';
   showLoader();
+
+  /* Whatever is on screen goes away before the next view is built, so a drill
+     cannot keep playing into a detached tree. */
+  VIEWS.forEach((v) => {
+    if (v === name) return;
+    teardown(v);
+  });
 
   VIEWS.forEach((v) => {
     const s = sectionFor(v);

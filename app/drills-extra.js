@@ -129,6 +129,7 @@
   }
 
   var DrillsExtraCore = {
+    silenceAudio: silenceAudio,
     mulberry32: mulberry32,
     randInt: randInt,
     pick: pick,
@@ -198,6 +199,31 @@
     if (A && A.playSfx) { try { A.playSfx(name); } catch (e) {} }
   }
 
+  /* Web Audio has no per clip stop, so a stopped drill suspends the shared
+     context. The next drill resumes it on its first cue, which cuts anything
+     still sounding without a change to app/ui/audio.js. Same tool n-back uses. */
+  function silenceAudio() {
+    var A = globalThis.CortexAudio;
+    if (!A || !A.ctx || typeof A.ctx.suspend !== "function") return;
+    if (A.ctx.state === "running") { try { A.ctx.suspend(); } catch (e) {} }
+  }
+
+  /* One teardown for every drill here: clear the clock, drop both listeners, and
+     usually go quiet. Both exit paths call it, so no way out of a drill can leave
+     a timer running or a key bound. A finished set passes silent, the same
+     choice n-back makes, so the final feedback clip is allowed to ring out. */
+  function makeTeardown(clock, unbindVis, unbindKey) {
+    var done = false;
+    return function (silent) {
+      if (done) return;
+      done = true;
+      if (clock && clock.clearAll) clock.clearAll();
+      if (typeof unbindVis === "function") unbindVis();
+      if (typeof unbindKey === "function") unbindKey();
+      if (silent !== false) silenceAudio();
+    };
+  }
+
   /* One clock per drill. Holds at most one pending timeout, freezes it while the
      tab is hidden, and reports the hidden milliseconds so reaction times stay clean. */
   function makeClock() {
@@ -260,10 +286,12 @@
     return function () { doc.removeEventListener("visibilitychange", handler); };
   }
 
-  /* Forwards every keydown; each drill filters and calls preventDefault itself. */
+  /* Forwards every keydown; each drill filters and calls preventDefault itself.
+     Auto-repeat is dropped here, once, rather than in each handler: a held key
+     would otherwise answer the next trial before it could be read. */
   function bindKey(doc, fn) {
     if (!doc || typeof doc.addEventListener !== "function") return function () {};
-    function handler(e) { fn(e); }
+    function handler(e) { if (e.repeat) return; fn(e); }
     doc.addEventListener("keydown", handler);
     return function () { doc.removeEventListener("keydown", handler); };
   }
@@ -322,6 +350,7 @@
       e.preventDefault();
       respond();
     });
+    var teardown = makeTeardown(clock, unbindVis, unbindKey);
 
     function react(rt) {
       resolved = true;
@@ -386,9 +415,10 @@
       if (done) return;
       done = true;
       stopped = true;
-      clock.clearAll();
-      unbindVis();
-      unbindKey();
+      /* A finished set is not a stopped one, so the final clip is left to play.
+         The clock and the listeners still go: nothing should outlive the drill
+         just because the last clip is allowed to ring. */
+      teardown(false);
       var sc = scoreSart(trials);
       container.appendChild(summaryEl(
         "Set complete",
@@ -419,9 +449,7 @@
       stop: function () {
         if (stopped) return;
         stopped = true;
-        clock.clearAll();
-        unbindVis();
-        unbindKey();
+        teardown(true);
       }
     };
   }
@@ -461,6 +489,7 @@
       var idx = CRT_KEYS.indexOf(e.key);
       if (idx >= 0) press(idx);
     });
+    var teardown = makeTeardown(clock, unbindVis, unbindKey);
 
     function layout() {
       var set = laneSet(choice);
@@ -554,9 +583,7 @@
       if (done) return;
       done = true;
       stopped = true;
-      clock.clearAll();
-      unbindVis();
-      unbindKey();
+      teardown(false);
       var med = median(rts);
       var fast = rts.length ? Math.min.apply(null, rts) : null;
       var value = med == null ? CRT_WINDOW : Math.round(med);
@@ -589,9 +616,7 @@
       stop: function () {
         if (stopped) return;
         stopped = true;
-        clock.clearAll();
-        unbindVis();
-        unbindKey();
+        teardown(true);
       }
     };
   }
@@ -715,8 +740,7 @@
       if (done) return;
       done = true;
       stopped = true;
-      clock.clearAll();
-      unbindVis();
+      teardown(false);
       var med = median(times);
       container.appendChild(summaryEl(
         "Set complete",
@@ -750,13 +774,17 @@
     input.addEventListener("keydown", onKey);
     go.addEventListener("click", function () { submit(); });
 
+    /* The input's own handler dies with the element, so teardown removes it too
+       and the drill leaves nothing bound anywhere. */
+    var unbindKey = function () { input.removeEventListener("keydown", onKey); };
+    var teardown = makeTeardown(clock, unbindVis, unbindKey);
+
     timerId = clock.set(next, 800);
     return {
       stop: function () {
         if (stopped) return;
         stopped = true;
-        clock.clearAll();
-        unbindVis();
+        teardown(true);
         if (input.parentNode) input.parentNode.removeChild(input);
       }
     };

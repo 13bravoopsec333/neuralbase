@@ -221,7 +221,11 @@ export function mountShell(ctx) {
     if (plan === 'pro') {
       upgrade.textContent = 'Pro';
       upgrade.classList.remove('btn-ghost');
-      upgrade.classList.add('tag');
+      /* tag-pro, not tag. Plain .tag is --dim at 10px, which measured a 1.09
+         contrast ratio against the topbar, so a Pro subscriber's own badge was
+         effectively invisible. tag-pro is the readable variant that already
+         existed for exactly this state. */
+      upgrade.classList.add('tag-pro');
     }
     upgrade.addEventListener('click', () => go('pricing'));
   }

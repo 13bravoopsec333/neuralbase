@@ -1,0 +1,174 @@
+/* Focus mode. While a drill is running the stage takes the whole viewport, so
+   nothing competes with the task. Entered by the focus button, left by the X or
+   Escape. Every colour here is a token, so all five themes still work. */
+
+/* The scrim covers the app shell while the drill runs, so the rail, the topbar
+   and the session card cannot be seen or tabbed to. */
+.nb-focus-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+}
+
+/* The stage itself: centred, and as large as the viewport allows with a small
+   gutter so it never touches the bezel. */
+.nb-focus-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Not justify-content: center. A drill plus the bar can be taller than a short
+     viewport, and centering an overflowing flex column pushes the top of it out
+     of reach, over the bar, which made Exit unclickable. The drill holder takes
+     auto margins instead: centred when it fits, flush to the top when it does
+     not, and the stage scrolls either way. */
+  justify-content: flex-start;
+  gap: var(--gap-4);
+  padding: max(24px, 4vh) max(20px, 4vw);
+  background: var(--bg);
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+/* The drill card and its grid grow to fill the stage. This is the "larger, in
+   the middle of my screen" ask: the cells scale with the stage rather than
+   sitting at their fixed 320px cap. */
+.nb-focus-stage .drill-mount {
+  min-height: 0;
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  /* safe center, not center. A drill taller than the mount centres its own
+     overflow, which pushed its top edge up over the bar and made Exit
+     unclickable, because the drill sat on top of the button. `safe` falls back
+     to start alignment exactly when that would overflow, so the drill scrolls
+     instead of climbing. */
+  align-items: safe center;
+  justify-content: center;
+  /* Size to the drill rather than to the leftover space. As a flex item that
+     shrank to fit, the mount clipped a drill taller than the viewport instead of
+     letting the stage scroll to it. */
+  flex: 0 0 auto;
+  /* auto margins do the vertical centring, and collapse to zero when the content
+     is taller than the stage */
+  margin: auto 0;
+}
+
+.nb-focus-stage .drill {
+  width: 100%;
+  max-width: 900px;
+  align-items: center;
+  text-align: center;
+  gap: var(--gap-5);
+}
+
+.nb-focus-stage .nb-grid {
+  /* cell size follows the stage, capped so a single cell never fills a phone */
+  width: min(78vmin, 420px);
+  max-width: none;
+  gap: clamp(10px, 2.2vmin, 20px);
+}
+
+.nb-focus-stage .nb-letter {
+  font-size: clamp(56px, 15vmin, 132px);
+}
+
+/* The choice rows get more breathing room in focus. */
+.nb-focus-stage .drill-bar,
+.nb-focus-stage .nb-choice-row,
+.nb-focus-stage .nb-hint {
+  justify-content: center;
+}
+
+/* Top bar of the stage: the drill name on the left, controls on the right. */
+.nb-focus-bar {
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-3);
+  flex: none;
+  /* The one control that has to stay reachable. It sits above the drill in the
+     stacking order regardless of how tall the drill is, and stays pinned when
+     the stage scrolls so a long drill cannot scroll Exit away. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+  padding: 6px 0;
+}
+
+.nb-focus-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.nb-focus-spacer { flex: 1 1 auto; }
+
+/* Fullscreen is a hint first: the ask is a prompt, not a forced takeover. */
+.nb-fs-hint {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  flex: none;
+}
+
+.nb-focus-btn,
+.nb-exit-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 7px 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+
+.nb-focus-btn:hover,
+.nb-exit-btn:hover {
+  border-color: var(--lime-edge);
+  color: var(--ink);
+}
+
+.nb-focus-btn:focus-visible,
+.nb-exit-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The exit control is the one thing on screen that must always be findable. */
+.nb-exit-btn { color: var(--ink); }
+
+/* Fullscreen mode has no browser chrome, so the stage supplies its own. */
+.nb-focus-stage:fullscreen { background: var(--bg); padding: 4vh 4vw; }
+
+/* Narrow phones: the bar wraps so the exit X never leaves the screen. */
+@media (max-width: 560px) {
+  .nb-focus-bar { flex-wrap: wrap; }
+  .nb-focus-spacer { display: none; }
+  .nb-fs-hint { order: 3; width: 100%; }
+}
+
+/* Reduced motion: no transitions on the focus controls. */
+@media (prefers-reduced-motion: reduce) {
+  .nb-focus-btn,
+  .nb-exit-btn { transition: none; }
+}

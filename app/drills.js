@@ -193,6 +193,15 @@
     return out;
   }
 
+  /* Seconds each item stays on screen during the palace encoding phase. A method
+     of loci only works if the item is held in mind long enough to be seen in a
+     place, and holding one image in one place for well under two seconds is
+     about the floor for that. At 2.5 s, five stops is about thirteen seconds of
+     encoding, which is what a five item route has to cost to be worth scoring.
+     Long enough to imagine in, short enough that a set is not a chore. */
+  var PALACE_STUDY_SECONDS = 2.5;
+  var PALACE_STUDY_MS = Math.round(PALACE_STUDY_SECONDS * 1000);
+
   /* Timer bag: one pending timeout, cleared on stop, paused while the tab is hidden. */
   function makeTimers() {
     var slot = null;
@@ -226,6 +235,45 @@
     };
   }
 
+  /* Keys arrive on document, so a drill that forgets its unbind keeps firing
+     into a dead closure for the rest of the session. bindKey hands back the
+     only thing that undoes it, and every drill calls that on stop. Held keys
+     are dropped here rather than in each handler: auto-repeat would otherwise
+     answer the next trial before the player could read it. */
+  function bindKey(doc, fn) {
+    if (!doc || typeof doc.addEventListener !== "function") return function () {};
+    function handler(e) { if (e.repeat) return; fn(e); }
+    doc.addEventListener("keydown", handler);
+    return function () { doc.removeEventListener("keydown", handler); };
+  }
+
+  /* "1" to "9" as a zero based option index, anything else -1. */
+  function digitIndex(key) {
+    return typeof key === "string" && key.length === 1 && key >= "1" && key <= "9"
+      ? Number(key) - 1 : -1;
+  }
+
+  /* Web Audio has no per clip stop, so a stopped drill suspends the shared
+     context. The next drill resumes it on its first cue, which cuts anything
+     still sounding without a change to app/ui/audio.js. */
+  function silenceAudio() {
+    var A = globalThis.CortexAudio;
+    if (!A || !A.ctx || typeof A.ctx.suspend !== "function") return;
+    if (A.ctx.state === "running") { try { A.ctx.suspend(); } catch (e) {} }
+  }
+
+  /* An option button with its shortcut printed on it, the way crt prints
+     "key 1" on a lane. One helper so all six keyed drills look the same. */
+  function optionButton(label, idx, onPick) {
+    var b = button("btn-ghost nb-opt", label);
+    b.appendChild(el("span", "nb-key", String(idx + 1)));
+    b.setAttribute("aria-label", label + ", key " + (idx + 1));
+    b.addEventListener("click", onPick);
+    return b;
+  }
+
+  var doc = typeof document !== "undefined" ? document : null;
+
   /* Drill scoped styles, theme tokens only. */
   function injectStyles() {
     if (typeof document === "undefined" || document.getElementById("nb-drill-styles")) return;
@@ -243,7 +291,29 @@
       ".drill-nback .nb-grid{margin-inline:auto}",
       ".drill-nback .nb-cue,.drill-nback .nb-letter,.drill-nback .nb-hint,.drill-nback .nb-meta{text-align:center}",
       ".drill-nback .nb-sum{justify-content:center}",
-      ".drill-nback .drill-bar{justify-content:center}"
+      ".drill-nback .drill-bar{justify-content:center}",
+      /* An option button carries its shortcut, so a key player can see what
+         the digits are. The label and the key sit side by side. */
+      ".nb-opt{display:inline-flex;align-items:center;gap:9px}",
+      ".nb-key{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--dim)}",
+      /* Grid cells are now the position response, so they take a pointer and a
+         focus ring like any other control. */
+      ".drill-nback .nb-cell{cursor:pointer;padding:0;font:inherit;color:var(--ink);display:flex;align-items:center;justify-content:center}",
+      ".drill-nback .nb-cell:focus-visible{outline:2px solid var(--lime-edge);outline-offset:1px}",
+      /* The printed digit sits in the corner and the stimulus in the middle, so
+         a lit cell still reads as one shape and one number. */
+      ".drill-nback .nb-cell .k{position:absolute;top:3px;left:5px;font-family:var(--mono);font-size:10px;line-height:1;color:var(--dim)}",
+      ".drill-nback .nb-cell .v{font-family:var(--mono);font-size:13px;font-weight:600;line-height:1}",
+      ".drill-nback .nb-cell{position:relative}",
+      /* A pressed cell keeps the mark so the eye can see what was answered. */
+      ".drill-nback .nb-cell.nb-pick{border-color:var(--lime-edge);box-shadow:inset 0 0 0 1px var(--lime-edge)}",
+      /* The palace study clock. A flat track that drains left to right over the
+         study period, so the time is visible rather than implied. */
+      ".drill-palace .pl-study{display:flex;flex-direction:column;align-items:center;gap:6px}",
+      ".drill-palace .pl-track{width:min(300px,100%);height:4px;border-radius:2px;background:var(--line2);overflow:hidden}",
+      ".drill-palace .pl-fill{height:100%;width:100%;background:var(--lime);transform-origin:left center;transition:transform .1s linear}",
+      ".drill-palace .pl-cue{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.04em}",
+      "@media(prefers-reduced-motion:reduce){.drill-palace .pl-fill{transition:none}}"
     ].join("");
     (document.head || document.documentElement).appendChild(s);
   }
@@ -377,7 +447,9 @@
     return Math.max(0, Math.min(Math.max(b, l + 2), r));
   }
 
-  var DrillsCore = { isMatch: isMatch, nbackChunkSize: nbackChunkSize, pressGuard: pressGuard, nextLevel: nextLevel, adaptExposure: adaptExposure, palaceScore: palaceScore, relationKey: relationKey, reviewQueue: reviewQueue, switchCost: switchCost, nbackTrialCorrect: nbackTrialCorrect, nbackOutcome: nbackOutcome, nbackVoiceMode: nbackVoiceMode, isVowel: isVowel, dPrime: dPrime, ruleShiftAccuracy: ruleShiftAccuracy, mulberry32: mulberry32, seedFrom: seedFrom, randInt: randInt, pick: pick, nbackSequence: nbackSequence, NB_MODES: NB_MODES };
+  var DrillsCore = { isMatch: isMatch, nbackChunkSize: nbackChunkSize, pressGuard: pressGuard, nextLevel: nextLevel, adaptExposure: adaptExposure, palaceScore: palaceScore, relationKey: relationKey,
+    PALACE_STUDY_SECONDS: PALACE_STUDY_SECONDS, PALACE_STUDY_MS: PALACE_STUDY_MS,
+    PALACE_ROUTE: 5, bindKey: bindKey, digitIndex: digitIndex, silenceAudio: silenceAudio, reviewQueue: reviewQueue, switchCost: switchCost, nbackTrialCorrect: nbackTrialCorrect, nbackOutcome: nbackOutcome, nbackVoiceMode: nbackVoiceMode, isVowel: isVowel, dPrime: dPrime, ruleShiftAccuracy: ruleShiftAccuracy, mulberry32: mulberry32, seedFrom: seedFrom, randInt: randInt, pick: pick, nbackSequence: nbackSequence, NB_MODES: NB_MODES };
 
   /* ---------- registry ---------- */
   var factories = {};
@@ -463,27 +535,30 @@
       if (!voiceMode) return;
       withAudio(function (A) { if (A.playVoice) A.playVoice("letter." + l.toLowerCase()); });
     }
-    /* Web Audio here has no per-clip stop, so a stop suspends the shared context.
-       The player resumes it on the next cue, so this cuts in-flight clips without
-       any change to app/ui/audio.js. */
-    function silenceAudio() {
-      var A = globalThis.CortexAudio;
-      if (!A || !A.ctx || typeof A.ctx.suspend !== "function") return;
-      if (A.ctx.state === "running") { try { A.ctx.suspend(); } catch (e) {} }
-    }
     function halt(silent) {
       stopped = true;
       clearTimeout(timer);
       timers.destroy();
+      unbindKey();
       if (silent) silenceAudio();
     }
 
     var wrap = el("div", "drill drill-nback");
     var cueEl = el("div", "drill-state nb-cue", "");
     var grid = el("div", "nb-grid");
-    var cells = [];
+    var cells = [], cellVals = [];
     for (var c = 0; c < 9; c++) {
-      var cell = el("span", "nb-cell");
+      /* The cells used to be inert spans, so the only way to say "the position
+         matches" was the button below the grid. They are the position response
+         now: a real button, labelled, with its digit printed on it. */
+      var cell = button("nb-cell");
+      cell.setAttribute("aria-label", "Cell " + (c + 1) + ", key " + (c + 1));
+      /* Two spans so paint can clear the stimulus without taking the printed
+         digit with it. */
+      cell.appendChild(el("span", "k", String(c + 1)));
+      var cellVal = el("span", "v", "");
+      cell.appendChild(cellVal);
+      cellVals.push(cellVal);
       cells.push(cell); grid.appendChild(cell);
     }
     var stim = el("div", "nb-letter mono", "?");
@@ -520,6 +595,31 @@
     posBtn.addEventListener("click", onPos);
     letBtn.addEventListener("click", onLet);
     oneBtn.addEventListener("click", onOne);
+    /* A cell press is a position press. Painting a response on the cell keeps the
+       answer where the eye already is, instead of in a button under the grid. */
+    for (var cc = 0; cc < 9; cc++) {
+      (function (k) {
+        cells[k].addEventListener("click", function () {
+          cells[k].classList.add("nb-pick");
+          onPos();
+        });
+      })(cc);
+    }
+
+    /* Digits answer the grid and letters the mode buttons. Both go through the
+       same handlers the mouse does, so a key and a click cannot score
+       differently. */
+    var unbindKey = bindKey(doc, function (e) {
+      var cell = digitIndex(e.key);
+      if (cell >= 0 && !arith) { e.preventDefault(); cells[cell].click(); return; }
+      if (dual) {
+        if (e.key === "p") { e.preventDefault(); posBtn.click(); return; }
+        if (e.key === "l") { e.preventDefault(); letBtn.click(); return; }
+      } else if (e.key === "m") {
+        e.preventDefault();
+        oneBtn.click();
+      }
+    });
 
     function cueText() {
       if (dual) {
@@ -535,7 +635,8 @@
       for (var k = 0; k < 9; k++) {
         cells[k].classList.remove("on");
         cells[k].classList.remove("nb-mark");
-        cells[k].textContent = "";
+        cells[k].classList.remove("nb-pick");
+        cellVals[k].textContent = "";
       }
       if (arith) {
         if (cur) { sumA.textContent = String(cur.a); sumB.textContent = String(cur.b); }
@@ -543,7 +644,7 @@
         cells[cur.pos].classList.add("on");
         if (spatial) {
           cells[cur.pos].classList.add("nb-mark");
-          cells[cur.pos].textContent = ["O", "T", "S"][cur.shape];
+          cellVals[cur.pos].textContent = ["O", "T", "S"][cur.shape];
         } else {
           stim.textContent = cur.letter;
         }
@@ -614,6 +715,7 @@
       stopped = true;
       finished = true;
       timers.destroy();
+      unbindKey();
       /* Accuracy and d-prime are over the trials that carried a comparison. Counting
          the warm-up trials, which auto-pass because the right answer is to do
          nothing, inflated both. scorable is zero only if the set ended before
@@ -665,20 +767,38 @@
     container.appendChild(wrap);
 
     function clearBar() { bar.innerHTML = ""; }
+    /* A pick holds for a beat before the next step so the choice is visible.
+       Without it the bar swapped under the player's hand and neither a click
+       nor a digit showed which of the options had actually been taken. */
+    var PICK_HOLD_MS = 260;
+    /* One pick per question. Held while the mark is on screen so a double press
+       cannot answer the same question twice and skip a trial. */
+    var taken = false;
+    function picked(n, next) {
+      if (stopped || taken) return;
+      taken = true;
+      var b = bar.children[n];
+      if (b) b.classList.add("nb-pick");
+      timers.set(next, PICK_HOLD_MS);
+    }
     function showShapeOptions() {
       clearBar(); prompt.textContent = "Which shape was in the center?";
+      taken = false;
       SHAPES.forEach(function (s, idx) {
-        var b = button("btn-ghost", s);
-        b.addEventListener("click", function () { answer.pickShape = idx; showPosOptions(); });
-        bar.appendChild(b);
+        bar.appendChild(optionButton(s, idx, function () {
+          answer.pickShape = idx;
+          picked(idx, showPosOptions);
+        }));
       });
     }
     function showPosOptions() {
       clearBar(); prompt.textContent = "Where was the dot?";
+      taken = false;
       POS.forEach(function (p, idx) {
-        var b = button("btn-ghost", p);
-        b.addEventListener("click", function () { answer.pickPos = idx; resolve(); });
-        bar.appendChild(b);
+        bar.appendChild(optionButton(p, idx, function () {
+          answer.pickPos = idx;
+          picked(idx, resolve);
+        }));
       });
     }
     function trial() {
@@ -688,6 +808,7 @@
       prompt.textContent = "Watch the center shape and the edge dot.";
       answer = { shape: randInt(rng, 3), pos: randInt(rng, 4), pickShape: null, pickPos: null };
       resolved = false;
+      taken = false;
       shape.className = "uf-shape s" + answer.shape;
       dot.className = "uf-dot p" + answer.pos;
       stage.classList.add("show");
@@ -709,6 +830,7 @@
     function finish() {
       if (stopped) return;
       stopped = true;
+      unbindKey();
       var acc = correctCount / TRIALS;
       var summary = el("div", "drill-summary");
       summary.appendChild(el("div", "drill-state", "Set complete"));
@@ -716,12 +838,25 @@
       container.appendChild(summary);
       if (opts.onComplete) opts.onComplete({ drillId: "ufov", value: exposure, unit: "ms", t: Date.now(), meta: { accuracy: acc } });
     }
+    /* Digits take the visible options in order, so the printed key and the button
+       position cannot drift apart. Both questions use this one path. Guarded on
+       the bar itself: during the stimulus window the bar is empty, and a digit
+       then has nothing to answer. */
+    var unbindKey = bindKey(doc, function (e) {
+      var n = digitIndex(e.key);
+      if (stopped || n < 0) return;
+      var btn = bar.children[n];
+      if (!btn) return;
+      e.preventDefault();
+      btn.click();
+    });
     timer = timers.set(trial, 700);
     return {
       stop: function () {
         stopped = true;
         clearTimeout(timer);
         timers.destroy();
+        unbindKey();
       }
     };
   }
@@ -729,16 +864,38 @@
   /* ---------- 3. Memory Palace ---------- */
   function palace(container, opts) {
     var rng = rngFrom(opts);
-    var WORDS = ["River", "Candle", "Anchor", "Marble", "Falcon", "Garden", "Compass", "Lantern", "Bridge", "Cactus"];
+    /* Ten words for a five stop route meant two of every six words had appeared
+       recently and the same set came round often. Concrete, distinct and easy to
+       picture, which is the whole point of placing them. No word repeats and no
+       word is a prefix of another, so a recall option set never shows two things
+       that look like the same thing. */
+    var WORDS = [
+      "River", "Candle", "Anchor", "Marble", "Falcon", "Garden", "Compass", "Lantern",
+      "Bridge", "Cactus", "Lighthouse", "Kettle", "Anvil", "Bonfire", "Drawbridge",
+      "Meadow", "Postcard", "Satchel", "Windmill", "Hammock", "Waterfall", "Pinecone",
+      "Sundial", "Kite", "Buoy", "Campfire", "Treasure", "Shovel", "Footbridge", "Bucket"
+    ];
     var ROUTE = 5;
     var placed = [], recalled = [], idx = 0, stopped = false;
+    /* The study clock needs two timers at once, the advance and the repaint,
+       which makeTimers holds one of. So these two keep their own ids and stop()
+       clears both by hand. */
+    var studyTimer = 0, tickTimer = 0;
+    var deadline = 0, phase = "encode";
 
+    injectStyles();
     var wrap = el("div", "drill drill-palace");
     var stage = el("div", "pl-stage");
+    var study = el("div", "pl-study");
+    var track = el("div", "pl-track");
+    var fill = el("div", "pl-fill");
+    track.appendChild(fill);
+    var cue = el("div", "pl-cue", "");
+    study.appendChild(track); study.appendChild(cue);
     var prompt = el("div", "drill-note", "Place each item at the next stop on the route.");
     var bar = el("div", "drill-bar");
     var meta = el("div", "nb-meta mono", "route " + ROUTE + " stops");
-    wrap.appendChild(stage); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
+    wrap.appendChild(stage); wrap.appendChild(study); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
 
     function shuffled(arr) {
@@ -752,17 +909,48 @@
       recalled = []; idx = 0;
       place();
     }
+    /* One item on screen for the study period. The bar drains over it so the time
+       is visible, and Place skips ahead for a player who already has the image.
+       Two timers are pending at once here: the advance and the repaint. That is
+       outside what makeTimers holds, so the study clock keeps its own ids and
+       stop() clears both. */
     function place() {
       if (stopped) return;
       if (idx >= placed.length) return recall();
+      phase = "encode";
+      study.hidden = false;
       stage.textContent = placed[idx];
-      prompt.textContent = "Stop " + (idx + 1) + " of " + ROUTE + ". Place it, then continue.";
+      prompt.textContent = "Stop " + (idx + 1) + " of " + ROUTE + ". Picture it here, then continue.";
       bar.innerHTML = "";
       var b = button("btn-primary", "Place");
-      b.addEventListener("click", function () { idx++; place(); });
+      b.setAttribute("aria-label", "Place now, key Enter");
+      b.addEventListener("click", next);
       bar.appendChild(b);
+      deadline = Date.now() + PALACE_STUDY_MS;
+      tickTimer = setInterval(paint, 100);
+      studyTimer = setTimeout(next, PALACE_STUDY_MS);
+      paint();
+    }
+    function paint() {
+      if (stopped) return;
+      var left = Math.max(0, deadline - Date.now());
+      var frac = PALACE_STUDY_MS ? left / PALACE_STUDY_MS : 0;
+      fill.style.transform = "scaleX(" + frac.toFixed(3) + ")";
+      cue.textContent = (left / 1000).toFixed(1) + " s to picture it";
+    }
+    function next() {
+      if (stopped) return;
+      clearTimeout(studyTimer);
+      clearInterval(tickTimer);
+      studyTimer = 0; tickTimer = 0;
+      idx++;
+      place();
     }
     function recall() {
+      /* Recall keeps no timer. Thinking is the task here and a clock would only
+         punish it, so the phase waits on the player and nothing else. */
+      phase = "recall";
+      study.hidden = true;
       idx = 0;
       function step() {
         if (stopped) return;
@@ -772,10 +960,8 @@
         stage.textContent = "Stop " + (idx + 1);
         prompt.textContent = "What was here?";
         bar.innerHTML = "";
-        opts3.forEach(function (w) {
-          var b = button("btn-ghost", w);
-          b.addEventListener("click", function () { recalled[idx] = w; idx++; step(); });
-          bar.appendChild(b);
+        opts3.forEach(function (w, n) {
+          bar.appendChild(optionButton(w, n, function () { recalled[idx] = w; idx++; step(); }));
         });
       }
       step();
@@ -783,6 +969,9 @@
     function finish() {
       if (stopped) return;
       stopped = true;
+      clearTimeout(studyTimer);
+      clearInterval(tickTimer);
+      unbindKey();
       var sc = palaceScore(placed, recalled);
       var summary = el("div", "drill-summary");
       summary.appendChild(el("div", "drill-state", "Set complete"));
@@ -790,25 +979,111 @@
       container.appendChild(summary);
       if (opts.onComplete) opts.onComplete({ drillId: "palace", value: sc.recalled, unit: "items", t: Date.now(), meta: { longest: sc.longest, route: placed.length } });
     }
+    /* Enter places the current item and moves on. Digits answer the recall. */
+    var unbindKey = bindKey(doc, function (e) {
+      if (stopped) return;
+      if (phase === "encode") {
+        if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") { e.preventDefault(); next(); }
+        return;
+      }
+      var n = digitIndex(e.key);
+      if (n < 0) return;
+      var b = bar.children[n];
+      if (b) { e.preventDefault(); b.click(); }
+    });
+
     start();
-    return { stop: function () { stopped = true; } };
+    return {
+      stop: function () {
+        if (stopped) return;
+        stopped = true;
+        /* Both study timers go here. Left pending, the next stop's advance would
+           fire into a torn down drill and the bar would keep draining. */
+        clearTimeout(studyTimer);
+        clearInterval(tickTimer);
+        unbindKey();
+      }
+    };
   }
 
   /* ---------- 4. Relational Reasoning ---------- */
   function reasoning(container, opts) {
+    /* A:b :: c:? with exactly one defensible answer.
+       This was eight items for an eight trial set, so every play was the same
+       eight questions reordered. It is now a pool well past the trial count, so
+       a repeat set draws different items.
+
+       Distractors are picked so none of them also satisfies the relation. The
+       old Hand:Finger :: Tree:? item offered "Leaf" as a wrong answer, and a
+       leaf is also a part of a tree, so the item had two defensible answers and
+       scored a correct reply as wrong. Where a relation has obvious near
+       synonyms sitting in the same category, the distractors come from outside
+       it entirely. */
     var ITEMS = [
-      { relation: "part-whole", a: "Hand", b: "Finger", c: "Tree", correct: "Branch", wrong: ["Forest", "Leaf"] },
+      /* part of: a is the whole, b is a part of it */
+      { relation: "part-whole", a: "Book", b: "Page", c: "Car", correct: "Wheel", wrong: ["Oxygen", "Hungry"] },
+      { relation: "part-whole", a: "Tree", b: "Root", c: "Human", correct: "Heart", wrong: ["Ladder", "Tuesday"] },
+      { relation: "part-whole", a: "Ocean", b: "Wave", c: "Mountain", correct: "Peak", wrong: ["Basket", "Silence"] },
+      { relation: "part-whole", a: "Guitar", b: "String", c: "Piano", correct: "Key", wrong: ["Window", "Thursday"] },
+      { relation: "part-whole", a: "Computer", b: "Keyboard", c: "Camera", correct: "Lens", wrong: ["Sandwich", "Purple"] },
+      { relation: "part-whole", a: "Hand", b: "Finger", c: "Foot", correct: "Toe", wrong: ["Forest", "Cloud"] },
+      { relation: "part-whole", a: "House", b: "Roof", c: "Boat", correct: "Sail", wrong: ["Candy", "Monday"] },
+      { relation: "part-whole", a: "Table", b: "Leg", c: "River", correct: "Bank", wrong: ["Jacket", "Seven"] },
+      { relation: "part-whole", a: "Sword", b: "Blade", c: "Flag", correct: "Pole", wrong: ["Basket", "Gentle"] },
+      { relation: "part-whole", a: "Cake", b: "Candle", c: "Honeycomb", correct: "Cell", wrong: ["Pencil", "Loud"] },
+
+      /* opposite */
       { relation: "opposite", a: "Hot", b: "Cold", c: "Up", correct: "Down", wrong: ["High", "Sky"] },
-      { relation: "cause-effect", a: "Rain", b: "Wet", c: "Sun", correct: "Warm", wrong: ["Bright", "Day"] },
-      { relation: "part-whole", a: "Car", b: "Wheel", c: "Book", correct: "Page", wrong: ["Shelf", "Read"] },
       { relation: "opposite", a: "Early", b: "Late", c: "Open", correct: "Closed", wrong: ["Door", "Wide"] },
-      { relation: "cause-effect", a: "Fire", b: "Smoke", c: "Friction", correct: "Heat", wrong: ["Cold", "Speed"] },
-      { relation: "part-whole", a: "Clock", b: "Hands", c: "Guitar", correct: "Strings", wrong: ["Song", "Wood"] },
-      { relation: "opposite", a: "Begin", b: "End", c: "Push", correct: "Pull", wrong: ["Move", "Force"] }
+      { relation: "opposite", a: "Begin", b: "End", c: "Push", correct: "Pull", wrong: ["Move", "Force"] },
+      { relation: "opposite", a: "Wet", b: "Dry", c: "Soft", correct: "Hard", wrong: ["Chair", "Yellow"] },
+      { relation: "opposite", a: "Heavy", b: "Light", c: "Full", correct: "Empty", wrong: ["Bucket", "Green"] },
+      { relation: "opposite", a: "Above", b: "Below", c: "Front", correct: "Back", wrong: ["Wall", "Loud"] },
+      { relation: "opposite", a: "Fast", b: "Slow", c: "Yes", correct: "No", wrong: ["Table", "Maybe"] },
+      { relation: "opposite", a: "Bright", b: "Dim", c: "Wide", correct: "Narrow", wrong: ["Lamp", "Sweet"] },
+      { relation: "opposite", a: "Day", b: "Night", c: "Deep", correct: "Shallow", wrong: ["Clock", "Heavy"] },
+      { relation: "opposite", a: "Tight", b: "Loose", c: "Smooth", correct: "Rough", wrong: ["Knot", "Metal"] },
+      { relation: "opposite", a: "Ancient", b: "Modern", c: "Win", correct: "Lose", wrong: ["Temple", "Race"] },
+      { relation: "opposite", a: "Gather", b: "Scatter", c: "Inflate", correct: "Deflate", wrong: ["Pump", "Purple"] },
+
+      /* cause and effect: a brings about b */
+      { relation: "cause-effect", a: "Rain", b: "Wet", c: "Fire", correct: "Smoke", wrong: ["Bright", "Day"] },
+      { relation: "cause-effect", a: "Ice", b: "Cold", c: "Sunlight", correct: "Heat", wrong: ["Basket", "Fast"] },
+      { relation: "cause-effect", a: "Smoke", b: "Ash", c: "Rain", correct: "Flood", wrong: ["Window", "Heavy"] },
+      { relation: "cause-effect", a: "Rust", b: "Iron", c: "Magnet", correct: "Attract", wrong: ["Paper", "Bright"] },
+      { relation: "cause-effect", a: "Noise", b: "Ear", c: "Light", correct: "Eye", wrong: ["Cloud", "Dry"] },
+      { relation: "cause-effect", a: "Plant", b: "Water", c: "Practice", correct: "Better", wrong: ["Cold", "Door"] },
+      { relation: "cause-effect", a: "Fever", b: "Rest", c: "Hunger", correct: "Food", wrong: ["Wall", "Loud"] },
+      { relation: "cause-effect", a: "Knife", b: "Cut", c: "Soap", correct: "Grease", wrong: ["Pillow", "Seven"] },
+
+      /* kind of: a is a b */
+      { relation: "category", a: "Oak", b: "Tree", c: "Rose", correct: "Flower", wrong: ["Forest", "Green"] },
+      { relation: "category", a: "Sparrow", b: "Bird", c: "Trout", correct: "Fish", wrong: ["Sky", "Fast"] },
+      { relation: "category", a: "Bee", b: "Insect", c: "Whale", correct: "Mammal", wrong: ["Ocean", "Huge"] },
+      { relation: "category", a: "Copper", b: "Metal", c: "Oxygen", correct: "Gas", wrong: ["Wire", "Blue"] },
+      { relation: "category", a: "Hammer", b: "Tool", c: "Poem", correct: "Writing", wrong: ["Shelf", "Quiet"] },
+      { relation: "category", a: "Cedar", b: "Wood", c: "Piano", correct: "Instrument", wrong: ["Room", "Loud"] },
+
+      /* used for: a does b */
+      { relation: "function", a: "Umbrella", b: "Rain", c: "Broom", correct: "Floor", wrong: ["Noise", "Cold"] },
+      { relation: "function", a: "Scissors", b: "Paper", c: "Spoon", correct: "Soup", wrong: ["Shop", "Heavy"] },
+      { relation: "function", a: "Key", b: "Lock", c: "Needle", correct: "Thread", wrong: ["Window", "Thursday"] },
+      { relation: "function", a: "Soap", b: "Grease", c: "Whistle", correct: "Signal", wrong: ["Grass", "Loud"] },
+      { relation: "function", a: "Pen", b: "Write", c: "Thermometer", correct: "Temperature", wrong: ["Cloud", "Dry"] },
+
+      /* comes before: a happens earlier than b */
+      { relation: "sequence", a: "Monday", b: "Wednesday", c: "Seed", correct: "Plant", wrong: ["Basket", "Silence"] },
+      { relation: "sequence", a: "Dawn", b: "Dusk", c: "Egg", correct: "Chick", wrong: ["Wire", "Blue"] },
+      { relation: "sequence", a: "Waking", b: "Sleeping", c: "Sprout", correct: "Flower", wrong: ["Pencil", "Loud"] }
     ];
     var rng = rngFrom(opts);
     var TRIALS = 8, i = 0, correctCount = 0, stopped = false;
+    /* The options currently on the bar, so a digit can reach the same button a
+       click would. Named off opts on purpose: opts is the drill's parameter and
+       holds onComplete, so shadowing it silently drops the run record. */
+    var optionList = [];
 
+    injectStyles();
     var wrap = el("div", "drill drill-reasoning");
     var stem = el("div", "rr-stem");
     var prompt = el("div", "drill-note", "Pick the option that shares the same relation.");
@@ -828,28 +1103,41 @@
       var item = pick(rng, ITEMS);
       stem.innerHTML = '<span class="rr-a">' + item.a + '</span> : <span class="rr-b">' + item.b + '</span> :: <span class="rr-c">' + item.c + '</span> : <span class="rr-q">?</span>';
       bar.innerHTML = "";
-      shuffled([item.correct].concat(item.wrong)).forEach(function (w) {
-        var b = button("btn-ghost", w);
-        b.addEventListener("click", function () {
+      optionList = shuffled([item.correct].concat(item.wrong));
+      optionList.forEach(function (w, n) {
+        bar.appendChild(optionButton(w, n, function () {
           if (w === item.correct) correctCount++;
           i++;
           meta.textContent = i + " / " + TRIALS;
           trial();
-        });
-        bar.appendChild(b);
+        }));
       });
     }
     function finish() {
       if (stopped) return;
       stopped = true;
+      unbindKey();
       var summary = el("div", "drill-summary");
       summary.appendChild(el("div", "drill-state", "Set complete"));
       summary.appendChild(el("div", "drill-note", correctCount + " of " + TRIALS + " correct"));
       container.appendChild(summary);
       if (opts.onComplete) opts.onComplete({ drillId: "reasoning", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: TRIALS } });
     }
+    /* Digits pick the option in the order the buttons are shown, so the printed
+       key and the visual order can never drift apart. */
+    var unbindKey = bindKey(doc, function (e) {
+      var n = digitIndex(e.key);
+      if (stopped || n < 0) return;
+      /* Guard against the bar, not the cached option list. The list can be stale
+         whenever the bar has been emptied, and then bar.children[n] is undefined.
+         Checking the element we are about to click cannot be wrong. */
+      var btn = bar.children[n];
+      if (!btn) return;
+      e.preventDefault();
+      btn.click();
+    });
     trial();
-    return { stop: function () { stopped = true; } };
+    return { stop: function () { stopped = true; unbindKey(); } };
   }
 
   /* ---------- 5. Spaced Retrieval ---------- */
@@ -857,7 +1145,12 @@
     var cards = (opts.cards || []).slice();
     var Spacing = globalThis.Spacing;
     var stopped = false;
+    /* What the keyboard is looking at: the add form, the question, the grade, or
+       a finished summary. One flag, so one handler covers every screen the drill
+       puts up instead of a handler per screen. */
+    var screen = "add";
 
+    injectStyles();
     var wrap = el("div", "drill drill-spaced");
     var stage = el("div", "sp-stage");
     var prompt = el("div", "drill-note", "");
@@ -869,6 +1162,7 @@
     function persist() { if (opts.onCards) opts.onCards(cards); }
 
     function addForm() {
+      screen = "add";
       stage.innerHTML = "";
       prompt.textContent = "Add cards to study. They come back at growing intervals.";
       bar.innerHTML = "";
@@ -897,6 +1191,7 @@
       var now = Date.now();
       var q = reviewQueue(cards, now);
       if (!q.length) {
+        screen = "add";
         stage.textContent = "Nothing due";
         prompt.textContent = "No cards are due right now. Add more or come back later.";
         bar.innerHTML = "";
@@ -907,16 +1202,26 @@
         if (stopped) return;
         if (idx >= q.length) return finish(got, q.length);
         var card = q[idx];
+        screen = "question";
         stage.textContent = card.front;
         prompt.textContent = "Recall the answer, then check.";
         bar.innerHTML = "";
-        var reveal = button("btn-primary", "Show answer");
+        var reveal = button("btn-primary nb-opt", "Show answer");
+        reveal.appendChild(el("span", "nb-key", "enter"));
         reveal.addEventListener("click", function () {
+          screen = "grade";
           stage.textContent = card.back;
           prompt.textContent = "Did you get it?";
           bar.innerHTML = "";
-          var yes = button("btn-primary", "Got it");
-          var no = button("btn-ghost", "Missed");
+          /* Grading is the one place a stray key could do real damage, since it
+             reschedules the card. So a grade needs a held digit or an arrow,
+             both shown on the buttons. */
+          var yes = button("btn-primary nb-opt", "Got it");
+          yes.appendChild(el("span", "nb-key", "1"));
+          yes.setAttribute("aria-label", "Got it, key 1 or right arrow");
+          var no = button("btn-ghost nb-opt", "Missed");
+          no.appendChild(el("span", "nb-key", "2"));
+          no.setAttribute("aria-label", "Missed, key 2 or left arrow");
           yes.addEventListener("click", function () { gradeCard(card, true); });
           no.addEventListener("click", function () { gradeCard(card, false); });
           bar.appendChild(yes); bar.appendChild(no);
@@ -947,6 +1252,9 @@
     function finish(got, total) {
       if (stopped) return;
       stopped = true;
+      /* The summary is a live screen: "Review due" reopens the queue and clears
+         this flag, so the binding stays. Stop is what unbinds it. */
+      screen = "summary";
       /* Clear the last card's controls before the summary. Leaving them on screen
          under "Review complete" offers a grade key for a card already graded. */
       stage.textContent = "";
@@ -973,8 +1281,41 @@
       if (opts.onComplete) opts.onComplete({ drillId: "spaced", value: got, unit: "cards", t: Date.now(), meta: { total: total } });
     }
 
+    /* One handler for the three screens the drill puts up. Enter submits on the
+       add form and reveals in review, a digit or an arrow grades. Anything else
+       is ignored, so a stray key cannot reschedule a card. */
+    var unbindKey = bindKey(doc, function (e) {
+      if (stopped) return;
+      if (screen === "add") {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        /* The add form is two inputs then Add, so Add is the third control. */
+        bar.children[2].click();
+        return;
+      }
+      if (screen === "question") {
+        if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+        e.preventDefault();
+        bar.children[0].click();
+        return;
+      }
+      if (screen !== "grade") return;
+      var n = digitIndex(e.key);
+      var right = e.key === "ArrowRight" || e.key === "ArrowUp";
+      var left = e.key === "ArrowLeft" || e.key === "ArrowDown";
+      if (n === 0 || right) { e.preventDefault(); bar.children[0].click(); }
+      else if (n === 1 || left) { e.preventDefault(); bar.children[1].click(); }
+    });
+
     addForm();
-    return { stop: function () { stopped = true; } };
+    return {
+      stop: function () {
+        /* No early return on stopped: a finished review can be reopened from the
+           summary, and a stop has to win over that however the drill was left. */
+        stopped = true;
+        unbindKey();
+      }
+    };
   }
 
   /* ---------- 6. Task Switching ---------- */
@@ -985,7 +1326,12 @@
     var lastRule = null;
     var repeatTimes = [], switchTimes = [];
     var shownAt = 0, rule = "color", shape = 0, color = 0;
+    /* The labels currently on the bar, so a digit can reach the same button a
+       click would. Off the opts name on purpose: that is the parameter holding
+       onComplete. */
+    var optionList = [];
 
+    injectStyles();
     var wrap = el("div", "drill drill-switching");
     var ruleEl = el("div", "ts-rule mono", "Rule: Color");
     var stage = el("div", "ts-stage");
@@ -1009,10 +1355,9 @@
       bar.innerHTML = "";
       var labels = rule === "color" ? ["Orange", "Blue"] : ["Circle", "Square"];
       var correct = rule === "color" ? color : shape;
+      optionList = labels;
       labels.forEach(function (lab, idx) {
-        var b = button("btn-ghost", lab);
-        b.addEventListener("click", function () { answer(idx === correct); });
-        bar.appendChild(b);
+        bar.appendChild(optionButton(lab, idx, function () { answer(idx === correct); }));
       });
       shownAt = performance.now();
     }
@@ -1030,6 +1375,7 @@
     function finish() {
       if (stopped) return;
       stopped = true;
+      unbindKey();
       var cost = switchCost(repeatTimes, switchTimes);
       var summary = el("div", "drill-summary");
       summary.appendChild(el("div", "drill-state", "Set complete"));
@@ -1037,8 +1383,22 @@
       container.appendChild(summary);
       if (opts.onComplete) opts.onComplete({ drillId: "switching", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: TRIALS, accuracy: correctCount / TRIALS, switchCost: cost } });
     }
+    /* Two options, one digit each, in the order they are drawn. The rule changes
+       between trials but the count does not, so the handler reads the current
+       bar rather than a cached list. */
+    var unbindKey = bindKey(doc, function (e) {
+      var n = digitIndex(e.key);
+      if (stopped || n < 0) return;
+      /* Guard against the bar, not the cached option list. The list can be stale
+         whenever the bar has been emptied, and then bar.children[n] is undefined.
+         Checking the element we are about to click cannot be wrong. */
+      var btn = bar.children[n];
+      if (!btn) return;
+      e.preventDefault();
+      btn.click();
+    });
     trial();
-    return { stop: function () { stopped = true; } };
+    return { stop: function () { stopped = true; unbindKey(); } };
   }
 
   /* ---------- placeholders replaced in later tasks ---------- */

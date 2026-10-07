@@ -13,6 +13,7 @@ const noop = {
   getVolume: () => 0,
   isMuted: () => true,
   resume: () => {},
+  silence: () => {},
   isReady: () => false,
   ctx: null,
   master: null,
@@ -98,6 +99,13 @@ export const audio = (() => {
     return loadPromise;
   }
 
+  // Live source nodes, so a clip can be cut short. An AudioBufferSourceNode has
+  // no stop-all and the context has no per-clip pause, so without this the only
+  // way to silence a drill was to suspend the whole context, which also kills the
+  // sounds a stopped drill is finished playing. Tracked nodes drop off the set
+  // when they end on their own.
+  const live = new Set();
+
   function play(key, gain) {
     const buf = buffers.get(key);
     if (!buf) return false;
@@ -108,8 +116,22 @@ export const audio = (() => {
     g.gain.value = gain == null ? 1 : gain;
     src.connect(g);
     g.connect(master);
+    src.onended = () => {
+      live.delete(src);
+      try { src.disconnect(); g.disconnect(); } catch (e) { /* already torn down */ }
+    };
+    live.add(src);
     src.start();
     return true;
+  }
+
+  // Cut every clip that is still sounding, without touching the context. This is
+  // what a view calls when it is torn down mid-drill.
+  function silence() {
+    for (const src of live) {
+      try { src.onended = null; src.stop(); } catch (e) { /* not started, or done */ }
+    }
+    live.clear();
   }
 
   function applyGain() {
@@ -138,6 +160,7 @@ export const audio = (() => {
     resume() {
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
     },
+    silence,
     isReady: () => ready,
     ctx,
     master,
