@@ -1,7 +1,7 @@
 /* Neuralbase v2 dashboard view.
-   render(container, ctx) builds a command panel: the goal ring and the next action
-   sit at the top, the quiet readout strip sits under them, and the history cards
-   stay at the bottom.
+   render(container, ctx) builds a command page: a left aligned head, a hero card
+   that carries the goal ring and the one action, a column of readings beside it,
+   the set of drills for today, the 14 day picture, and the daily board line.
 
    ctx = { user, profile, db, api, audio, themes, motion, navigate }
 
@@ -229,60 +229,72 @@ function injectStyles() {
   var s = document.createElement("style");
   s.id = "cortex-dash-styles";
   s.textContent = [
-    ".dash{display:flex;flex-direction:column;gap:14px}",
-    /* heading block: one centered stack, eyebrow over title over lead */
-    ".dash-head{display:flex;flex-direction:column;align-items:center;gap:7px}",
+    /* The page is a left aligned column with a fixed measure, so the head has a
+       spine and the bands below share one width instead of drifting center. */
+    ".dash{display:flex;flex-direction:column;gap:var(--gap-4);max-width:980px;margin-inline:auto}",
+    ".dash-head{display:flex;flex-direction:column;gap:3px}",
     ".dash-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim)}",
-    ".dash-title{margin:0;font-size:20px;font-weight:600;letter-spacing:-.015em}",
-    ".dash-lead{margin:0;max-width:46ch;color:var(--muted);font-size:13px;line-height:1.55}",
-    /* the command: ring, one line, one button. Nothing else competes up here. */
-    ".dash-panel{display:flex;flex-direction:column;align-items:center;gap:15px;padding:22px 20px 20px}",
+    ".dash-title{margin:0;font-size:24px;font-weight:600;letter-spacing:-.02em}",
+    /* Two bands: the command on the left, the readings on the right. */
+    ".dash-main{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:var(--gap-4);align-items:stretch}",
+    ".dash-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px 22px}",
     ".dash-panel-goal{display:flex;flex-direction:column;align-items:center;gap:11px}",
-    ".dash-rule{width:46px;height:1px;background:var(--line2);border:0}",
-    ".dash-plan{display:flex;flex-direction:column;align-items:center;gap:12px;min-width:0;max-width:48ch}",
-    /* the plain sentence the owner reads: what is done, what is left */
-    ".dash-goal-say{margin:0;font-size:15px;font-weight:600;line-height:1.45;color:var(--ink);text-align:center;max-width:34ch}",
-    ".dash-goal-cap{margin:0;font-size:12px;line-height:1.45;color:var(--dim);text-align:center;max-width:42ch}",
-    ".dash-ring{position:relative;width:140px;height:140px;flex:none}",
+    ".dash-ring{position:relative;width:150px;height:150px;flex:none}",
     ".dash-ring svg{width:100%;height:100%;display:block}",
     ".dash-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}",
-    ".dash-ring-num{--nb-readout:44px}",
+    ".dash-ring-num{--nb-readout:46px}",
     ".dash-ring-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);text-align:center}",
     ".dash-over{position:absolute;top:-2px;right:-2px;font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--panel);border:1px solid var(--accent-edge);border-radius:999px;padding:1px 6px}",
-    ".dash-start{display:inline-flex;align-items:center;justify-content:center;min-width:212px;padding:11px 18px;font-size:14px}",
-    /* record moment: one precise line, no celebration furniture */
-    ".dash-pr2{display:flex;gap:9px;align-items:baseline;justify-content:center;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}",
+    ".dash-goal-say{margin:0;font-size:16px;font-weight:600;line-height:1.4;color:var(--ink);text-align:center;max-width:32ch}",
+    ".dash-goal-cap{margin:0;font-size:12px;line-height:1.45;color:var(--dim);text-align:center;max-width:40ch}",
+    ".dash-start{display:inline-flex;align-items:center;justify-content:center;min-width:230px;padding:12px 20px;font-size:14px}",
+    /* Record moment: one precise line, no celebration furniture. */
+    ".dash-pr2{display:flex;gap:8px;align-items:baseline;justify-content:center;flex-wrap:wrap;width:100%;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}",
     ".dash-pr2 b{font-weight:600;color:var(--ink)}",
     ".dash-pr2-v{font-family:var(--mono);font-size:16px;color:var(--ink);font-variant-numeric:tabular-nums}",
     ".dash-pr2-when{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.05em}",
-    /* readout: three numbers, centered labels, one legend row */
-    ".dash-read{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}",
-    ".dash-read-l{display:flex;align-items:center;justify-content:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}",
-    ".nb-readout.dash-read-v{--nb-readout:26px}",
-    ".dash-read-c{text-align:center;font-size:13px;color:var(--dim);line-height:1.35}",
-    ".dash-notes{margin:11px 0 0;display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center}",
-    ".dash-note{margin:0;font-size:13px;color:var(--muted);line-height:1.5;max-width:52ch}",
+    /* Readings: three rows, the value right aligned, a rule between them. */
+    ".dash-stats{display:flex;flex-direction:column}",
+    ".dash-stats-list{display:flex;flex-direction:column}",
+    ".dash-stat{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px solid var(--line)}",
+    ".dash-stats-list .dash-stat:last-child{border-bottom:0}",
+    ".dash-stat-txt{display:flex;flex-direction:column;gap:2px;min-width:0}",
+    ".dash-stat-l{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}",
+    ".dash-stat-c{font-size:12px;color:var(--dim)}",
+    ".dash-stat-v{font-family:var(--mono);font-size:28px;font-weight:500;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink);flex:none}",
+    ".dash-notes{margin:12px 0 0;display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--line)}",
+    ".dash-note{margin:0;font-size:13px;color:var(--muted);line-height:1.5}",
     ".dash-note b{font-weight:600;color:var(--ink)}",
-    ".dash-freeze{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:2px}",
+    ".dash-freeze{display:flex;align-items:center;gap:10px;flex-wrap:wrap}",
     ".dash-freeze-num{--nb-readout:22px;color:var(--accent)}",
     ".dash-freeze-btn{background:none;border:1px solid var(--line2);color:var(--ink);padding:7px 13px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .15s ease,color .15s ease}",
     ".dash-freeze-btn:hover{border-color:var(--accent-edge);color:var(--accent)}",
-    /* daily board, one row under the spark */
-    ".dash-board{display:flex;align-items:baseline;justify-content:center;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}",
+    /* The set. Three tiles in a row, so the middle drill sits in the middle. */
+    ".dash-plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}",
+    ".dash-tile{display:flex;align-items:center;gap:11px;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);padding:12px}",
+    ".dash-tile.done{opacity:.62}",
+    ".dash-tile-txt{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}",
+    ".dash-tile-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+    ".dash-tile-trains{font-size:12px;color:var(--muted);line-height:1.35}",
+    ".dash-tile-done{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent-edge);background:var(--accent-soft);border-radius:999px;padding:2px 7px;flex:none}",
+    /* The 14 day picture: thin bars, not blocks. */
+    ".dash-spark .chart-col{height:72px}",
+    ".dash-spark .chart-barwrap{justify-content:center}",
+    ".dash-spark .chart-bar{max-width:22px;border-radius:5px}",
+    ".dash-spark .chart-col.today .chart-bar{box-shadow:inset 0 0 0 1px var(--accent-edge)}",
+    /* An empty card is a strip, not a box: heading and one line share a row. */
+    ".dash-strip{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:12px 14px}",
+    ".dash-strip .card-head{margin:0;flex:none}",
+    /* Daily board: one quiet row under the chart. */
+    ".dash-board{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}",
     ".dash-board-link{background:none;border:0;padding:0;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer}",
     ".dash-board-link:hover{text-decoration:underline}",
     ".dash-board-rank{font-family:var(--mono);font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}",
     ".dash-board-rank.top{color:var(--accent)}",
     ".dash-board-rank.none{font-family:var(--sans);color:var(--dim)}",
     ".dash-board-note{color:var(--dim)}",
-    /* the 14-day spark, the one quiet picture of whether you are keeping it up */
-    ".dash-spark-card{margin-top:0}",
-    ".dash-spark .chart-col{height:64px}",
-    ".dash-spark .chart-col.today .chart-bar{box-shadow:inset 0 0 0 1px var(--accent-edge)}",
-    /* An empty card is a strip, not a box: heading and one line share a row. */
-    ".dash-strip{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:12px 14px}",
-    ".dash-strip .card-head{margin:0;flex:none}",
-    "@media(max-width:560px){.dash-panel{padding:18px 14px 16px}.dash-read{grid-template-columns:1fr}.dash-read-cell{border-right:0;border-bottom:1px solid var(--line)}.dash-read-cell:last-child{border-bottom:0}.dash-ring{width:120px;height:120px}.dash-ring-num{--nb-readout:36px}.nb-readout.dash-read-v{--nb-readout:22px}.dash-start{min-width:0;width:100%}}"
+    "@media(max-width:820px){.dash-main{grid-template-columns:minmax(0,1fr)}.dash-plan-grid{grid-template-columns:minmax(0,1fr)}.dash-ring{width:132px;height:132px}.dash-ring-num{--nb-readout:40px}}",
+    "@media(max-width:560px){.dash-hero{padding:18px 14px}.dash-stat-v{font-size:24px}.dash-start{min-width:0;width:100%}}"
   ].join("");
   document.head.appendChild(s);
 }
@@ -379,38 +391,15 @@ function buildGoalBlock(ctx, n, goal, reduced, isNew) {
   return block;
 }
 
-/* One card, one command. The ring is the loud element, a single line says what
-   the plan is, and one button starts it. The drill list used to live here and
-   competed with both, so it is gone; per-drill state is still read, it just
-   decides which drills the plan still owes and what the button says. */
-function buildPanel(ctx, reg, state, sessionsToday, runsToday, goal, reduced, isNew) {
-  var card = h("div", "card dash-panel");
+/* The hero card: the ring, one line, the record moment when there is one, and one
+   button. Nothing else competes for the first look. */
+function buildHero(ctx, reg, state, ids, left, sessionsToday, goal, reduced, isNew) {
+  var card = h("div", "card dash-hero");
   card.appendChild(buildGoalBlock(ctx, sessionsToday.length, goal, reduced, isNew));
-  card.appendChild(h("div", "dash-rule"));
-
-  var done = {};
-  var i, j;
-  for (i = 0; i < runsToday.length; i++) {
-    var id = runsToday[i].drill_id || runsToday[i].drillId;
-    if (id) done[id] = 1;
-  }
-  for (i = 0; i < sessionsToday.length; i++) {
-    var drills = sessionsToday[i].drills || [];
-    for (j = 0; j < drills.length; j++) done[drills[j]] = 1;
-  }
-
-  var ids = planIds(state, reg);
-  var left = [];
-  for (i = 0; i < ids.length; i++) if (!done[ids[i]]) left.push(ids[i]);
-
-  var plan = h("div", "dash-plan");
 
   var recLine = buildRecord(reg, state, Date.now());
-  if (recLine) plan.appendChild(recLine);
+  if (recLine) card.appendChild(recLine);
 
-  /* The label says the outcome: how many drills starting now will run. When the
-     plan is spent it says so and offers a second set, so the one button is never
-     a guess. */
   var nLeft = left.length;
   var start = h("button", "btn-primary dash-start",
     nLeft === 1 ? "Start today's last drill"
@@ -424,24 +413,22 @@ function buildPanel(ctx, reg, state, sessionsToday, runsToday, goal, reduced, is
      says it does. */
   start.addEventListener("click", function () {
     try {
-      localStorage.setItem(QUEUE_KEY, JSON.stringify({ ids: left.length ? left : ids, interleave: false }));
+      localStorage.setItem(QUEUE_KEY, JSON.stringify({ ids: nLeft ? left : ids, interleave: false }));
     } catch (e) { /* degrade to Train's own picker */ }
     go(ctx, "train");
   });
-  plan.appendChild(start);
-
-  card.appendChild(plan);
+  card.appendChild(start);
   return card;
 }
 
 /* ---------------- today's plan ---------------- */
 
 function accessibleIds(plan) {
-  var list = (typeof globalThis !== "undefined" && globalThis.Content && globalThis.Content.DRILLS) || [];
+  var list = (typeof globalThis !== 'undefined' && globalThis.Content && globalThis.Content.DRILLS) || [];
   var ids = [];
   for (var i = 0; i < list.length; i++) ids.push(list[i].id);
-  var E = (typeof globalThis !== "undefined" && globalThis.Engine) || null;
-  if (!E || typeof E.canAccess !== "function") return ids;
+  var E = (typeof globalThis !== 'undefined' && globalThis.Engine) || null;
+  if (!E || typeof E.canAccess !== 'function') return ids;
   var out = [];
   for (var j = 0; j < ids.length; j++) {
     if (E.canAccess(ids[j], plan)) out.push(ids[j]);
@@ -463,27 +450,70 @@ function planIds(state, reg) {
   return fallback;
 }
 
-/* ---------------- readout strip ---------------- */
+/* The owner wants Speed of Processing to sit in the middle of the set, so when it
+   is in the plan it takes the center slot and the others move around it. The queue
+   uses this same order, so the tiles show what will actually run. */
+var MIDDLE_DRILL = "ufov";
+export function orderPlan(ids) {
+  var list = (ids || []).slice();
+  var i = list.indexOf(MIDDLE_DRILL);
+  if (i === -1) return list;
+  list.splice(i, 1);
+  list.splice(Math.floor(list.length / 2), 0, MIDDLE_DRILL);
+  return list;
+}
 
-function readoutCell(label, cap, ctx, opts) {
+/* The set the button will run, shown as tiles. Each tile names the drill and what
+   it trains, and the one already done today is dimmed. */
+function buildPlanCard(reg, ids, done) {
+  var card = h("div", "card dash-plan");
+  var head = h("div", "card-head");
+  head.appendChild(h("h3", null, "Today's set"));
+  var n = ids.length;
+  head.appendChild(h("span", "cap", n + (n === 1 ? " drill" : " drills") + ", in order"));
+  card.appendChild(head);
+
+  var grid = h("div", "dash-plan-grid");
+  for (var i = 0; i < ids.length; i++) {
+    var m = metaFor(reg, ids[i]);
+    var isDone = !!done[ids[i]];
+    var tile = h("div", "dash-tile" + (isDone ? " done" : ""));
+    tile.appendChild(iconEl(m.icon));
+    var txt = h("div", "dash-tile-txt");
+    txt.appendChild(h("span", "dash-tile-name", m.name));
+    txt.appendChild(h("span", "dash-tile-trains", m.trains));
+    tile.appendChild(txt);
+    if (isDone) tile.appendChild(h("span", "dash-tile-done", "Done"));
+    grid.appendChild(tile);
+  }
+  card.appendChild(grid);
+  return card;
+}
+
+/* ---------------- readings ---------------- */
+
+function statRow(label, cap, ctx, opts) {
   opts = opts || {};
-  var cell = h("div", "nb-readout-cell dash-read-cell");
-  var l = h("span", "dash-read-l");
-  /* the hollow tick: an open marker, never a warning color */
+  var row = h("div", "dash-stat");
+  var txt = h("div", "dash-stat-txt");
+  var l = h("span", "dash-stat-l");
+  /* The hollow tick means the run is still open. It never warns, never counts
+     down, and it is the only thing that changes when today is still untouched. */
   if (opts.tick) l.appendChild(h("span", "nb-tick dot"));
   l.appendChild(document.createTextNode(label));
-  cell.appendChild(l);
-  var v = h("span", "nb-readout dash-read-v");
+  txt.appendChild(l);
+  if (cap) txt.appendChild(h("span", "dash-stat-c", cap));
+  row.appendChild(txt);
+  var v = h("span", "dash-stat-v");
   if (opts.live) v.setAttribute("aria-live", "polite");
-  cell.appendChild(v);
-  if (cap) cell.appendChild(h("span", "dash-read-c", cap));
+  row.appendChild(v);
   var suffix = opts.suffix || "";
   if (ctx.motion && typeof ctx.motion.countUp === "function") {
     ctx.motion.countUp(v, opts.value, { duration: 420, suffix: suffix });
   } else {
     v.textContent = String(opts.value) + suffix;
   }
-  return { cell: cell, value: v };
+  return row;
 }
 
 /* Spent or refused, said in words. The freeze reading carries aria-live, so the
@@ -494,9 +524,16 @@ function announceFreeze(text) {
   if (freezeLive) freezeLive.textContent = text;
 }
 
-function buildReadout(ctx, state, hasHistory, now, onSpend) {
+/* The card beside the hero answers one question: am I keeping it up. Three
+   readings, a plain note when today is still open, and the freeze control when a
+   run is at stake. */
+function buildReadings(ctx, state, hasHistory, now, onSpend) {
   var S = globalThis.Store;
-  var strip = h("div", "dash-read");
+  var card = h("div", "card dash-stats");
+  var head = h("div", "card-head");
+  head.appendChild(h("h3", null, "Your habit"));
+  head.appendChild(h("span", "cap", "The last 30 days"));
+  card.appendChild(head);
 
   var cur = S ? S.streak(state, now) : 0;
   var longest = S ? S.longestStreak(state) : 0;
@@ -504,21 +541,18 @@ function buildReadout(ctx, state, hasHistory, now, onSpend) {
   var atRisk = S ? S.streakAtRisk(state, now) : false;
   var freezes = Math.max(0, state.streakFreezes || 0);
 
-  /* The hollow tick means the run is still open. It never warns, never counts
-     down, and it is the only thing that changes when today is still untouched. */
-  strip.appendChild(readoutCell("Streak", cur === 1 ? "day so far" : "days so far", ctx, {
+  var list = h("div", "dash-stats-list");
+  list.appendChild(statRow("Streak", cur === 1 ? "day so far" : "days so far", ctx, {
     value: cur, tick: atRisk, live: true
-  }).cell);
-
-  /* Three readings answer the question the dashboard asks: am I keeping it up.
-     Longest and all-time runs live in Progress, where the detail belongs. */
-  strip.appendChild(readoutCell("Longest", "days, best run", ctx, { value: longest }).cell);
-
-  /* The label and caption read together: "Trained 50% of the last 30 days." No
-     metric name the owner has not met, just the plain share. */
-  strip.appendChild(readoutCell("Trained", "of the last 30 days", ctx, {
+  }));
+  /* Three readings answer the question the dashboard asks. Longest and all-time
+     runs live in Progress, where the detail belongs. */
+  list.appendChild(statRow("Longest", "days, best run", ctx, { value: longest }));
+  /* The label and caption read together: "Trained 50% of the last 30 days." */
+  list.appendChild(statRow("Trained", "of the last 30 days", ctx, {
     value: Math.round(cons.rate * 100), suffix: "%"
-  }).cell);
+  }));
+  card.appendChild(list);
 
   var notes = h("div", "dash-notes");
   if (atRisk) {
@@ -535,7 +569,7 @@ function buildReadout(ctx, state, hasHistory, now, onSpend) {
   var gap = S && typeof S.streakGapDay === "function" ? S.streakGapDay(state, now) : null;
   if (atRisk && freezes > 0 && gap && S && typeof S.applyFreeze === "function") {
     var row = h("div", "dash-freeze");
-    /* The count rides with the control rather than taking a strip tile, and it
+    /* The count rides with the control rather than taking a row of its own, and it
        is the live region a spend is announced into. */
     var live = h("span", "nb-readout dash-freeze-num", String(freezes));
     live.setAttribute("aria-live", "polite");
@@ -567,10 +601,8 @@ function buildReadout(ctx, state, hasHistory, now, onSpend) {
     notes.appendChild(row);
   }
 
-  var wrap = document.createDocumentFragment();
-  wrap.appendChild(strip);
-  wrap.appendChild(notes);
-  return wrap;
+  if (notes.firstChild) card.appendChild(notes);
+  return card;
 }
 
 /* ---------------- record moment, once and precisely ---------------- */
@@ -655,7 +687,7 @@ function buildSpark(sessions) {
   return card;
 }
 
-/* ---------------- daily board, demoted to one line ---------------- */
+/* ---------------- daily board, one line ---------------- */
 
 /* Leaderboards have their own view, so the dashboard keeps only the one reading
    a person might want while deciding to train: where they stand today. One row,
@@ -747,41 +779,52 @@ function paint(container, ctx, data) {
 
   var isNew = !state.records.length && !state.sessions.length;
 
-  /* One centered column, one question. The view-mid and mid-head classes come
-     from styles.css so every view centers the same way; anything specific to
-     this view is scoped to a dash- class above. */
-  var root = h("div", "dash view-mid");
+  /* What today still owes, in the order the set will run. Speed of Processing takes
+     the middle slot when it is in the plan. */
+  var ids = orderPlan(planIds(state, reg));
+  var done = {}, i, j;
+  for (i = 0; i < runsToday.length; i++) {
+    var id = runsToday[i].drill_id || runsToday[i].drillId;
+    if (id) done[id] = 1;
+  }
+  for (i = 0; i < sessionsToday.length; i++) {
+    var drills = sessionsToday[i].drills || [];
+    for (j = 0; j < drills.length; j++) done[drills[j]] = 1;
+  }
+  var left = [];
+  for (i = 0; i < ids.length; i++) if (!done[ids[i]]) left.push(ids[i]);
 
-  var head = h("div", "mid-head dash-head");
+  /* One left aligned column. The head names the day, the hero is the one action,
+     the readings sit beside it, then the set, the picture, and the board line. */
+  var root = h("div", "dash");
+
+  var head = h("div", "dash-head");
   var d = new Date(now);
   head.appendChild(h("span", "dash-eyebrow",
     WEEKDAYS[(d.getDay() + 6) % 7] + " " + d.getDate() + " " + MONTHS[d.getMonth()]));
   var title = h("h1", "view-title dash-title", "Today");
   title.tabIndex = -1;
   head.appendChild(title);
-  /* No lead line. The reason the plan holds those three drills is a fact about the
-     software, not something the reader needs in order to start, and Train already
-     shows the actual drill names. The button below says what it does. */
   root.appendChild(head);
-  root.appendChild(buildPanel(ctx, reg, state, sessionsToday, runsToday, goal, reduced, isNew));
-  /* Spending a freeze writes the store and mutates state, so only the readout is
+
+  var main = h("div", "dash-main");
+  main.appendChild(buildHero(ctx, reg, state, ids, left, sessionsToday, goal, reduced, isNew));
+
+  /* Spending a freeze writes the store and mutates state, so only the readings are
      swapped, from the same state object. A full repaint would need the run rows,
      which paint() takes from the store rather than from this closure. */
-  var readout = h("div", "dash-readout");
-  function repaintReadout() {
-    var next = buildReadout(ctx, state, !isNew, now, repaintReadout);
-    while (readout.firstChild) readout.removeChild(readout.firstChild);
-    while (next.firstChild) readout.appendChild(next.firstChild);
+  var readings = h("div", "dash-readings");
+  function repaintReadings() {
+    var next = buildReadings(ctx, state, !isNew, now, repaintReadings);
+    while (readings.firstChild) readings.removeChild(readings.firstChild);
+    readings.appendChild(next);
   }
-  repaintReadout();
-  root.appendChild(readout);
+  repaintReadings();
+  main.appendChild(readings);
+  root.appendChild(main);
 
-  /* Below the command there is one picture and one line. The recent-runs feed
-     and the leaderboard card used to sit here too, and both already have a home
-     in Progress and Leaderboards. */
-  var spark = buildSpark(state.sessions);
-  spark.classList.add("dash-spark-card");
-  root.appendChild(spark);
+  root.appendChild(buildPlanCard(reg, ids, done));
+  root.appendChild(buildSpark(state.sessions));
   root.appendChild(buildBoard(ctx, reg, runs));
 
   container.textContent = "";

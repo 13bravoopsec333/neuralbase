@@ -25,6 +25,7 @@ const DEMO_KEYS = {
   profile: 'cortex.demo.profile',
   decks: 'cortex.demo.decks',
   kudos: 'cortex.demo.kudos',
+  redeemed: 'cortex.demo.redeemed',
 };
 
 const ANON_STORE_KEY = 'cortex.app';
@@ -829,6 +830,42 @@ export async function toggleKudos(runClientId) {
     return { ok: true, given: data === true };
   } catch (e) {
     warn('toggleKudos', e);
+    return fail(e);
+  }
+}
+
+/* Redeeming a Pro key. plan is server-owned, so this is the only write path for
+   it and it goes through redeem_pro_key(). There is deliberately no updateProfile
+   fallback: a key either validates or it does not. */
+export async function redeemProKey(key) {
+  const clean = String(key == null ? '' : key).trim().toUpperCase();
+  if (!clean) return fail('empty_key');
+  if (clean.length > 64) return fail('invalid_key');
+
+  if (isDemo()) {
+    /* Demo has no key table, so any correctly-shaped code unlocks locally. The
+       shape check keeps the demo honest about what a real key looks like. */
+    if (!/^NB(-[A-F0-9]{4}){3}$/.test(clean)) return fail('invalid_key');
+    const prof = readJSON(DEMO_KEYS.profile, null);
+    if (!prof) return fail('backend_unavailable');
+    prof.plan = 'pro';
+    writeJSON(DEMO_KEYS.profile, prof);
+    writeJSON(DEMO_KEYS.redeemed, clean);
+    return { ok: true, plan: 'pro', demo: true };
+  }
+
+  const client = getClient();
+  if (!client) return fail('backend_unavailable');
+
+  try {
+    const { data, error } = await client.rpc('redeem_pro_key', { p_key: clean });
+    if (error) {
+      warn('redeemProKey', error);
+      return fail(error);
+    }
+    return { ok: true, plan: (data && data.plan) === 'pro' ? 'pro' : 'free' };
+  } catch (e) {
+    warn('redeemProKey', e);
     return fail(e);
   }
 }

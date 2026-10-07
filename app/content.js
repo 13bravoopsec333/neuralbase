@@ -16,7 +16,7 @@
     freePlan: "Free",
     proPlan: "Pro",
     proPrice: "$4.99 / month",
-    proCta: "Go Pro",
+    proCta: "Unlock Pro",
     freeNote: "Free includes Executive N-Back, Speed of Processing, and Spaced Retrieval, with four of the six n-back modes.",
     proNote: "Pro unlocks all nine drills, the circuit builder, adaptive mix, full history, and the arithmetic and spatial n-back modes.",
     locked: "Pro",

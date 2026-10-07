@@ -51,6 +51,14 @@ function injectStyles() {
     ".pr-prose{margin:var(--pr-in) 0 0;font-size:13px;line-height:1.55;color:var(--muted);text-wrap:pretty}",
     ".pr-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:var(--pr-sec)}",
     ".pr-note{margin:var(--pr-sec) 0 0;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim);line-height:1.55;max-width:62ch;text-wrap:pretty}",
+    ".pr-redeem{margin-top:var(--pr-in);display:flex;flex-wrap:wrap;gap:10px;align-items:center}",
+    ".pr-key{flex:1 1 190px;min-width:0;min-height:42px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:13px;letter-spacing:.02em}",
+    ".pr-key::placeholder{color:var(--dim)}",
+    ".pr-key:focus{outline:none;border-color:var(--lime-edge);box-shadow:0 0 0 3px var(--accent-glow)}",
+    ".pr-msg{flex:1 1 100%;margin:0;font-size:12px;line-height:1.4;color:var(--muted);min-height:1em}",
+    ".pr-msg.is-bad{color:var(--warn)}",
+    ".pr-link{color:var(--ink);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}",
+    "@media (prefers-reduced-motion:no-preference){.pr-msg{transition:opacity .15s}}",
     "@media (max-width:430px){.pr-row{grid-template-columns:1fr;gap:2px}.pr-k{padding-top:6px}}"
   ].join("");
   document.head.appendChild(s);
@@ -116,7 +124,7 @@ function backButton(ctx) {
 }
 
 /* ---------- Free: the upgrade choice, the only place Free versus Pro belongs ---------- */
-function buildFree(body, ctx) {
+function buildFree(body, ctx, repaint) {
   /* The drill names and the history length are on the Free card immediately below,
      so the lead keeps only the one fact that card does not carry: how much of the
      n-back mode set Free opens up. */
@@ -142,8 +150,82 @@ function buildFree(body, ctx) {
   actions.appendChild(backButton(ctx));
   body.appendChild(actions);
 
-  body.appendChild(el("p", "pr-note",
-    "Pro is not purchasable yet. Payments are not connected, so there is nothing to buy here and no way to start a subscription. Nothing on this page can change your plan."));
+  body.appendChild(redeemCard(ctx, repaint));
+}
+
+/* ---------- redeeming a key ---------- */
+
+var DISCORD_URL = "https://discord.gg/nootropics";
+
+/* The upgrade path: paste a key. Pro is granted by the server, so this cannot
+   write plan itself; it calls redeemProKey and lets the server decide. */
+function redeemCard(ctx, repaint) {
+  var card = el("section", "card pr-sec");
+  card.appendChild(el("h3", null, "Get Pro"));
+
+  var form = el("form", "pr-redeem");
+  form.setAttribute("novalidate", "");
+
+  var input = document.createElement("input");
+  input.type = "text";
+  input.className = "pr-key";
+  input.name = "key";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = "NB-XXXX-XXXX-XXXX";
+  input.setAttribute("aria-label", "Pro key");
+  form.appendChild(input);
+
+  var go = el("button", "btn-primary", "Unlock Pro");
+  go.type = "submit";
+  form.appendChild(go);
+
+  var msg = el("p", "pr-msg");
+  msg.setAttribute("role", "status");
+  form.appendChild(msg);
+  card.appendChild(form);
+
+  var ask = el("p", "pr-note",
+    "No key yet? Ask in Discord: ");
+  var link = el("a", "pr-link", "discord.gg/nootropics");
+  link.href = DISCORD_URL;
+  link.rel = "noopener noreferrer";
+  link.target = "_blank";
+  ask.appendChild(link);
+  card.appendChild(ask);
+
+  function fail(msgText) {
+    msg.textContent = msgText;
+    msg.classList.add("is-bad");
+    input.focus();
+  }
+
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    msg.classList.remove("is-bad");
+    msg.textContent = "";
+
+    if (!ctx.db || typeof ctx.db.redeemProKey !== "function") {
+      fail("Keys need a signed-in account.");
+      return;
+    }
+
+    go.disabled = true;
+    Promise.resolve(ctx.db.redeemProKey(input.value)).then(function (res) {
+      go.disabled = false;
+      if (!res || !res.ok) {
+        fail("That key is not valid.");
+        return;
+      }
+      if (ctx.profile) ctx.profile.plan = res.plan;
+      msg.textContent = "Pro is on.";
+      /* Repaint in place so the reader sees the Pro page rather than a reload
+         that discards the message they just earned. */
+      if (typeof repaint === "function") repaint();
+    });
+  });
+
+  return card;
 }
 
 /* ---------- Pro: a billing and subscription page, no tier comparison ---------- */
@@ -218,7 +300,7 @@ export function render(container, ctx) {
     body.replaceChildren();
     var plan = (ctx.profile && ctx.profile.plan) === "pro" ? "pro" : "free";
     if (plan === "pro") buildPro(body, ctx);
-    else buildFree(body, ctx);
+    else buildFree(body, ctx, paint);
     if (focusTitle) {
       var h = body.querySelector(".view-title");
       if (h && h.focus) h.focus();
