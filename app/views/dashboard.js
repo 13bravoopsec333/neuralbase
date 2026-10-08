@@ -1,14 +1,17 @@
 /* Neuralbase v2 dashboard view.
-   render(container, ctx) builds a command page: a left aligned head, a hero card
-   that carries the goal ring and the one action, a column of readings beside it,
-   the set of drills for today, the 14 day picture, and the daily board line.
+   render(container, ctx) builds the habit page: a thin header strip holding the
+   streak, the goal ring and the next drill, then the month calendar as the hero,
+   a slim per-drill consistency row, and the friends row.
 
    ctx = { user, profile, db, api, audio, themes, motion, navigate }
 
-   This module also exports the pure helpers the Progress view reuses, so the two
-   views share one normalizer instead of two copies. It never paints on import.
-   All text is set with textContent, never innerHTML, apart from the drill mark SVG
-   that Content ships. Reduced motion is honored through ctx.motion.reduced(). */
+   This module also exports the pure helpers the Progress and Profile views reuse,
+   so the views share one normalizer instead of two copies. It never paints on
+   import. All text is set with textContent, never innerHTML, apart from the drill
+   mark SVG that Content ships (and the chevrons built with createElementNS here).
+   Reduced motion is honored through ctx.motion.reduced(). */
+
+import { buildFriendsPanel } from '../ui/friends.js';
 
 var STORE_KEY = 'cortex.store';
 var QUEUE_KEY = 'cortex.train.queue';
@@ -16,6 +19,17 @@ var DAY = 86400000;
 var PLAN_SIZE = 3;
 var WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+var MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+var WD_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+var CAL_HEADS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+var DRILL_WINDOW = 30;
+
+/* Compact labels for the nine drills in the consistency row. The full name rides
+   in the title attribute, so the row stays one line wide without inventing names. */
+var SHORT_NAME = {
+  nback: 'N-Back', ufov: 'Processing', palace: 'Palace', reasoning: 'Reasoning',
+  spaced: 'Retrieval', switching: 'Switching', sart: 'Signal', crt: 'Reaction', math: 'Arithmetic'
+};
 
 /* ---------------- tiny DOM helpers ---------------- */
 
@@ -64,6 +78,23 @@ export function iconEl(markup) {
   s.setAttribute('aria-hidden', 'true');
   if (markup) s.innerHTML = markup;
   return s;
+}
+
+/* A chevron built node by node, so the rule about innerHTML stays true. */
+function chevron(dir) {
+  var NS = "http://www.w3.org/2000/svg";
+  var svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  var p = document.createElementNS(NS, "path");
+  p.setAttribute("d", dir === "prev" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6");
+  svg.appendChild(p);
+  return svg;
 }
 
 /* ---------------- date helpers (local days, not UTC) ---------------- */
@@ -229,80 +260,119 @@ function injectStyles() {
   var s = document.createElement("style");
   s.id = "cortex-dash-styles";
   s.textContent = [
-    /* The page is a left aligned column with a fixed measure, so the head has a
-       spine and the bands below share one width instead of drifting center. */
-    ".dash{display:flex;flex-direction:column;gap:var(--gap-4);max-width:980px;margin-inline:auto}",
-    ".dash-head{display:flex;flex-direction:column;gap:3px}",
-    ".dash-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim)}",
-    ".dash-title{margin:0;font-size:24px;font-weight:600;letter-spacing:-.02em}",
-    /* Two bands: the command on the left, the readings on the right. */
-    ".dash-main{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:var(--gap-4);align-items:stretch}",
-    ".dash-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px 22px}",
+    /* One column, one gap. The calendar stretches to take the room the shell
+       leaves, so a wide screen is a filled page and not a short stack. */
+    ".dash{display:flex;flex-direction:column;gap:var(--gap-2);max-width:1080px;margin-inline:auto;flex:1 1 auto;min-width:0}",
+
+    /* ---- header strip: streak, goal, next ---- */
+    ".dash-strip{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.5fr);gap:var(--gap-3);min-width:0}",
+    ".hs{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:11px 14px;display:flex;align-items:center;gap:14px;min-width:0}",
+    ".hs-label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}",
+    ".hs-streak{flex-direction:column;align-items:stretch;gap:8px}",
+    ".hs-row{display:flex;align-items:flex-end;gap:14px;min-width:0}",
+    ".hs-stat{display:flex;flex-direction:column;gap:2px;flex:none}",
+    ".streak-n{font-family:var(--mono);font-size:34px;font-weight:500;letter-spacing:-.03em;line-height:.95;font-variant-numeric:tabular-nums}",
+    ".streak-unit{font-size:12px;color:var(--muted)}",
+    ".spark{display:flex;align-items:flex-end;gap:2px;height:30px;flex:1;min-width:0}",
+    ".spark i{flex:1;min-height:3px;background:var(--bar);border-radius:2px}",
+    ".spark i.on{background:var(--lime)}",
+    ".spark i.now{background:var(--warn)}",
+
+    /* The ring block the goal builder draws. The ring is the loud element; the
+       plain sentence under it says in words what the ring counts. */
     ".dash-panel-goal{display:flex;flex-direction:column;align-items:center;gap:11px}",
     ".dash-ring{position:relative;width:150px;height:150px;flex:none}",
     ".dash-ring svg{width:100%;height:100%;display:block}",
     ".dash-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}",
     ".dash-ring-num{--nb-readout:46px}",
-    
     ".dash-over{position:absolute;top:-2px;right:-2px;font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--panel);border:1px solid var(--accent-edge);border-radius:999px;padding:1px 6px}",
     ".dash-goal-say{margin:0;font-size:16px;font-weight:600;line-height:1.4;color:var(--ink);text-align:center;max-width:32ch}",
     ".dash-goal-cap{margin:0;font-size:12px;line-height:1.45;color:var(--dim);text-align:center;max-width:40ch}",
-    ".dash-start{display:inline-flex;align-items:center;justify-content:center;min-width:230px;padding:12px 20px;font-size:14px}",
-    /* Record moment: one precise line, no celebration furniture. */
-    ".dash-pr2{display:flex;gap:8px;align-items:baseline;justify-content:center;flex-wrap:wrap;width:100%;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}",
-    ".dash-pr2 b{font-weight:600;color:var(--ink)}",
-    ".dash-pr2-v{font-family:var(--mono);font-size:16px;color:var(--ink);font-variant-numeric:tabular-nums}",
-    ".dash-pr2-when{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.05em}",
-    /* Readings: three rows, the value right aligned, a rule between them. */
-    /* The readings column stretches to the hero's height and spreads its rows over
-       it, so the two cards share one block instead of leaving a hole under the
-       shorter one. The rows carry their own rules, so spreading them reads as a
-       list with room in it, not as gaps. The wrapper and the card both have to
-       be flex for that: the grid stretches .dash-readings, and the card has to
-       fill what it is given. */
-    ".dash-readings{display:flex;flex-direction:column}",
-    ".dash-stats{display:flex;flex-direction:column;flex:1 1 auto}",
-    ".dash-stats-list{flex:1 1 auto;justify-content:space-evenly}",
-    ".dash-stats-list{display:flex;flex-direction:column}",
-    ".dash-stat{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px solid var(--line)}",
-    ".dash-stats-list .dash-stat:last-child{border-bottom:0}",
-    ".dash-stat-txt{display:flex;flex-direction:column;gap:2px;min-width:0}",
-    ".dash-stat-l{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}",
-    ".dash-stat-c{font-size:12px;color:var(--dim)}",
-    ".dash-stat-v{font-family:var(--mono);font-size:28px;font-weight:500;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink);flex:none}",
-    ".dash-notes{margin:12px 0 0;display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--line)}",
-    ".dash-note{margin:0;font-size:13px;color:var(--muted);line-height:1.5}",
-    ".dash-note b{font-weight:600;color:var(--ink)}",
-    ".dash-freeze{display:flex;align-items:center;gap:10px;flex-wrap:wrap}",
-    ".dash-freeze-num{--nb-readout:22px;color:var(--accent)}",
+
+    /* The same block, compacted for the strip: ring left, sentence right. */
+    ".hs-goal{justify-content:center}",
+    ".dash-panel-goal-sm{flex-direction:row;align-items:center;gap:12px;width:100%}",
+    ".dash-panel-goal-sm .dash-ring{width:54px;height:54px}",
+    ".dash-panel-goal-sm .dash-ring-num{--nb-readout:15px}",
+    ".dash-panel-goal-sm .dash-goal-say{font-size:13px;text-align:left;max-width:none}",
+    ".dash-panel-goal-sm .dash-goal-cap{display:none}",
+
+    ".hs-next{gap:12px}",
+    ".hs-copy{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}",
+    ".hs-next-name{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+    ".hs-next-trains{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+    ".dash-start{flex:none}",
+
+    /* Freeze control rides under the streak, only when a run is at stake. */
+    ".hs-freeze{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:8px}",
+    ".dash-freeze-num{--nb-readout:20px;color:var(--accent)}",
     ".dash-freeze-btn{background:none;border:1px solid var(--line2);color:var(--ink);padding:7px 13px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .15s ease,color .15s ease}",
     ".dash-freeze-btn:hover{border-color:var(--accent-edge);color:var(--accent)}",
-    /* The set. Three tiles in a row, so the middle drill sits in the middle. */
-    ".dash-plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap-3)}",
-    ".dash-tile{display:flex;align-items:center;gap:11px;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);padding:12px}",
-    ".dash-tile.done{opacity:.62}",
-    ".dash-tile-txt{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}",
-    ".dash-tile-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
-    ".dash-tile-trains{font-size:12px;color:var(--muted);line-height:1.35}",
-    ".dash-tile-done{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent-edge);background:var(--accent-soft);border-radius:999px;padding:2px 7px;flex:none}",
-    /* The 14 day picture: thin bars, not blocks. */
-    ".dash-spark .chart-col{height:72px}",
-    ".dash-spark .chart-barwrap{justify-content:center}",
-    ".dash-spark .chart-bar{max-width:22px;border-radius:5px}",
-    ".dash-spark .chart-col.today .chart-bar{box-shadow:inset 0 0 0 1px var(--accent-edge)}",
-    /* An empty card is a strip, not a box: heading and one line share a row. */
-    ".dash-strip{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:12px 14px}",
-    ".dash-strip .card-head{margin:0;flex:none}",
-    /* Daily board: one quiet row under the chart. */
-    ".dash-board{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}",
-    ".dash-board-link{background:none;border:0;padding:7px 0;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer}",
-    ".dash-board-link:hover{text-decoration:underline}",
-    ".dash-board-rank{font-family:var(--mono);font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}",
-    ".dash-board-rank.top{color:var(--accent)}",
-    ".dash-board-rank.none{font-family:var(--sans);color:var(--dim)}",
-    ".dash-board-note{color:var(--dim)}",
-    "@media(max-width:820px){.dash-main{grid-template-columns:minmax(0,1fr)}.dash-plan-grid{grid-template-columns:minmax(0,1fr)}.dash-ring{width:132px;height:132px}.dash-ring-num{--nb-readout:40px}}",
-    "@media(max-width:560px){.dash-hero{padding:18px 14px}.dash-stat-v{font-size:24px}.dash-start{min-width:0;width:100%}}"
+    ".dash-note{margin:0;font-size:12px;color:var(--muted);line-height:1.45}",
+    ".dash-note b{font-weight:600;color:var(--ink)}",
+
+    /* ---- calendar hero ---- */
+    ".dash-cal{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px var(--gap-4) var(--gap-3);display:flex;flex-direction:column;gap:10px;flex:1 1 auto;min-height:300px;min-width:0}",
+    ".cal-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}",
+    ".cal-month{margin:0;font-size:21px;font-weight:600;letter-spacing:-.015em}",
+    ".cal-sub{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.02em}",
+    ".cal-tools{margin-left:auto;display:flex;align-items:center;gap:8px}",
+    ".cal-icon{width:32px;height:32px;flex:none;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);display:grid;place-items:center;transition:border-color .15s ease,color .15s ease}",
+    ".cal-icon:hover{border-color:var(--lime-edge);color:var(--lime)}",
+    ".cal-icon svg{width:15px;height:15px;display:block}",
+    ".cal-today{padding:6px 11px;font-size:12px}",
+
+    ".cal-wd{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--gap-2)}",
+    ".cal-wd span{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding-left:3px}",
+    ".cal-wd span.we{color:var(--line2)}",
+
+    ".cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:1fr;gap:var(--gap-2);flex:1 1 auto;min-height:0}",
+    ".cal-cell{position:relative;border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:5px 9px;display:flex;flex-direction:column;gap:5px;min-width:0;overflow:hidden;transition:border-color .15s ease,background .15s ease}",
+    ".cal-cell-top{display:flex;align-items:baseline;justify-content:space-between;gap:6px}",
+    ".cal-d{font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1}",
+    ".cal-n{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums}",
+    ".cal-pips{display:flex;gap:3px;margin-top:auto}",
+    ".cal-pips i{flex:1;height:6px;border-radius:2px;background:var(--line2)}",
+    ".cal-pips i.on{background:var(--lime)}",
+    ".cal-cell-wd,.cal-cell-st{display:none}",
+    ".cal-cell.met{background:var(--lime-soft);border-color:var(--lime-edge)}",
+    ".cal-cell.met .cal-d{color:var(--ink)}",
+    ".cal-cell.adj{opacity:.45}",
+    ".cal-cell.today{border-color:var(--lime);background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--warn) 14%,transparent) 0 6px,transparent 6px 12px),var(--panel2);box-shadow:inset 0 0 0 1px var(--lime-edge)}",
+    ".cal-cell.today .cal-d,.cal-cell.today .cal-n{color:var(--ink)}",
+    ".cal-flag{display:none}",
+    ".cal-cell.today .cal-flag{display:block;position:absolute;right:7px;bottom:6px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}",
+
+    ".cal-foot{display:flex;align-items:center;gap:var(--gap-4);flex-wrap:wrap;border-top:1px solid var(--line);padding-top:10px}",
+    ".cal-legend{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted)}",
+    ".cal-k{display:inline-flex;align-items:center;gap:6px}",
+    ".cal-sw{width:14px;height:14px;border-radius:4px;flex:none;border:1px solid var(--line)}",
+    ".cal-sw.met{background:var(--lime-soft);border-color:var(--lime-edge)}",
+    ".cal-sw.today{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--warn) 30%,transparent) 0 4px,transparent 4px 8px);border-color:var(--lime)}",
+    ".cal-sw.up{background:var(--panel2)}",
+    ".cal-sum{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.02em;text-align:right}",
+    ".cal-sum b{color:var(--ink);font-weight:500}",
+
+    /* ---- slim rows: per-drill consistency and friends ---- */
+    ".dash-drills,.dash-friends{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:11px 14px;min-width:0}",
+    ".dash-row-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}",
+    ".dash-row-head h3{margin:0;font-size:13px;font-weight:600}",
+    ".dash-row-cap{font-size:11px;color:var(--dim)}",
+    ".dash-drill-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:12px}",
+    ".dc{display:flex;flex-direction:column;gap:5px;min-width:0}",
+    ".dc-top{display:flex;align-items:baseline;justify-content:space-between;gap:6px}",
+    ".dc-name{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+    ".dc-pct{font-family:var(--mono);font-size:11px;color:var(--ink);font-variant-numeric:tabular-nums;flex:none}",
+    ".dc-track{height:6px;border-radius:3px;background:var(--panel2);border:1px solid var(--line);overflow:hidden}",
+    ".dc-fill{height:100%;background:var(--lime);border-radius:3px}",
+    ".dash-friends-slot{min-width:0}",
+    ".dash-friends-fallback{margin:0 0 8px;font-size:13px;font-weight:600}",
+
+    /* Entrance: one orchestrated rise, staggered. Nothing under reduced motion. */
+    "@media(prefers-reduced-motion:no-preference){.dash-strip,.dash-cal,.dash-drills,.dash-friends{animation:rise .42s cubic-bezier(.3,.9,.3,1) both}.dash-cal{animation-delay:.05s}.dash-drills{animation-delay:.1s}.dash-friends{animation-delay:.15s}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}",
+
+    "@media(max-width:900px){.dash-strip{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.hs-next{grid-column:1 / -1}.dash-drill-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}",
+    "@media(max-width:560px){.dash{gap:var(--gap-2)}.dash-strip{grid-template-columns:1fr;gap:var(--gap-2)}.hs-next{grid-column:auto}.hs{padding:10px 12px}.dash-cal{min-height:0;padding:12px}.cal-tools{margin-left:0}.cal-month{font-size:19px}.cal-grid{display:flex;flex-direction:column;gap:6px}.cal-cell{flex-direction:row;align-items:center;gap:10px;padding:9px 11px}.cal-cell-wd{display:block;width:34px;flex:none;font-family:var(--mono);font-size:11px;color:var(--dim)}.cal-cell-top{flex:none;gap:0}.cal-cell-top .cal-n{display:none}.cal-pips{width:70px;flex:none;margin:0}.cal-cell-st{display:block;margin-left:auto;font-size:11px;color:var(--muted)}.cal-cell.today .cal-flag{display:none}.cal-wd{display:none}.cal-sum{margin-left:0;text-align:left}.dash-drill-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}"
   ].join("");
   document.head.appendChild(s);
 }
@@ -355,10 +425,6 @@ function buildGoalBlock(ctx, n, goal, reduced, isNew) {
   var num = h("span", "nb-readout dash-ring-num");
   num.setAttribute("aria-hidden", "true");
   center.appendChild(num);
-  /* Nothing else goes inside the ring. A label here ("of 3 sessions today") measured
-     129px wide inside a 130px hole, so its text touched the stroke at both sides. It
-     was also saying nothing the sentence below the ring does not already say in
-     better words, so it is gone rather than shrunk. */
 
   /* The plain sentence. It names what is done and what is left, in the words a
      person would use, so the state of today needs no decoding. */
@@ -401,188 +467,83 @@ function buildGoalBlock(ctx, n, goal, reduced, isNew) {
   return block;
 }
 
-/* The hero card: the ring, one line, the record moment when there is one, and one
-   button. Nothing else competes for the first look. */
-function buildHero(ctx, reg, state, ids, left, sessionsToday, goal, reduced, isNew) {
-  var card = h("div", "card dash-hero");
-  card.appendChild(buildGoalBlock(ctx, sessionsToday.length, goal, reduced, isNew));
+/* ---------------- header strip ---------------- */
 
-  var recLine = buildRecord(reg, state, Date.now());
-  if (recLine) card.appendChild(recLine);
-
-  var nLeft = left.length;
-  var start = h("button", "btn-primary dash-start",
-    nLeft === 1 ? "Start today's last drill"
-      : nLeft ? "Start today's " + nLeft + " drills"
-              : "Run today's plan again");
-  start.type = "button";
-  /* The whole plan goes to Train as one queue, the same key Circuit writes, so
-     the plan runs end to end in order instead of landing on a single drill.
-     Work already done today is dropped, so a restart finishes rather than
-     repeats. A plan with nothing left still queues, which is what the label
-     says it does. */
-  start.addEventListener("click", function () {
-    try {
-      localStorage.setItem(QUEUE_KEY, JSON.stringify({ ids: nLeft ? left : ids, interleave: false }));
-    } catch (e) { /* degrade to Train's own picker */ }
-    go(ctx, "train");
-  });
-  card.appendChild(start);
-  return card;
-}
-
-/* ---------------- today's plan ---------------- */
-
-function accessibleIds(plan) {
-  var list = (typeof globalThis !== 'undefined' && globalThis.Content && globalThis.Content.DRILLS) || [];
-  var ids = [];
-  for (var i = 0; i < list.length; i++) ids.push(list[i].id);
-  return ids;
-}
-
-/* One line on why these three. It names the rule, not a promise. */
-function planIds(state, reg) {
-  var S = globalThis.Store;
-  var pool = accessibleIds(state.plan);
-  if (!S || typeof S.dailyPlan !== "function") return pool.slice(0, PLAN_SIZE);
-  try {
-    var ids = S.dailyPlan(state, dayIndexOf(Date.now()), pool, PLAN_SIZE);
-    if (ids && ids.length) return ids;
-  } catch (e) { /* fall through to the registry order */ }
-  var fallback = [];
-  for (var i = 0; i < pool.length && fallback.length < PLAN_SIZE; i++) fallback.push(pool[i]);
-  return fallback;
-}
-
-/* The owner wants Speed of Processing to sit in the middle of the set, so when it
-   is in the plan it takes the center slot and the others move around it. The queue
-   uses this same order, so the tiles show what will actually run. */
-var MIDDLE_DRILL = "ufov";
-export function orderPlan(ids) {
-  var list = (ids || []).slice();
-  var i = list.indexOf(MIDDLE_DRILL);
-  if (i === -1) return list;
-  list.splice(i, 1);
-  list.splice(Math.floor(list.length / 2), 0, MIDDLE_DRILL);
-  return list;
-}
-
-/* The set the button will run, shown as tiles. Each tile names the drill and what
-   it trains, and the one already done today is dimmed. */
-function buildPlanCard(reg, ids, done) {
-  var card = h("div", "card dash-plan");
-  var head = h("div", "card-head");
-  head.appendChild(h("h3", null, "Today's set"));
-  var n = ids.length;
-  head.appendChild(h("span", "cap", n + (n === 1 ? " drill" : " drills") + ", in order"));
-  card.appendChild(head);
-
-  var grid = h("div", "dash-plan-grid");
-  for (var i = 0; i < ids.length; i++) {
-    var m = metaFor(reg, ids[i]);
-    var isDone = !!done[ids[i]];
-    var tile = h("div", "dash-tile" + (isDone ? " done" : ""));
-    tile.appendChild(iconEl(m.icon));
-    var txt = h("div", "dash-tile-txt");
-    txt.appendChild(h("span", "dash-tile-name", m.name));
-    txt.appendChild(h("span", "dash-tile-trains", m.trains));
-    tile.appendChild(txt);
-    if (isDone) tile.appendChild(h("span", "dash-tile-done", "Done"));
-    grid.appendChild(tile);
+/* Sessions per day, oldest to newest, over the last `days` local days. */
+function sessionsPerDay(sessions, days) {
+  var counts = {};
+  for (var i = 0; i < sessions.length; i++) counts[dayKeyOf(sessions[i])] = (counts[dayKeyOf(sessions[i])] || 0) + 1;
+  var out = [], now = new Date(); now.setHours(0, 0, 0, 0);
+  for (var j = days - 1; j >= 0; j--) {
+    var d = new Date(now.getTime() - j * DAY);
+    out.push({ key: localDate(d.getTime()), n: counts[localDate(d.getTime())] || 0 });
   }
-  card.appendChild(grid);
-  return card;
+  return out;
 }
 
-/* ---------------- readings ---------------- */
-
-function statRow(label, cap, ctx, opts) {
-  opts = opts || {};
-  var row = h("div", "dash-stat");
-  var txt = h("div", "dash-stat-txt");
-  var l = h("span", "dash-stat-l");
-  /* The hollow tick means the run is still open. It never warns, never counts
-     down, and it is the only thing that changes when today is still untouched. */
-  if (opts.tick) l.appendChild(h("span", "nb-tick dot"));
-  l.appendChild(document.createTextNode(label));
-  txt.appendChild(l);
-  if (cap) txt.appendChild(h("span", "dash-stat-c", cap));
-  row.appendChild(txt);
-  var v = h("span", "dash-stat-v");
-  if (opts.live) v.setAttribute("aria-live", "polite");
-  row.appendChild(v);
-  var suffix = opts.suffix || "";
-  if (ctx.motion && typeof ctx.motion.countUp === "function") {
-    ctx.motion.countUp(v, opts.value, { duration: 420, suffix: suffix });
-  } else {
-    v.textContent = String(opts.value) + suffix;
+/* A thin 14 day bar run beside the streak. Real counts, today in the warn tone. */
+function buildSpark14(state, now) {
+  var days = sessionsPerDay(state.sessions || [], 14);
+  var max = 0, i;
+  for (i = 0; i < days.length; i++) if (days[i].n > max) max = days[i].n;
+  var todayN = days.length ? days[days.length - 1].n : 0;
+  var spark = h("div", "spark");
+  spark.setAttribute("role", "img");
+  spark.setAttribute("aria-label",
+    "Sessions per day over the last 14 days. Today: " + todayN + ". Best day: " + max + ".");
+  for (i = 0; i < days.length; i++) {
+    var d = days[i];
+    var isToday = i === days.length - 1;
+    var bar = h("i", (d.n > 0 ? "on" : "") + (isToday ? " now" : ""));
+    bar.style.height = (d.n > 0 ? Math.max(20, Math.round((d.n / max) * 100)) : 6) + "%";
+    spark.appendChild(bar);
   }
-  return row;
+  return spark;
 }
 
-/* Spent or refused, said in words. The freeze reading carries aria-live, so the
-   outcome lands there rather than in a second live region competing with it. */
+/* Live region for a spent freeze. */
 var freezeLive = null;
 
 function announceFreeze(text) {
   if (freezeLive) freezeLive.textContent = text;
 }
 
-/* The card beside the hero answers one question: am I keeping it up. Three
-   readings, a plain note when today is still open, and the freeze control when a
-   run is at stake. */
-function buildReadings(ctx, state, hasHistory, now, onSpend) {
+/* The streak card: the number, the 14 day run, and the freeze control when a run
+   is at stake. Spending a freeze mutates state and asks paint() to rebuild. */
+function buildStreakCard(ctx, state, now, onSpend) {
   var S = globalThis.Store;
-  var card = h("div", "card dash-stats");
-  var head = h("div", "card-head");
-  head.appendChild(h("h3", null, "Your habit"));
-  head.appendChild(h("span", "cap", "The last 30 days"));
-  card.appendChild(head);
+  var card = h("div", "hs hs-streak");
+  var row = h("div", "hs-row");
 
-  var cur = S ? S.streak(state, now) : 0;
-  var longest = S ? S.longestStreak(state) : 0;
-  var cons = S ? S.consistency(state, 30) : { trained: 0, total: 30, rate: 0 };
+  var stat = h("div", "hs-stat");
+  stat.appendChild(h("span", "hs-label", "Streak"));
+  var n = S ? S.streak(state, now) : 0;
+  var num = h("span", "streak-n");
+  num.setAttribute("aria-live", "polite");
+  if (ctx.motion && typeof ctx.motion.countUp === "function") {
+    ctx.motion.countUp(num, n, { duration: 400 });
+  } else {
+    num.textContent = String(n);
+  }
+  stat.appendChild(num);
+  stat.appendChild(h("span", "streak-unit", n === 1 ? "day in a row" : "days in a row"));
+  row.appendChild(stat);
+  row.appendChild(buildSpark14(state, now));
+  card.appendChild(row);
+
   var atRisk = S ? S.streakAtRisk(state, now) : false;
   var freezes = Math.max(0, state.streakFreezes || 0);
-
-  var list = h("div", "dash-stats-list");
-  list.appendChild(statRow("Streak", cur === 1 ? "day so far" : "days so far", ctx, {
-    value: cur, tick: atRisk, live: true
-  }));
-  /* Three readings answer the question the dashboard asks. Longest and all-time
-     runs live in Progress, where the detail belongs. */
-  list.appendChild(statRow("Longest", "days, best run", ctx, { value: longest }));
-  /* The label and caption read together: "Trained 50% of the last 30 days." */
-  list.appendChild(statRow("Trained", "of the last 30 days", ctx, {
-    value: Math.round(cons.rate * 100), suffix: "%"
-  }));
-  card.appendChild(list);
-
-  var notes = h("div", "dash-notes");
-  if (atRisk) {
-    notes.appendChild(h("p", "dash-note",
-      "Your " + cur + " day run is still open. One set today keeps it."));
-  } else if (cur === 0 && hasHistory) {
-    notes.appendChild(h("p", "dash-note",
-      "The count starts again today. Your longest run was " + longest + " days."));
-  }
-
-  /* A freeze only means something if it can be spent, so the at-risk case carries
-     the control. It bridges one missed day, never adds a trained day, and it is
-     gone once used. Spent from here, which is the only place the state lives. */
   var gap = S && typeof S.streakGapDay === "function" ? S.streakGapDay(state, now) : null;
   if (atRisk && freezes > 0 && gap && S && typeof S.applyFreeze === "function") {
-    var row = h("div", "dash-freeze");
-    /* The count rides with the control rather than taking a row of its own, and it
-       is the live region a spend is announced into. */
+    var fr = h("div", "hs-freeze");
     var live = h("span", "nb-readout dash-freeze-num", String(freezes));
     live.setAttribute("aria-live", "polite");
     freezeLive = live;
-    row.appendChild(live);
-    row.appendChild(h("span", "dash-note",
-      freezes === 1 ? "freeze held. It bridges the missed day on " + gap +
+    fr.appendChild(live);
+    fr.appendChild(h("span", "dash-note", freezes === 1
+      ? "freeze held. It bridges the missed day on " + gap +
         ". It never counts as a day trained, and it is gone once used."
-        : "freezes held. One bridges the missed day on " + gap +
+      : "freezes held. One bridges the missed day on " + gap +
         ". None of them count as a day trained, and they are gone once used."));
     var b = h("button", "dash-freeze-btn", "Use a freeze");
     b.type = "button";
@@ -601,141 +562,303 @@ function buildReadings(ctx, state, hasHistory, now, onSpend) {
       });
       if (typeof onSpend === "function") onSpend();
     });
-    row.appendChild(b);
-    notes.appendChild(row);
+    fr.appendChild(b);
+    card.appendChild(fr);
   }
-
-  if (notes.firstChild) card.appendChild(notes);
   return card;
 }
 
-/* ---------------- record moment, once and precisely ---------------- */
-
-/* The newest record inside this sitting. It is derived from data, so a re-render
-   cannot fire it twice and there is no flag to keep. */
-function buildRecord(reg, state, now) {
-  var S = globalThis.Store;
-  if (!S || typeof S.latestRecord !== "function") return null;
-  var rec;
-  try { rec = S.latestRecord(state, dirMap(reg)); } catch (e) { return null; }
-  if (!rec || !rec.at) return null;
-  if (now - rec.at > 4 * 3600000) return null;
-
-  var m = metaFor(reg, rec.drillId);
-  var unit = m.unit || "";
-  var line = h("div", "dash-pr2");
-  line.appendChild(h("span", null, "New best in "));
-  line.appendChild(h("b", null, m.name + " "));
-  line.appendChild(h("span", "dash-pr2-v", rec.best + (unit ? " " + unit : "")));
-  /* Flex items drop a leading space visually, but the gap keeps them apart on
-     screen and the space keeps a screen reader from running the words together. */
-  line.appendChild(h("span", null,
-    " " + (m.direction === "lower" ? "faster than" : "higher than") + " the " +
-    rec.prev + (unit ? " " + unit : "") + " before it."));
-  line.appendChild(h("span", "dash-pr2-when", " " + whenLabel(rec.at, now)));
-  return line;
+/* The goal ring, reused as-is and compacted for the strip. */
+function buildGoalCard(ctx, sessionsToday, goal, reduced, isNew) {
+  var card = h("div", "hs hs-goal");
+  var block = buildGoalBlock(ctx, sessionsToday.length, goal, reduced, isNew);
+  block.classList.add("dash-panel-goal-sm");
+  card.appendChild(block);
+  return card;
 }
 
-/* ---------------- 14-day sparkline ---------------- */
+/* The next unrun drill today, with the one action: start today's plan. The queue
+   key is the same one Circuit writes, so the plan runs end to end in order. */
+function buildNextCard(ctx, reg, ids, left) {
+  var card = h("div", "hs hs-next");
+  var nLeft = left.length;
+  var nextId = nLeft ? left[0] : (ids.length ? ids[0] : null);
+  var allDone = nLeft === 0 && ids.length > 0;
+  var m = nextId ? metaFor(reg, nextId) : null;
 
-function sessionsPerDay(sessions, days) {
-  var counts = {};
-  for (var i = 0; i < sessions.length; i++) counts[dayKeyOf(sessions[i])] = (counts[dayKeyOf(sessions[i])] || 0) + 1;
-  var out = [], now = new Date(); now.setHours(0, 0, 0, 0);
-  for (var j = days - 1; j >= 0; j--) {
-    var d = new Date(now.getTime() - j * DAY);
-    out.push({ key: localDate(d.getTime()), n: counts[localDate(d.getTime())] || 0 });
+  card.appendChild(iconEl(m ? m.icon : ""));
+  var copy = h("div", "hs-copy");
+  copy.appendChild(h("span", "hs-label", allDone ? "Done today" : "Next up"));
+  copy.appendChild(h("b", "hs-next-name", m ? m.name : "Today's set"));
+  copy.appendChild(h("span", "hs-next-trains",
+    allDone ? "Run it again if you like." : (m && m.trains ? m.trains : "")));
+  card.appendChild(copy);
+
+  var start = h("button", "btn-primary dash-start",
+    nLeft === 1 ? "Start today's last drill"
+      : nLeft ? "Start today's " + nLeft + " drills"
+              : "Run today's plan again");
+  start.type = "button";
+  start.addEventListener("click", function () {
+    try {
+      localStorage.setItem(QUEUE_KEY, JSON.stringify({ ids: nLeft ? left : ids, interleave: false }));
+    } catch (e) { /* degrade to Train's own picker */ }
+    go(ctx, "train");
+  });
+  card.appendChild(start);
+  return card;
+}
+
+function fillStrip(target, ctx, reg, state, ids, left, sessionsToday, goal, reduced, isNew, onSpend) {
+  target.textContent = "";
+  target.appendChild(buildStreakCard(ctx, state, Date.now(), onSpend));
+  target.appendChild(buildGoalCard(ctx, sessionsToday, goal, reduced, isNew));
+  target.appendChild(buildNextCard(ctx, reg, ids, left));
+}
+
+/* ---------------- calendar hero ---------------- */
+
+/* The month being shown. Kept across repaints, so a data refresh does not throw
+   the reader back to the current month. */
+var calMonth = null;
+
+function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
+
+function buildCalendar(ctx, state, goal, now) {
+  var S = globalThis.Store;
+  var section = h("section", "dash-cal");
+  var counts = (S && typeof S.dayCounts === "function") ? S.dayCounts(state) : {};
+  var todayKey = localDate(now);
+  var current = calMonth ? calMonth : new Date(new Date(now).getFullYear(), new Date(now).getMonth(), 1);
+  calMonth = current;
+
+  function draw() {
+    section.textContent = "";
+    var y = current.getFullYear(), mo = current.getMonth();
+    var monthName = MONTHS_FULL[mo] + " " + y;
+    section.setAttribute("aria-label", "Habit calendar for " + monthName);
+
+    var daysInMonth = new Date(y, mo + 1, 0).getDate();
+    var lead = (new Date(y, mo, 1).getDay() + 6) % 7;
+    var prevDays = new Date(y, mo, 0).getDate();
+    var totalCells = Math.ceil((lead + daysInMonth) / 7) * 7;
+
+    var monthSessions = 0, goalDays = 0, bestDay = 0, maxN = 0, day;
+    for (day = 1; day <= daysInMonth; day++) {
+      var kn = counts[localDate(new Date(y, mo, day, 12))] || 0;
+      monthSessions += kn;
+      if (kn >= goal) goalDays++;
+      if (kn > bestDay) bestDay = kn;
+      if (kn > maxN) maxN = kn;
+    }
+
+    var top = h("div", "cal-top");
+    top.appendChild(h("h2", "cal-month", monthName));
+    top.appendChild(h("span", "cal-sub",
+      monthSessions + (monthSessions === 1 ? " session" : " sessions") + " \u00b7 " +
+      goalDays + (goalDays === 1 ? " goal day" : " goal days")));
+    var tools = h("div", "cal-tools");
+    var prev = h("button", "cal-icon");
+    prev.type = "button";
+    prev.setAttribute("aria-label", "Previous month");
+    prev.appendChild(chevron("prev"));
+    prev.addEventListener("click", function () { current = addMonths(current, -1); calMonth = current; draw(); });
+    var todayBtn = h("button", "btn-ghost cal-today", "Today");
+    todayBtn.type = "button";
+    todayBtn.addEventListener("click", function () {
+      var d = new Date();
+      current = new Date(d.getFullYear(), d.getMonth(), 1);
+      calMonth = current;
+      draw();
+    });
+    var next = h("button", "cal-icon");
+    next.type = "button";
+    next.setAttribute("aria-label", "Next month");
+    next.appendChild(chevron("next"));
+    next.addEventListener("click", function () { current = addMonths(current, 1); calMonth = current; draw(); });
+    tools.appendChild(prev); tools.appendChild(todayBtn); tools.appendChild(next);
+    top.appendChild(tools);
+    section.appendChild(top);
+
+    var wd = h("div", "cal-wd");
+    wd.setAttribute("aria-hidden", "true");
+    for (var wi = 0; wi < CAL_HEADS.length; wi++) {
+      wd.appendChild(h("span", wi >= 5 ? "we" : null, CAL_HEADS[wi]));
+    }
+    section.appendChild(wd);
+
+    var grid = h("div", "cal-grid");
+    grid.setAttribute("role", "list");
+    grid.setAttribute("aria-label", monthName + ", sessions per day");
+
+    for (var i = 0; i < totalCells; i++) {
+      var dayNum, cellDate, inMonth;
+      if (i < lead) {
+        dayNum = prevDays - lead + 1 + i;
+        cellDate = new Date(y, mo - 1, dayNum, 12);
+        inMonth = false;
+      } else if (i >= lead + daysInMonth) {
+        dayNum = i - (lead + daysInMonth) + 1;
+        cellDate = new Date(y, mo + 1, dayNum, 12);
+        inMonth = false;
+      } else {
+        dayNum = i - lead + 1;
+        cellDate = new Date(y, mo, dayNum, 12);
+        inMonth = true;
+      }
+      var k = localDate(cellDate);
+      var n = counts[k] || 0;
+      var level = (S && typeof S.heatmapBuckets === "function") ? S.heatmapBuckets(n, maxN) : 0;
+      var isToday = k === todayKey;
+      var met = n >= goal;
+
+      var cell = h("div", "cal-cell" + (inMonth ? "" : " adj") + (met ? " met" : "") + (isToday ? " today" : ""));
+      cell.setAttribute("role", "listitem");
+      var label = WEEKDAYS[(cellDate.getDay() + 6) % 7] + " " + dayNum + " " + MONTHS_FULL[cellDate.getMonth()] +
+        ", " + (n === 0 ? "no sessions" : n + (n === 1 ? " session" : " sessions")) +
+        (met ? ", goal met" : "") + (isToday ? ", today" : "");
+      cell.setAttribute("aria-label", label);
+      if (isToday) cell.setAttribute("aria-current", "date");
+
+      cell.appendChild(h("span", "cal-cell-wd", WD_SHORT[cellDate.getDay()]));
+      var cellTop = h("div", "cal-cell-top");
+      cellTop.appendChild(h("span", "cal-d", String(dayNum)));
+      if (n > 0) cellTop.appendChild(h("span", "cal-n", String(n)));
+      cell.appendChild(cellTop);
+
+      var pips = h("div", "cal-pips");
+      pips.setAttribute("aria-hidden", "true");
+      for (var p = 0; p < 4; p++) pips.appendChild(h("i", p < level ? "on" : null));
+      cell.appendChild(pips);
+
+      var st = isToday
+        ? (n >= goal ? "goal met" : n + " of " + goal)
+        : (met ? "goal met" : n > 0 ? n + (n === 1 ? " session" : " sessions") : "upcoming");
+      cell.appendChild(h("span", "cal-cell-st", st));
+      if (isToday) cell.appendChild(h("span", "cal-flag", "today"));
+      grid.appendChild(cell);
+    }
+    section.appendChild(grid);
+
+    var foot = h("div", "cal-foot");
+    var legend = h("div", "cal-legend");
+    legend.appendChild(legendKey("met", "goal met, " + goal + " or more"));
+    legend.appendChild(legendKey("today", "today, in progress"));
+    legend.appendChild(legendKey("up", "upcoming"));
+    foot.appendChild(legend);
+
+    var streak = S ? S.streak(state, now) : 0;
+    var sum = h("div", "cal-sum");
+    sum.appendChild(document.createTextNode("Streak " + streak + (streak === 1 ? " day" : " days") + " \u00b7 best day "));
+    sum.appendChild(h("b", null, String(bestDay)));
+    sum.appendChild(document.createTextNode(" sessions"));
+    foot.appendChild(sum);
+    section.appendChild(foot);
   }
+
+  draw();
+  return section;
+}
+
+function legendKey(cls, text) {
+  var k = h("span", "cal-k");
+  k.appendChild(h("span", "cal-sw " + cls));
+  k.appendChild(document.createTextNode(text));
+  return k;
+}
+
+/* ---------------- per-drill consistency ---------------- */
+
+/* Distinct days each drill was trained in the last `windowDays` local days, from
+   both the run rows and the drill lists on each session. Real counts only. */
+function drillDayCounts(state, windowDays) {
+  var cutoff = dayIndexOf(Date.now()) - windowDays + 1;
+  var sets = {};
+  function add(id, k) {
+    if (!id) return;
+    if (!sets[id]) sets[id] = {};
+    sets[id][k] = 1;
+  }
+  var rs = state.records || [], i;
+  for (i = 0; i < rs.length; i++) {
+    var r = rs[i];
+    var rt = msOf(r);
+    if (dayIndexOf(rt) < cutoff) continue;
+    add(r.drillId, localDate(rt));
+  }
+  var ss = state.sessions || [];
+  for (i = 0; i < ss.length; i++) {
+    var s = ss[i];
+    var st = msOf(s);
+    if (dayIndexOf(st) < cutoff) continue;
+    var k = localDate(st);
+    var ds = s.drills || [];
+    for (var j = 0; j < ds.length; j++) add(ds[j], k);
+  }
+  var out = {};
+  var ids = Object.keys(sets);
+  for (i = 0; i < ids.length; i++) out[ids[i]] = Object.keys(sets[ids[i]]).length;
   return out;
 }
 
-function buildSpark(sessions) {
-  var card = h("div", "card");
-  var head = h("div", "card-head");
-  head.appendChild(h("h3", null, "Last 14 days"));
-  head.appendChild(h("span", "cap", "Sessions per day"));
-  card.appendChild(head);
+function buildDrillRow(reg, state) {
+  var section = h("section", "dash-drills");
+  section.setAttribute("aria-label", "Consistency by drill over the last " + DRILL_WINDOW + " days");
+  var head = h("div", "dash-row-head");
+  head.appendChild(h("h3", null, "Consistency by drill"));
+  head.appendChild(h("span", "dash-row-cap", "days trained, last " + DRILL_WINDOW));
+  section.appendChild(head);
 
-  /* Nothing to plot yet, so the card becomes a one-line strip instead of a full
-     panel holding a flat, empty chart. */
-  if (!sessions.length) {
-    card.classList.add("dash-strip");
-    card.appendChild(h("p", "dash-note", "Your first session fills this in."));
-    return card;
+  var days = drillDayCounts(state, DRILL_WINDOW);
+  var grid = h("div", "dash-drill-grid");
+  var ids = Object.keys(reg);
+  for (var i = 0; i < ids.length; i++) {
+    var m = reg[ids[i]];
+    var n = days[ids[i]] || 0;
+    var dc = h("div", "dc");
+    var top = h("div", "dc-top");
+    var name = h("span", "dc-name", SHORT_NAME[ids[i]] || m.name);
+    name.title = m.name;
+    top.appendChild(name);
+    top.appendChild(h("span", "dc-pct", n + "d"));
+    dc.appendChild(top);
+    var track = h("div", "dc-track");
+    var fill = h("div", "dc-fill");
+    fill.style.width = Math.round((n / DRILL_WINDOW) * 100) + "%";
+    track.appendChild(fill);
+    dc.appendChild(track);
+    grid.appendChild(dc);
   }
-
-  var days = sessionsPerDay(sessions, 14);
-  var max = 0;
-  for (var i = 0; i < days.length; i++) if (days[i].n > max) max = days[i].n;
-
-  var chart = h("div", "chart dash-spark");
-  var plot = h("div", "chart-plot");
-  for (var j = 0; j < days.length; j++) {
-    var d = days[j];
-    var isToday = j === days.length - 1;
-    var isBest = max > 0 && d.n === max && d.n > 0;
-    var col = h("div", "chart-col" + (d.n > 0 ? " has" : "") + (isBest ? " best" : "") + (isToday ? " today" : ""));
-    col.title = d.key + ": " + d.n + (d.n === 1 ? " session" : " sessions");
-    var barwrap = h("div", "chart-barwrap");
-    var bar = h("div", "chart-bar");
-    bar.style.transform = "scaleY(" + (d.n > 0 ? Math.max(0.15, d.n / max) : 0.06).toFixed(3) + ")";
-    barwrap.appendChild(bar);
-    col.appendChild(barwrap);
-    var x = h("span", "chart-x");
-    if (j === 0 || isToday) x.textContent = String(new Date(d.key + "T00:00:00").getDate());
-    col.appendChild(x);
-    plot.appendChild(col);
-  }
-  chart.appendChild(plot);
-  card.appendChild(chart);
-  return card;
+  section.appendChild(grid);
+  return section;
 }
 
-/* ---------------- daily board, one line ---------------- */
+/* ---------------- friends row ---------------- */
 
-/* Leaderboards have their own view, so the dashboard keeps only the one reading
-   a person might want while deciding to train: where they stand today. One row,
-   one link, no card. The rank still comes from the same api.myRank call. */
-function buildBoard(ctx, reg, runs) {
-  var row = h("div", "dash-board");
+/* The friends row hosts the panel app/ui/friends.js builds. That panel carries its
+   own "Friends" heading, so this section adds none; the fallback shows only if the
+   builder ever throws, so the dashboard still paints. The panel is built once and
+   reused across repaints, so a cache-then-network paint does not fetch twice. It is
+   built compact: the habit calendar is the hero, so the friends row is a short
+   summary (top 3 friends plus any request), not a second full page. */
+var friendsNode = null;
 
-  var drillId = mostPlayed(runs);
-  var open = h("button", "dash-board-link", "Daily board");
-  open.type = "button";
-  open.addEventListener("click", function () { go(ctx, "leaderboards"); });
-  row.appendChild(open);
+function buildFriendsSection(ctx) {
+  var section = h("section", "dash-friends");
+  section.setAttribute("aria-label", "Friends");
+  var slot = h("div", "dash-friends-slot");
 
-  if (!drillId) {
-    row.appendChild(h("span", "dash-board-note", "no ranked runs yet"));
-    return row;
+  if (!friendsNode) {
+    try { friendsNode = buildFriendsPanel(ctx, { compact: true }); } catch (e) { friendsNode = null; }
   }
-
-  var rank = h("span", "dash-board-rank", "...");
-  row.appendChild(rank);
-  row.appendChild(h("span", "dash-board-note", "in " + metaFor(reg, drillId).name));
-
-  var fill = function (rankRow) {
-    if (!rankRow || rankRow.rank == null) {
-      rank.textContent = "unranked";
-      rank.classList.add("none");
-      return;
-    }
-    rank.classList.remove("none");
-    rank.classList.toggle("top", rankRow.rank <= 10);
-    rank.textContent = "#" + rankRow.rank;
-  };
-
-  if (ctx.api && typeof ctx.api.myRank === "function") {
-    Promise.resolve(ctx.api.myRank(drillId, "daily")).then(function (res) {
-      if (res && res.ok === false) { fill(null); return; }
-      if (Array.isArray(res)) { fill(res.find(function (r) { return r.isMe; }) || null); return; }
-      fill(res || null);
-    }).catch(function () { fill(null); });
+  if (friendsNode) {
+    slot.appendChild(friendsNode);
   } else {
-    fill(null);
+    slot.appendChild(h("h3", "dash-friends-fallback", "Friends"));
+    slot.appendChild(h("p", "dash-note", "No friends yet. Follow someone to compare streaks."));
   }
-
-  return row;
+  section.appendChild(slot);
+  return section;
 }
 
 /* ---------------- navigation ---------------- */
@@ -783,7 +906,6 @@ function paint(container, ctx, data) {
   }
 
   var reduced = !!(ctx.motion && typeof ctx.motion.reduced === "function" && ctx.motion.reduced());
-
   var isNew = !state.records.length && !state.sessions.length;
 
   /* What today still owes, in the order the set will run. Speed of Processing takes
@@ -801,38 +923,24 @@ function paint(container, ctx, data) {
   var left = [];
   for (i = 0; i < ids.length; i++) if (!done[ids[i]]) left.push(ids[i]);
 
-  /* One left aligned column. The head names the day, the hero is the one action,
-     the readings sit beside it, then the set, the picture, and the board line. */
   var root = h("div", "dash");
-
-  var head = h("div", "dash-head");
-  var d = new Date(now);
-  head.appendChild(h("span", "dash-eyebrow",
-    WEEKDAYS[(d.getDay() + 6) % 7] + " " + d.getDate() + " " + MONTHS[d.getMonth()]));
-  var title = h("h1", "view-title dash-title", "Today");
+  /* The router focuses .view-title after a nav change, so the heading stays in the
+     tree even though the topbar already names the view. */
+  var title = h("h2", "view-title sr", "Dashboard");
   title.tabIndex = -1;
-  head.appendChild(title);
-  root.appendChild(head);
+  root.appendChild(title);
 
-  var main = h("div", "dash-main");
-  main.appendChild(buildHero(ctx, reg, state, ids, left, sessionsToday, goal, reduced, isNew));
-
-  /* Spending a freeze writes the store and mutates state, so only the readings are
-     swapped, from the same state object. A full repaint would need the run rows,
-     which paint() takes from the store rather than from this closure. */
-  var readings = h("div", "dash-readings");
-  function repaintReadings() {
-    var next = buildReadings(ctx, state, !isNew, now, repaintReadings);
-    while (readings.firstChild) readings.removeChild(readings.firstChild);
-    readings.appendChild(next);
+  var strip = h("section", "dash-strip");
+  strip.setAttribute("aria-label", "Streak, goal, and next drill");
+  function repaintStrip() {
+    fillStrip(strip, ctx, reg, state, ids, left, sessionsToday, goal, reduced, isNew, repaintStrip);
   }
-  repaintReadings();
-  main.appendChild(readings);
-  root.appendChild(main);
+  repaintStrip();
+  root.appendChild(strip);
 
-  root.appendChild(buildPlanCard(reg, ids, done));
-  root.appendChild(buildSpark(state.sessions));
-  root.appendChild(buildBoard(ctx, reg, runs));
+  root.appendChild(buildCalendar(ctx, state, goal, now));
+  root.appendChild(buildDrillRow(reg, state));
+  root.appendChild(buildFriendsSection(ctx));
 
   container.textContent = "";
   container.appendChild(root);
@@ -851,4 +959,40 @@ export async function render(container, ctx) {
       if (container.isConnected && res && res.ok && res.data) paint(container, ctx, res.data);
     } catch (e) { /* keep the cached paint */ }
   }
+}
+
+/* ---------------- today's plan ---------------- */
+
+function accessibleIds(plan) {
+  var list = (typeof globalThis !== 'undefined' && globalThis.Content && globalThis.Content.DRILLS) || [];
+  var ids = [];
+  for (var i = 0; i < list.length; i++) ids.push(list[i].id);
+  return ids;
+}
+
+/* One line on why these three. It names the rule, not a promise. */
+function planIds(state, reg) {
+  var S = globalThis.Store;
+  var pool = accessibleIds(state.plan);
+  if (!S || typeof S.dailyPlan !== "function") return pool.slice(0, PLAN_SIZE);
+  try {
+    var ids = S.dailyPlan(state, dayIndexOf(Date.now()), pool, PLAN_SIZE);
+    if (ids && ids.length) return ids;
+  } catch (e) { /* fall through to the registry order */ }
+  var fallback = [];
+  for (var i = 0; i < pool.length && fallback.length < PLAN_SIZE; i++) fallback.push(pool[i]);
+  return fallback;
+}
+
+/* The owner wants Speed of Processing to sit in the middle of the set, so when it
+   is in the plan it takes the center slot and the others move around it. The queue
+   uses this same order, so the strip shows what will actually run. */
+var MIDDLE_DRILL = "ufov";
+export function orderPlan(ids) {
+  var list = (ids || []).slice();
+  var i = list.indexOf(MIDDLE_DRILL);
+  if (i === -1) return list;
+  list.splice(i, 1);
+  list.splice(Math.floor(list.length / 2), 0, MIDDLE_DRILL);
+  return list;
 }
