@@ -103,7 +103,7 @@ function ensureStyles() {
     ".lb{max-width:720px}",
     ".lb-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:12px}",
     ".lb-field{display:flex;flex-direction:column;gap:4px}",
-    ".lb-field-l{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}",
+    ".lb-field-l{margin:0}",
     ".lb-select{background:var(--panel2);color:var(--ink);border:1px solid var(--line2);border-radius:var(--r);padding:8px 10px;font:inherit}",
     ".lb-tabs{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;background:var(--panel)}",
     ".lb-tab{background:transparent;color:var(--muted);border:0;padding:8px 14px;font:inherit;cursor:pointer}",
@@ -145,7 +145,7 @@ function ensureStyles() {
        to an ellipsis. */
     ".lb-vis-cell{grid-column:2 / -1;flex-wrap:wrap;gap:6px 8px}",
     "@media(min-width:720px){.lb-vis-cell{grid-column:2 / -1;justify-content:flex-end}}",
-    ".lb-vis-l{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}",
+    ".lb-vis-l{margin:0}",
     ".lb-vis-sel{background:var(--panel2);color:var(--ink);border:1px solid var(--line2);border-radius:var(--r);padding:4px 6px;font:inherit;font-size:12px}",
     ".lb-empty{padding:28px 16px;text-align:center}",
     ".lb-empty-t{color:var(--ink);margin:0 0 4px}",
@@ -184,7 +184,7 @@ export async function render(container, ctx) {
   const controls = el("div", "lb-controls");
 
   const field = el("label", "lb-field");
-  field.appendChild(el("span", "lb-field-l", "Drill"));
+  field.appendChild(el("span", "lb-field-l h-label", "Drill"));
   const select = el("select", "lb-select");
   select.setAttribute("aria-label", "Choose a drill");
   list.forEach((d) => {
@@ -264,7 +264,7 @@ export async function render(container, ctx) {
 
   function visControl() {
     const wrap = el("span", "lb-vis");
-    wrap.appendChild(el("span", "lb-vis-l", "Shown as"));
+    wrap.appendChild(el("span", "lb-vis-l h-label", "Shown as"));
     const sel = el("select", "lb-vis-sel");
     sel.setAttribute("aria-label", "Leaderboard visibility");
     const oName = el("option", null, ownName(profile));
@@ -334,7 +334,15 @@ export async function render(container, ctx) {
       status.textContent = "";
       const empty = el("div", "lb-empty");
       empty.appendChild(el("p", "lb-empty-t", failed ? "Could not load this board." : "No scores in this window yet."));
-      if (!failed) empty.appendChild(el("p", "lb-empty-s", "Finish a run to enter the board."));
+      if (!failed) {
+        empty.appendChild(el("p", "lb-empty-s", "Finish a run to enter the board."));
+        const start = el("button", "btn-primary", "Start a drill");
+        start.type = "button";
+        start.addEventListener("click", () => {
+          if (navigate) navigate("train");
+        });
+        empty.appendChild(start);
+      }
       rowsMount.appendChild(empty);
       return;
     }

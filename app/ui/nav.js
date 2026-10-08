@@ -148,8 +148,17 @@ export function mountShell(ctx) {
   /* ---------- navigation ---------- */
   function go(view) {
     closeMenu();
-    closeSheet();
-    if (ctx.navigate) ctx.navigate(view);
+    const fromSheet = sheet && !sheet.hidden;
+    closeSheet(false);
+    if (ctx.navigate) {
+      const navigation = ctx.navigate(view);
+      if (fromSheet && view === 'settings' && navigation && typeof navigation.then === 'function') {
+        navigation.then(() => {
+          const destination = byId('view-settings');
+          if (destination && !destination.hidden && !destination.querySelector('.view-title')) destination.focus();
+        });
+      }
+    }
   }
 
   document.querySelectorAll('.navbtn[data-view], .tab[data-view], .sheet-item[data-view]').forEach((btn) => {
@@ -220,22 +229,29 @@ export function mountShell(ctx) {
   const sheet = byId('moreSheet');
   const moreTab = byId('moreTab');
 
+  function visibleSheetControls() {
+    if (!sheet) return [];
+    return Array.from(sheet.querySelectorAll('.sheet-card button:not([disabled])'))
+      .filter((control) => control.getClientRects().length > 0);
+  }
+
   function openSheet() {
     if (!sheet) return;
     sheet.hidden = false;
     if (moreTab) moreTab.setAttribute('aria-expanded', 'true');
-    const first = sheet.querySelector('.sheet-item');
+    const first = visibleSheetControls()[0];
     if (first) first.focus();
   }
-  function closeSheet() {
+  function closeSheet(restoreFocus = true) {
     if (!sheet || sheet.hidden) return;
     sheet.hidden = true;
     if (moreTab) moreTab.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && moreTab) moreTab.focus();
   }
-  if (moreTab) moreTab.addEventListener('click', () => (sheet && sheet.hidden ? openSheet() : closeSheet()));
-  if (sheet) sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+  if (moreTab) moreTab.addEventListener('click', () => (sheet && sheet.hidden ? openSheet() : closeSheet(true)));
+  if (sheet) sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(true); });
   const sheetClose = byId('sheetClose');
-  if (sheetClose) sheetClose.addEventListener('click', closeSheet);
+  if (sheetClose) sheetClose.addEventListener('click', () => closeSheet(true));
   const sheetSignOut = byId('sheetSignOut');
   if (sheetSignOut) sheetSignOut.addEventListener('click', signOut);
 
@@ -247,9 +263,29 @@ export function mountShell(ctx) {
     if (!inMenu && !inTrigger) closeMenu();
   });
   document.addEventListener('keydown', (e) => {
+    if (sheet && !sheet.hidden && e.key === 'Tab') {
+      const controls = visibleSheetControls();
+      if (!controls.length) {
+        e.preventDefault();
+        return;
+      }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (!sheet.contains(document.activeElement)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      } else if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+      return;
+    }
     if (e.key !== 'Escape') return;
     if (!menu.hidden) { closeMenu(); if (menuTrigger) menuTrigger.focus(); return; }
-    if (sheet && !sheet.hidden) { closeSheet(); if (moreTab) moreTab.focus(); return; }
+    if (sheet && !sheet.hidden) { closeSheet(true); return; }
     /* Settings reads as an overlay, so Escape puts you back where you came from. */
     const settingsEl = byId('view-settings');
     if (settingsEl && !settingsEl.hidden) go(lastView);
@@ -258,7 +294,7 @@ export function mountShell(ctx) {
   /* ---------- sign out ---------- */
   async function signOut() {
     closeMenu();
-    closeSheet();
+    closeSheet(false);
     try { await auth.signOut(); } catch (e) { /* leave the app regardless */ }
     window.location.href = 'landing.html';
   }

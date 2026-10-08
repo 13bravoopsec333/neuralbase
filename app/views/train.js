@@ -9,9 +9,6 @@ var QUEUE_KEY = 'cortex.train.queue';
 var MODE_KEY = 'cortex.train.mode';
 var SEED_KEY = 'cortex.train.seed';
 
-/* The idle copy. Painted in three places, so it lives in one string. */
-var IDLE_NOTE = 'Pick a program below, then start when you are ready.';
-
 /* Drills whose trials come from a seedable stream, so a seed means something
    for them. Spaced Retrieval is a due-card queue, Signal Alert and Simple
    Reaction draw their own targets, and Mental Arithmetic steps its own level,
@@ -80,6 +77,60 @@ function readSeed() {
 }
 function writeSeed(s) {
   try { localStorage.setItem(SEED_KEY, s); } catch (e) { /* degrade */ }
+}
+
+/* ---------- per-drill starting settings ----------
+   One localStorage object keyed by drill id, each bag validated through the drill
+   registry's own spec on every read, so a hand-edited or half-written store can
+   never put a drill out of range. */
+var OPTIONS_KEY = 'cortex.train.options';
+
+function readOptions() {
+  try {
+    var raw = localStorage.getItem(OPTIONS_KEY);
+    var v = raw ? JSON.parse(raw) : null;
+    return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+  } catch (e) { return {}; }
+}
+
+function writeOptions(all) {
+  try { localStorage.setItem(OPTIONS_KEY, JSON.stringify(all || {})); } catch (e) { /* degrade */ }
+}
+
+/* The option API lives on Drills.DrillsCore. Guarded so a stub without it (the
+   view smoke test, an older bundle) degrades to no settings rather than throwing. */
+function optionCore() {
+  var D = globalThis.Drills;
+  return (D && D.DrillsCore) ? D.DrillsCore : null;
+}
+
+function optionSpecFor(id) {
+  var C = optionCore();
+  var spec = (C && typeof C.drillOptionSpec === 'function') ? C.drillOptionSpec() : null;
+  return (spec && spec[id]) ? spec[id] : [];
+}
+
+function validateOptions(id, overrides) {
+  var C = optionCore();
+  return (C && typeof C.drillOptions === 'function') ? C.drillOptions(id, overrides) : {};
+}
+
+/* Validated settings for one drill, ready to hand to Drills.start. */
+export function optionsFor(id) {
+  var all = readOptions();
+  var raw = (all[id] && typeof all[id] === 'object' && !Array.isArray(all[id])) ? all[id] : {};
+  return validateOptions(id, raw);
+}
+
+/* Store one value, keeping the whole bag valid. The written bag is snapped to the
+   spec here, and optionsFor validates again on read. */
+export function setOption(id, key, value) {
+  var all = readOptions();
+  var cur = (all[id] && typeof all[id] === 'object' && !Array.isArray(all[id])) ? all[id] : {};
+  cur[key] = value;
+  all[id] = validateOptions(id, cur);
+  writeOptions(all);
+  return all[id];
 }
 
 function readCache() {
@@ -184,10 +235,17 @@ var running = false;
    for attention. The stage is a real node here, not a CSS class on body: the
    drill has to be moved into it, and moved back on exit, so the running drill
    keeps its DOM and its timers. */
-var focus = { stage: null, scrim: null, on: false, drill: null, from: null };
+var focus = { stage: null, scrim: null, on: false, drill: null, from: null, holder: null, dialog: null, deferred: false };
 
 function enterFocus() {
-  if (focus.on) return;
+  if (focus.on) {
+    var drill = ui.mount && ui.mount.querySelector('.drill');
+    if (drill && focus.holder) {
+      focus.holder.replaceChildren(drill);
+      focus.drill = drill;
+    }
+    return;
+  }
   var mount = ui.mount;
   if (!mount || !mount.parentNode) return;
   var drill = mount.querySelector('.drill');
@@ -222,6 +280,25 @@ function enterFocus() {
 
   stage.appendChild(bar);
   stage.appendChild(holder);
+
+  var dialog = document.createElement('dialog');
+  dialog.setAttribute('aria-labelledby', 'nb-exit-title');
+  dialog.setAttribute('aria-describedby', 'nb-exit-copy');
+  var dialogTitle = h('h2', null, 'End this training session?');
+  dialogTitle.id = 'nb-exit-title';
+  var dialogCopy = h('p', null, 'Completed drill results are saved as you go. The unfinished drill will be discarded. The daily session record is saved only after the full queue finishes.');
+  dialogCopy.id = 'nb-exit-copy';
+  var keep = h('button', 'nb-dialog-keep', 'Keep Training');
+  keep.type = 'button';
+  keep.autofocus = true;
+  var end = h('button', 'nb-dialog-end', 'End Session');
+  end.type = 'button';
+  dialog.appendChild(dialogTitle);
+  dialog.appendChild(dialogCopy);
+  dialog.appendChild(keep);
+  dialog.appendChild(end);
+  stage.appendChild(dialog);
+
   document.body.appendChild(scrim);
   document.body.appendChild(stage);
   document.body.classList.add('focus');
@@ -230,7 +307,35 @@ function enterFocus() {
   focus.scrim = scrim;
   focus.drill = drill;
   focus.from = mount;
+  focus.holder = holder;
+  focus.dialog = dialog;
   focus.on = true;
+  var returnFocus = null;
+
+  dialog.addEventListener('close', function () {
+    if (!focus.on || focus.stage !== stage) return;
+    var target = returnFocus;
+    returnFocus = null;
+    if (target && target.isConnected && stage.contains(target)) target.focus();
+    else exit.focus();
+  });
+  dialog.addEventListener('cancel', function (e) {
+    e.preventDefault();
+    dialog.close();
+  });
+  keep.addEventListener('click', function () {
+    dialog.close();
+    /* A drill that completed while the dialog was up was held back so the queue
+       could not advance behind the modal. Keeping resumes it now. */
+    if (focus.deferred) {
+      focus.deferred = false;
+      nextDrill();
+    }
+  });
+  end.addEventListener('click', function () {
+    dialog.close();
+    endSession();
+  });
 
   /* Fullscreen is a hint, not a takeover. It needs a gesture and it is refused
      in some embedded contexts, so the stage has to be usable without it and the
@@ -255,6 +360,12 @@ function enterFocus() {
      page-sized box would be the complaint again with the fix halfway applied, and
      the run was abandoned either way, so it is stopped rather than recorded. */
   function out() {
+    if (dialog.open) return;
+    returnFocus = document.activeElement;
+    dialog.showModal();
+  }
+
+  function endSession() {
     /* Stage down first: leaveFocus puts the drill node back in the mount, and
        stopSet then clears the mount and writes the idle placeholder, so the two
        run in that order or a stale drill node ends up sitting beside the
@@ -264,15 +375,30 @@ function enterFocus() {
     if (ctxRef && ctxRef.audio && ctxRef.audio.silence) {
       try { ctxRef.audio.silence(); } catch (e) { /* degrade */ }
     }
+    /* The stage is gone and focus was on a button inside it, so it would fall to
+       body. Hand it to the Start control, or the Train section if that is gone. */
+    var target = (ui.startBtn && ui.startBtn.isConnected) ? ui.startBtn : ui.container;
+    if (target && target.focus) {
+      try { target.focus({ preventScroll: true }); } catch (e) { try { target.focus(); } catch (e2) { /* degrade */ } }
+    }
   }
   exit.addEventListener('click', out);
 
   /* Escape leaves. It only applies while the stage is up, and the listener goes
      away with it so it cannot fire on a normal page afterwards. */
   focus.onKey = function (e) {
-    if (e.key === 'Escape') { e.preventDefault(); out(); }
+    if (e.key === 'Escape' && !dialog.open) { e.preventDefault(); out(); }
   };
   document.addEventListener('keydown', focus.onKey, true);
+
+  /* While the confirmation is up the drill must not take input. Drill key
+     handlers are bound to document in the bubble phase, so stopping propagation
+     here, in the capture phase, keeps a keypress from reaching them. Escape is
+     left alone so the native dialog still cancels. */
+  focus.onBlock = function (e) {
+    if (dialog.open && e.key !== 'Escape') e.stopPropagation();
+  };
+  document.addEventListener('keydown', focus.onBlock, true);
 
   if (exit.focus) exit.focus();
 }
@@ -292,14 +418,102 @@ function stopSet() {
   paintAll();
 }
 
-/* The idle mount. One drill wrapper with one line in it, so every paint of it
-   looks the same. */
+/* The idle mount. It carries the selected drill's settings panel, so the mount is
+   the one place the drill is set up before a run. Rebuilt whole on every selection
+   and on every value change, so the panel can never show a stale value. */
 function paintIdle() {
   if (!ui.mount) return;
   ui.mount.replaceChildren();
-  var ph = h('div', 'drill');
-  ph.appendChild(h('div', 'drill-note tr-idle-note', IDLE_NOTE));
-  ui.mount.appendChild(ph);
+  /* The mode picker is rebuilt with the panel, so the old node references go with
+     the old nodes rather than pointing at a detached tree. */
+  ui.modesBlock = null;
+  ui.modeBtns = {};
+  ui.modeBlurb = null;
+  /* The mount's content is a .drill node: that is the node the focus stage adopts
+     when a set starts and the node the exit flow moves back, so the mount keeps that
+     contract. Idle, the node holds the settings panel instead of a drill. */
+  var wrap = h('div', 'drill');
+  wrap.appendChild(buildSetup(drillById(currentDrill)));
+  ui.mount.appendChild(wrap);
+}
+
+/* One segmented control per spec entry, and for n-back the mode picker folded in
+   above them. Every control is a real button, so Tab reaches it and Enter or Space
+   works; the current value is the pressed one. */
+function buildSetup(d) {
+  var panel = h('div', 'tr-setup');
+  if (d.id === 'nback') panel.appendChild(buildModeBlock());
+  var spec = optionSpecFor(d.id);
+  var opts = optionsFor(d.id);
+  for (var i = 0; i < spec.length; i++) {
+    panel.appendChild(buildOptionRow(d.id, spec[i], opts[spec[i].key]));
+  }
+  return panel;
+}
+
+function buildOptionRow(id, entry, current) {
+  var row = h('div', 'tr-set-row');
+  var head = h('div', 'tr-set-head');
+  head.appendChild(h('span', 'tr-set-label', entry.label));
+  head.appendChild(h('span', 'tr-set-val mono', String(current)));
+  row.appendChild(head);
+
+  var seg = h('div', 'tr-seg');
+  seg.setAttribute('role', 'group');
+  /* The label rides on the group, so a screen reader hears "Starting level, 2,
+     pressed" rather than a bare number. */
+  seg.setAttribute('aria-label', entry.label);
+  for (var v = entry.min; v <= entry.max; v += entry.step) {
+    (function (value) {
+      var b = h('button', 'tr-seg-btn', String(value));
+      b.type = 'button';
+      b.setAttribute('aria-pressed', value === current ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        /* A running set already committed to its settings, and the panel is not on
+           screen while one runs; this is the backstop. Changing a value never
+           starts a drill. */
+        if (running) return;
+        setOption(id, entry.key, value);
+        paintIdle();
+        setIdle(true);
+        paintAll();
+        say(entry.label + ' set to ' + value + '.');
+      });
+      seg.appendChild(b);
+    })(v);
+  }
+  row.appendChild(seg);
+  return row;
+}
+
+function buildModeBlock() {
+  var MODES = (globalThis.Content && globalThis.Content.MODES) || [];
+  var block = h('div', 'tr-modes');
+  block.appendChild(h('span', 'tr-field', 'Mode'));
+  var set = h('div', 'tr-modeset');
+  set.setAttribute('role', 'group');
+  set.setAttribute('aria-label', 'N-back mode');
+  var btns = {};
+  for (var i = 0; i < MODES.length; i++) {
+    (function (m) {
+      var b = h('button', 'tr-mode');
+      b.type = 'button';
+      b.setAttribute('data-mode', m.id);
+      b.setAttribute('aria-pressed', 'false');
+      b.appendChild(h('span', null, m.name));
+      b.addEventListener('click', function () { pickMode(m); });
+      btns[m.id] = b;
+      set.appendChild(b);
+    })(MODES[i]);
+  }
+  block.appendChild(set);
+  var blurb = h('p', 'tr-blurb', '');
+  block.appendChild(blurb);
+  /* paintModes reads these, so the panel owns them while it is on screen. */
+  ui.modesBlock = block;
+  ui.modeBtns = btns;
+  ui.modeBlurb = blurb;
+  return block;
 }
 
 function leaveFocus() {
@@ -307,6 +521,10 @@ function leaveFocus() {
   if (focus.onKey) {
     document.removeEventListener('keydown', focus.onKey, true);
     focus.onKey = null;
+  }
+  if (focus.onBlock) {
+    document.removeEventListener('keydown', focus.onBlock, true);
+    focus.onBlock = null;
   }
   /* Put the drill back where the Train page expects it before anything reads
      ui.mount, so the page is intact whether or not anyone navigates next. */
@@ -324,6 +542,9 @@ function leaveFocus() {
   focus.scrim = null;
   focus.drill = null;
   focus.from = null;
+  focus.holder = null;
+  focus.dialog = null;
+  focus.deferred = false;
 }
 
 /* Direction map for Store.personalBest / isPersonalBest, which take an explicit
@@ -391,9 +612,24 @@ function injectStyles() {
        The clamp caps it: past about a third of the screen the idle box is more
        empty than useful, and an oversized empty box reads as something missing. */
     '.tr-view .drill-mount{flex:1 1 auto;min-height:clamp(220px,30vh,420px)}',
-    '.tr-view .drill-mount.tr-idle{justify-content:safe center;align-items:center;text-align:center;border:1px dashed var(--line2);border-radius:8px;padding:20px}',
-    '.tr-view .drill-mount.tr-idle .drill{max-width:46ch}',
-    '.tr-idle-note{font-size:14px;line-height:1.5}',
+    /* Idle, the mount holds the settings panel, so it is a plain top-aligned column
+       rather than the dashed centered placeholder the one-line idle used. */
+    '.tr-view .drill-mount.tr-idle{flex:0 0 auto;min-height:0;justify-content:flex-start}',
+    /* Settings panel: one labelled segmented control per setting, centered in the
+       mount. Every colour is a token. */
+    '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:520px;margin-inline:auto}',
+    '.tr-set-row{display:flex;flex-direction:column;gap:8px}',
+    '.tr-set-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}',
+    '.tr-set-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}',
+    '.tr-set-val{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums}',
+    '.tr-seg{display:flex;flex-wrap:wrap;gap:6px}',
+    '.tr-seg-btn{min-width:44px;min-height:38px;padding:8px 12px;border-radius:8px;background:transparent;border:1px solid var(--line2);color:var(--muted);font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;transition:border-color .15s ease,color .15s ease,background .15s ease}',
+    '.tr-seg-btn:not(:disabled):hover{border-color:var(--lime-edge);color:var(--ink)}',
+    '.tr-seg-btn[aria-pressed="true"]{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
+    /* Start: centered under the panel, deliberately larger than a stock .btn-primary,
+       and still the only primary action on the page. */
+    '.tr-actions{justify-content:center}',
+    '.tr-start{padding:14px 28px;font-size:16px;border-radius:10px;min-width:200px}',
     '.tr-pr{display:flex;align-items:baseline;gap:8px;margin-top:11px;padding:9px 10px;border:1px solid var(--lime-edge);background:var(--lime-soft);border-radius:8px}',
     '.tr-pr-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--lime);flex:none}',
     '.tr-pr-copy{font-size:13px;color:var(--ink);margin:0;line-height:1.45}',
@@ -419,7 +655,21 @@ function injectStyles() {
     '.tr-prog-trains{font-size:12px;color:var(--muted);line-height:1.4;margin-top:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
     /* The panel is the only card in the column, so it can take a little of the
        panel padding off its sides on a phone to give the drill more width. */
-    '@media (max-width:420px){.tr-panel{padding:10px}.tr-band{padding:12px}}'
+    '@media (max-width:420px){.tr-panel{padding:10px}.tr-band{padding:12px}}',
+    /* The exit confirmation is a native modal dialog, so it needs the shared card
+       rhythm by hand. Styled from here rather than focus.css, which is frozen. */
+    '.nb-focus-stage dialog{border:1px solid var(--line2);border-radius:14px;background:var(--panel);color:var(--ink);padding:22px;width:min(420px,calc(100vw - 40px));box-shadow:0 30px 70px rgba(0,0,0,.55)}',
+    '.nb-focus-stage dialog::backdrop{background:var(--scrim)}',
+    '.nb-focus-stage dialog h2{margin:0 0 8px;font-size:20px;font-weight:600;letter-spacing:-.015em}',
+    '.nb-focus-stage dialog p{margin:0 0 18px;font-size:13px;line-height:1.55;color:var(--muted)}',
+    '.nb-focus-stage dialog button{font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 14px;border-radius:8px;cursor:pointer;transition:transform .12s ease,border-color .15s ease,color .15s ease,opacity .15s ease}',
+    '.nb-focus-stage dialog button+button{margin-left:10px}',
+    /* Keeping is the default and the safe path, so it carries the accent. Ending is
+       outlined, and only warns on hover. */
+    '.nb-focus-stage dialog .nb-dialog-keep{background:var(--lime);color:var(--bg);border:1px solid var(--lime)}',
+    '.nb-focus-stage dialog .nb-dialog-keep:hover{opacity:.9}',
+    '.nb-focus-stage dialog .nb-dialog-end{background:transparent;border:1px solid var(--line2);color:var(--ink)}',
+    '.nb-focus-stage dialog .nb-dialog-end:hover{border-color:var(--warn);color:var(--warn)}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -442,32 +692,6 @@ function buildDOM(container) {
      carries the name and this one line under it, nothing that repeats the topbar. */
   var ddesc = h('p', 'tr-desc', '');
 
-  /* N-back mode picker. Only meaningful for n-back, so it stays hidden for the
-     other eight drills rather than showing a control that does nothing. */
-  var modesBlock = h('div', 'tr-modes');
-  modesBlock.appendChild(h('span', 'tr-field', 'Mode'));
-  var modeSet = h('div', 'tr-modeset');
-  modeSet.setAttribute('role', 'group');
-  modeSet.setAttribute('aria-label', 'N-back mode');
-  var modeBtns = {};
-  var MODES = (globalThis.Content && globalThis.Content.MODES) || [];
-  var Engine = globalThis.Engine || {};
-  MODES.forEach(function (m) {
-    (function (m) {
-      var b = h('button', 'tr-mode');
-      b.type = 'button';
-      b.setAttribute('data-mode', m.id);
-      b.setAttribute('aria-pressed', 'false');
-      b.appendChild(h('span', null, m.name));
-      b.addEventListener('click', function () { pickMode(m); });
-      modeBtns[m.id] = b;
-      modeSet.appendChild(b);
-    })(m);
-  });
-  modesBlock.appendChild(modeSet);
-  var modeBlurb = h('p', 'tr-blurb', '');
-  modesBlock.appendChild(modeBlurb);
-
   var mount = h('div', 'drill-mount tr-idle');
   var stats = h('div', 'stats');
   var last = statCell('Last'), best = statCell('Best'), avg = statCell('Average');
@@ -480,18 +704,20 @@ function buildDOM(container) {
   var prCopy = h('p', 'tr-pr-copy', '');
   pr.appendChild(prCopy);
 
-  var actions = h('div', 'row-actions');
-  var start = h('button', 'btn-primary', 'Start');
+  /* Start sits directly under the mount, centered, and is the panel's one primary
+     action. The mode picker used to live here; it now renders inside the settings
+     panel, for n-back only. */
+  var actions = h('div', 'row-actions tr-actions');
+  var start = h('button', 'btn-primary tr-start', 'Start');
   start.type = 'button';
   actions.appendChild(start);
 
   panel.appendChild(ch);
   panel.appendChild(ddesc);
-  panel.appendChild(modesBlock);
   panel.appendChild(mount);
+  panel.appendChild(actions);
   panel.appendChild(stats);
   panel.appendChild(pr);
-  panel.appendChild(actions);
 
   /* Programs band. A full width card under the panel, so the nine drills get the
      room a uniform grid needs. Real buttons, so every drill is reachable by
@@ -547,10 +773,9 @@ function buildDOM(container) {
     sLast: last.v, sBest: best.v, sAvg: avg.v,
     statLAvg: avg.l, statLBest: best.l, live: live,
     startBtn: start, bandLevel: bandLevel,
-    modesBlock: modesBlock, modeBtns: modeBtns, modeBlurb: modeBlurb,
-    pr: pr, prCopy: prCopy, progBtns: progBtns
+    modesBlock: null, modeBtns: {}, modeBlurb: null,
+    pr: pr, prCopy: prCopy, progBtns: progBtns, container: container
   };
-  paintIdle();
   start.addEventListener('click', function () {
     if (ctxRef.audio && ctxRef.audio.resume) { try { ctxRef.audio.resume(); } catch (e) { /* degrade */ } }
     startDrill();
@@ -594,7 +819,7 @@ function pickMode(m) {
   say('Mode set to ' + m.name + '.');
 }
 
-function pickDrill(id) {
+export function pickDrill(id) {
   currentDrill = id;
   if (handle && handle.stop) handle.stop();
   handle = null;
@@ -602,10 +827,9 @@ function pickDrill(id) {
   setIdle(true);
   hidePR();
   paintAll();
-  if (ctxRef.audio && ctxRef.audio.resume) { try { ctxRef.audio.resume(); } catch (e) { /* degrade */ } }
-  /* Selecting a drill from the list starts it, so one tap does what the label
-     says. Start and Restart stay available below. */
-  runDrills([id], false);
+  /* Selecting a program only selects it: the panel swaps to this drill's settings
+     and Start is the one way to begin. It must never launch a drill on its own. */
+  say(drillById(id).name + ' selected. Press Start when ready.');
 }
 
 function showPR(rec, d) {
@@ -720,6 +944,8 @@ function nextDrill() {
        same trial sequence. Spaced Retrieval reads cards, not a stream. */
     mode: currentDrill === 'nback' ? mode : undefined,
     seed: SEEDED[currentDrill] ? seed : undefined,
+    /* The panel's starting settings for this drill, validated against the spec. */
+    options: optionsFor(currentDrill),
     onCards: function (cards) {
       state.cards = cards;
       data.cards = cards;
@@ -733,7 +959,16 @@ function nextDrill() {
         rec.meta.seed = seed;
         if (currentDrill === 'nback') rec.meta.mode = mode;
       }
-      recordRun(rec); nextDrill();
+      recordRun(rec);
+      /* The confirmation is up, so the queue must not advance behind it. A
+         finish here would call finishSession, which tears the stage and the open
+         dialog out of the DOM and leaves neither button clickable. The run is
+         still recorded: the drill did complete. Keeping Training resumes it. */
+      if (focus.on && focus.dialog && focus.dialog.open) {
+        focus.deferred = true;
+        return;
+      }
+      nextDrill();
     }
   });
   /* Entered after the drill is mounted so the stage can adopt its node. */
@@ -834,6 +1069,9 @@ export function render(container, ctx) {
 
   var sel = takeSelect();
   if (sel && globalThis.Content && globalThis.Content.DRILLS) currentDrill = sel;
+  /* The panel is per-drill, and buildDOM painted it for the default drill before
+     the handoff was read, so it is rebuilt now that the selected drill is known. */
+  paintIdle();
   data = readCache() || { runs: [], sessions: [], cards: [] };
   state = toState(data);
   paintAll();

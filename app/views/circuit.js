@@ -95,8 +95,10 @@ function saveSequence(sel) {
   try { localStorage.setItem(SEQ_KEY, JSON.stringify([sel.slice()])); } catch (e) { /* degrade */ }
 }
 function queueRun(ids, interleave) {
+  if (!ids || !ids.length) return false;
   try { localStorage.setItem(QUEUE_KEY, JSON.stringify({ ids: ids, interleave: !!interleave })); } catch (e) { /* degrade */ }
   if (ctxRef && ctxRef.navigate) ctxRef.navigate('train');
+  return true;
 }
 
 var ctxRef = null;
@@ -162,6 +164,7 @@ export function render(container, ctx) {
       return function () {
         if (this.checked) { if (customSel.indexOf(id) === -1) customSel.push(id); }
         else { customSel = customSel.filter(function (x) { return x !== id; }); }
+        updateCustomState();
       };
     })(d.id));
     label.appendChild(cb);
@@ -174,6 +177,14 @@ export function render(container, ctx) {
   var custom = h('button', 'btn-primary', 'Run custom');
   custom.type = 'button';
   bacts.appendChild(custom);
+  var customHint = h('p', 'cx-adapt-s', 'Select at least one drill to run a custom circuit.');
+  customHint.setAttribute('aria-live', 'polite');
+  bacts.appendChild(customHint);
+  function updateCustomState() {
+    custom.disabled = !customSel.length;
+    customHint.hidden = customSel.length > 0;
+  }
+  updateCustomState();
 
   /* Adaptive lives here rather than in a card of its own. On its own it was a
      heading over one button, and it also belongs with the picker it answers to:
@@ -194,6 +205,7 @@ export function render(container, ctx) {
     queueRun(Engine.dailyCircuit(dd), false);
   });
   custom.addEventListener('click', function () {
+    if (!customSel.length) return;
     saveSequence(customSel);
     queueRun(customSel.slice(), false);
   });

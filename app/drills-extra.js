@@ -91,24 +91,32 @@
   }
 
   /* level 0: addition and subtraction inside 30.
-     level 1: adds times tables and exact division by 2 to 9. */
+     level 1: adds times tables and exact division by 2 to 9.
+     level 2: addition and subtraction inside 100, and times tables and exact
+     division using factors 2 to 12. Every operation tier 1 has stays available,
+     with larger operands. */
   function makeProblem(level, rng) {
-    var lvl = Math.floor(Number(level) || 0) >= 1 ? 1 : 0;
-    var kinds = lvl ? ["+", "-", "*", "/"] : ["+", "-"];
+    var lvl = Math.floor(Number(level) || 0);
+    if (lvl < 0) lvl = 0;
+    if (lvl > 2) lvl = 2;
+    var kinds = lvl === 0 ? ["+", "-"] : ["+", "-", "*", "/"];
     var op = pick(rng, kinds);
     if (op === "+") {
-      var a = 1 + randInt(rng, 29), b = 1 + randInt(rng, 30 - a);
+      var hi = lvl >= 2 ? 99 : 29;
+      var a = 1 + randInt(rng, hi), b = 1 + randInt(rng, hi + 1 - a);
       return problem(lvl, "+", a, b, a + b);
     }
     if (op === "-") {
-      var c = 1 + randInt(rng, 30), d = 1 + randInt(rng, 30);
+      var cap = lvl >= 2 ? 100 : 30;
+      var c = 1 + randInt(rng, cap), d = 1 + randInt(rng, cap);
       return problem(lvl, "-", c, d, c - d);
     }
+    var hiF = lvl >= 2 ? 12 : 9;
     if (op === "*") {
-      var f = 2 + randInt(rng, 8), g = 2 + randInt(rng, 8);
+      var f = 2 + randInt(rng, hiF - 1), g = 2 + randInt(rng, hiF - 1);
       return problem(lvl, "*", f, g, f * g);
     }
-    var q = 2 + randInt(rng, 8), m = 2 + randInt(rng, 8);
+    var q = 2 + randInt(rng, hiF - 1), m = 2 + randInt(rng, hiF - 1);
     return problem(lvl, "/", q * m, m, q);
   }
 
@@ -321,6 +329,8 @@
     var clock = makeClock();
     var stopped = false, done = false;
     var i = 0, trials = [], timerId = 0;
+    /* Validated by drillOptions: 20, 30 or 40. Default keeps the 30-trial set. */
+    var total = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : SART_TRIALS;
     var curDigit = 0, shownAt = 0, resolved = true;
 
     var wrap = el("div", "drill drill-sart");
@@ -333,7 +343,7 @@
     var bar = el("div", "drill-bar");
     var pressBtn = button("btn-primary nx-press", "Press on 3");
     bar.appendChild(pressBtn);
-    var meta = el("div", "nb-meta mono", "0 / " + SART_TRIALS);
+    var meta = el("div", "nb-meta mono", "0 / " + total);
     var note = el("div", "drill-note", "A steady stream of digits, one at a time. Press on 3 and hold back on everything else. Trains sustained attention.");
     wrap.appendChild(stage);
     wrap.appendChild(live);
@@ -399,7 +409,7 @@
 
     function next() {
       if (stopped) return;
-      if (i >= SART_TRIALS) return finish();
+      if (i >= total) return finish();
       i++;
       curDigit = sartDigit(rng);
       resolved = false;
@@ -407,7 +417,7 @@
       stage.className = "nx-digit mono";
       stage.textContent = String(curDigit);
       live.textContent = "Digit " + curDigit;
-      meta.textContent = i + " / " + SART_TRIALS;
+      meta.textContent = i + " / " + total;
       timerId = clock.set(withhold, SART_BEAT);
     }
 
@@ -469,6 +479,8 @@
     var clock = makeClock();
     var stopped = false, done = false;
     var i = 0, choice = 2, hits = 0, misses = 0, rts = [];
+    /* Validated by drillOptions: 10, 20 or 30. Default keeps the 20-trial set. */
+    var total = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : CRT_TRIALS;
     var shownAt = 0, litIdx = -1, targetLane = 0, resolved = true, timerId = 0;
     var lanes = [], laneEls = [];
 
@@ -477,7 +489,7 @@
     var cue = el("div", "nx-cue", "Wait for a light, then press it.");
     cue.setAttribute("aria-live", "polite");
     var note = el("div", "drill-note", "Two lights, then three once you are quick. Trains simple reaction speed.");
-    var meta = el("div", "nb-meta mono", "0 / " + CRT_TRIALS);
+    var meta = el("div", "nb-meta mono", "0 / " + total);
     wrap.appendChild(stage);
     wrap.appendChild(cue);
     wrap.appendChild(note);
@@ -547,7 +559,7 @@
         cue.textContent = "wrong button";
         playSfx("incorrect");
       }
-      meta.textContent = i + " / " + CRT_TRIALS + " · " + choice + " lights";
+      meta.textContent = i + " / " + total + " · " + choice + " lights";
       clock.set(next, 260);
     }
 
@@ -559,13 +571,13 @@
       paintLit();
       cue.textContent = "too slow";
       playSfx("incorrect");
-      meta.textContent = i + " / " + CRT_TRIALS + " · " + choice + " lights";
+      meta.textContent = i + " / " + total + " · " + choice + " lights";
       clock.set(next, 260);
     }
 
     function next() {
       if (stopped) return;
-      if (i >= CRT_TRIALS) return finish();
+      if (i >= total) return finish();
       i++;
       layout();
       resolved = false;
@@ -575,7 +587,7 @@
       litIdx = targetLane;
       paintLit();
       cue.textContent = "go";
-      meta.textContent = i + " / " + CRT_TRIALS + " · " + choice + " lights";
+      meta.textContent = i + " / " + total + " · " + choice + " lights";
       timerId = clock.set(timeout, CRT_WINDOW);
     }
 
@@ -599,7 +611,7 @@
           unit: "ms",
           t: Date.now(),
           meta: {
-            trials: CRT_TRIALS,
+            trials: total,
             hits: hits,
             misses: misses,
             medianRt: med == null ? null : Math.round(med),
@@ -634,6 +646,13 @@
     var clock = makeClock();
     var stopped = false, done = false;
     var i = 0, level = 0, correct = 0, levelSet = false;
+    /* The panel's starting level maps onto the generator's three tiers: 1 is the
+       current default (add and subtract), 2 starts on times tables and division,
+       3 starts on the wide-range tier. A start above tier one marks the level as
+       already set, so the eight-trial promotion probe cannot pull it back down. */
+    var startLevel = (opts.options && typeof opts.options.startLevel === "number") ? opts.options.startLevel : 1;
+    level = startLevel - 1;
+    levelSet = startLevel > 1;
     var cur = null, shownAt = 0, resolved = true, timerId = 0;
     var times = [];
 

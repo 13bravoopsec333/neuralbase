@@ -37,18 +37,25 @@ function injectStyles() {
     '.mb{--mb-sec:26px;--mb-in:12px}',
     '.mb-answer{margin:9px 0 0;font-size:16px;line-height:1.55;color:var(--ink);text-wrap:pretty}',
     '.mb-sec{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:var(--mb-sec) 0 0;padding-bottom:8px;border-bottom:1px solid var(--line)}',
-    '.mb-sec-t{margin:0;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}',
     '.mb-sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);text-align:right}',
     '.mb-list{margin-top:var(--mb-in)}',
     '.mb-row{padding:14px 0;border-bottom:1px solid var(--line)}',
     '.mb-row:last-child{border-bottom:0}',
     '.mb-row-top{display:flex;align-items:center;gap:10px;min-width:0}',
     '.mb-ic{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;flex:none;background:var(--panel2);border:1px solid var(--line);border-radius:8px}',
-    '.mb-name{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em;min-width:0;overflow-wrap:break-word}',
+    '.mb-name{min-width:0;overflow-wrap:break-word}',
     '.mb-dl{display:grid;grid-template-columns:96px 1fr;gap:8px 14px;margin:var(--mb-in) 0 0}',
     '.mb-dt{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding-top:3px}',
     '.mb-dd{margin:0;font-size:13px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}',
     '.mb-ev{color:var(--ink);border-left:2px solid var(--lime-edge);padding-left:10px}',
+    '.mb-sources{margin:10px 0 0 42px;font-size:12px;color:var(--muted)}',
+    '.mb-sources summary{width:fit-content;cursor:pointer;color:var(--muted)}',
+    '.mb-sources summary:focus-visible,.mb-source-link:focus-visible{outline:2px solid var(--lime-edge);outline-offset:3px;border-radius:2px}',
+    '.mb-source-list{margin:8px 0 0;padding-left:18px}',
+    '.mb-source-list li+li{margin-top:8px}',
+    '.mb-source-claim{margin:0 0 2px;line-height:1.5;overflow-wrap:anywhere}',
+    '.mb-source-link{color:var(--ink);overflow-wrap:anywhere}',
+    '.mb-source-note{margin:8px 0 0;line-height:1.5;overflow-wrap:anywhere}',
     '.mb-limits{margin-top:var(--mb-in);border-left:2px solid var(--lime-edge);padding-left:14px}',
     '.mb-statement{margin:0;font-size:14px;line-height:1.6;color:var(--ink);text-wrap:pretty}',
     '.mb-nc{margin:var(--mb-in) 0 0;padding-top:var(--mb-in);border-top:1px solid var(--line);display:grid;grid-template-columns:96px 1fr;gap:8px 14px}',
@@ -66,7 +73,7 @@ function drillRow(d) {
   var ic = h('span', 'mb-ic');
   ic.appendChild(iconEl(d));
   top.appendChild(ic);
-  top.appendChild(h('h4', 'mb-name', d.name));
+  top.appendChild(h('h3', 'mb-name h-sub', d.name));
   row.appendChild(top);
 
   var dl = h('dl', 'mb-dl');
@@ -75,12 +82,40 @@ function drillRow(d) {
     dl.appendChild(h('dd', 'mb-dd' + pair[2], pair[1]));
   });
   row.appendChild(dl);
+  row.appendChild(sourceDisclosure(d));
   return row;
+}
+
+function sourceDisclosure(d) {
+  var details = h('details', 'mb-sources');
+  details.appendChild(h('summary', '', 'Sources for ' + d.name));
+  var sources = Array.isArray(d.sources) ? d.sources : [];
+  if (!sources.length) {
+    details.appendChild(h('p', 'mb-source-note', 'No directly matching source is documented for this outcome.'));
+    return details;
+  }
+
+  var list = h('ul', 'mb-source-list');
+  sources.forEach(function (source) {
+    var item = h('li');
+    item.appendChild(h('p', 'mb-source-claim', source.claim));
+    var link = h('a', 'mb-source-link', source.label);
+    link.setAttribute('href', 'https://pubmed.ncbi.nlm.nih.gov/' + source.id + '/');
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener noreferrer');
+    item.appendChild(link);
+    list.appendChild(item);
+  });
+  details.appendChild(list);
+  return details;
 }
 
 function sectionHead(title, note) {
   var head = h('div', 'mb-sec');
-  head.appendChild(h('h3', 'mb-sec-t', title));
+  /* The visible label is a span, not a heading: the section itself carries the
+     accessible name (see render), so a reader gets the landmark without the
+     label competing with the drill names for a heading level. */
+  head.appendChild(h('span', 'mb-sec-t h-label', title));
   if (note) head.appendChild(h('span', 'mb-sec-n', note));
   return head;
 }
@@ -106,11 +141,12 @@ export function render(container, ctx) {
   /* The near-transfer answer in one sentence, so a skeptical reader gets the claim
      and its limit before any of the rows. The second half of the old lead only
      announced what the rest of the page was about to say. */
-  head.appendChild(h('p', 'mb-answer', 'Each of the nine drills trains one specific skill, and training moves your score on that skill and on tasks much like it. How far that carries is the harder question.'));
+   head.appendChild(h('p', 'mb-answer', 'Each drill gives practice on a specific task. Where the allowed research directly matches a drill, we link it; where it does not, we say so.'));
   col.appendChild(head);
 
   var rows = [];
   var section = h('section');
+  section.setAttribute('aria-label', 'The nine drills');
   section.appendChild(sectionHead('The nine drills', 'Working memory to arithmetic'));
   var list = h('div', 'mb-list');
   for (var i = 0; i < DRILLS.length; i++) {
@@ -124,12 +160,13 @@ export function render(container, ctx) {
   /* The limits, stated once. A considered position, so it gets its own block with
      the accent rule rather than a paragraph buried in the middle of the page. */
   var limitsSec = h('section');
+  limitsSec.setAttribute('aria-label', 'Where the evidence stops');
   limitsSec.appendChild(sectionHead('Where the evidence stops'));
   var limits = h('div', 'card mb-limits');
-  limits.appendChild(h('p', 'mb-statement', COPY.methodHonest || 'Each drill trains its own skill. Recent studies find that training carries over to closely related untrained tasks, and that is what these drills target. Whether it reaches further is still an open question, so we make no promise about it.'));
+  limits.appendChild(h('p', 'mb-statement', COPY.methodHonest || 'The links below concern specific tasks, populations, and outcomes. Neuralbase has run no trials of its own, and those results do not establish broader effects for this product.'));
   var nc = h('dl', 'mb-nc');
   [
-    ['Life outcomes', 'Grades, test scores, jobs, and income sit outside what any of this evidence measures.'],
+    ['Life outcomes', 'The linked sources do not establish effects on grades, test scores, jobs, or income.'],
     ['New research', 'Neuralbase has run no trials of its own, so none of these figures are ours to defend.']
   ].forEach(function (pair) {
     nc.appendChild(h('dt', 'mb-dt', pair[0]));
@@ -140,11 +177,12 @@ export function render(container, ctx) {
   col.appendChild(limitsSec);
 
   var practiceSec = h('section');
+  practiceSec.setAttribute('aria-label', 'Practice');
   practiceSec.appendChild(sectionHead('Practice', 'Spaced and interleaved'));
   /* Three ways to train, which the rail already offers as three buttons. The
      sentence on interleaving and spacing stays, because it is the claim the
      "Practice" heading above it is making. */
-  practiceSec.appendChild(h('p', 'mb-note', 'Interleaving drills and spacing your reviews are the design choices with the most support.'));
+  practiceSec.appendChild(h('p', 'mb-note', COPY.methodPractice || 'No directly matching source is documented for this practice statement.'));
   col.appendChild(practiceSec);
 
   /* Rows arrive in sequence, so they read as a list being walked down rather than

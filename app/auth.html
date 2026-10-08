@@ -164,7 +164,9 @@
 @media (max-width:900px){
   .auth-main{grid-template-columns:1fr;gap:30px;align-items:start;padding-top:0}
   .auth-pitch{max-width:none}
-  .auth-card{justify-self:stretch;max-width:none}
+  /* The form leads on a phone. The pitch column above it is what pushed the
+     first field past the fold on a 720px viewport. */
+  .auth-card{order:-1;justify-self:stretch;max-width:none}
 }
 @media (max-width:520px){
   .auth-top{padding:14px 16px}

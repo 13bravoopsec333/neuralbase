@@ -45,6 +45,9 @@ body.rail-open .account-chev{display:block}
 .account-mobile .avatar{width:32px;height:32px}
 .tb-titles{display:flex;flex-direction:column;gap:1px;min-width:0}
 .tb-titles .brand,.tb-titles .view-sub{line-height:1.25}
+/* An empty subtitle is not rendered, so Settings does not carry a blank line
+   under the title that reads as a missing value. */
+#tbSub:empty{display:none}
 .account-menu{position:fixed;z-index:70;min-width:200px;background:var(--panel);border:1px solid var(--line2);border-radius:10px;box-shadow:0 20px 50px rgba(0,0,0,.5);padding:6px;display:flex;flex-direction:column;gap:2px}
 .account-menu button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:0;border-radius:7px;padding:9px 10px;font-size:13px;color:var(--ink)}
 .account-menu button:hover{background:var(--hover)}

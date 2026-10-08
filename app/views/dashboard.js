@@ -278,7 +278,7 @@ function injectStyles() {
     ".dash-freeze-btn{background:none;border:1px solid var(--line2);color:var(--ink);padding:7px 13px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .15s ease,color .15s ease}",
     ".dash-freeze-btn:hover{border-color:var(--accent-edge);color:var(--accent)}",
     /* The set. Three tiles in a row, so the middle drill sits in the middle. */
-    ".dash-plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}",
+    ".dash-plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap-3)}",
     ".dash-tile{display:flex;align-items:center;gap:11px;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);padding:12px}",
     ".dash-tile.done{opacity:.62}",
     ".dash-tile-txt{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}",
@@ -295,7 +295,7 @@ function injectStyles() {
     ".dash-strip .card-head{margin:0;flex:none}",
     /* Daily board: one quiet row under the chart. */
     ".dash-board{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}",
-    ".dash-board-link{background:none;border:0;padding:0;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer}",
+    ".dash-board-link{background:none;border:0;padding:7px 0;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer}",
     ".dash-board-link:hover{text-decoration:underline}",
     ".dash-board-rank{font-family:var(--mono);font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}",
     ".dash-board-rank.top{color:var(--accent)}",

@@ -86,7 +86,7 @@ function injectStyles() {
 
     /* records timeline: a log, newest first */
     '.pg-recs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}',
-    '.pg-rec{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:11px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}',
+    '.pg-rec{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--gap-3);align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}',
     '.pg-rec:last-child{border-bottom:0}',
     '.pg-rec-main{display:flex;flex-direction:column;gap:2px;min-width:0}',
     '.pg-rec-name{font-size:13px;font-weight:600;min-width:0;overflow-wrap:break-word}',
@@ -310,7 +310,7 @@ function buildRecords(reg, state, now) {
 /* Only drills with runs get a tile. Nine tiles reading "--" and "not trained" is
    noise, not information: an untrained drill has no best, so it has nothing to
    say here. The untrained case is one line under the heading instead. */
-function buildBests(reg, state) {
+function buildBests(reg, state, ctx) {
   var S = globalThis.Store;
   var card = h('div', 'card');
   var head = h('div', 'card-head');
@@ -334,6 +334,14 @@ function buildBests(reg, state) {
     card.classList.add('pg-strip');
     card.appendChild(h('p', 'pg-empty',
       'No drills trained yet. Finish a run and your best appears here.'));
+    if (!state.sessions.length && !state.records.length) {
+      var start = h('button', 'btn-primary', 'Start a drill');
+      start.type = 'button';
+      start.addEventListener('click', function () {
+        if (ctx && typeof ctx.navigate === 'function') ctx.navigate('train');
+      });
+      card.appendChild(start);
+    }
     return card;
   }
 
@@ -612,7 +620,7 @@ export async function render(container, ctx) {
        so nothing short is left sitting beside something tall. With nothing
        trained the bests card is a one line strip, and a strip beside the tall
        habit grid would leave a hole, so it drops to the full width row below. */
-    var bests = buildBests(reg, state);
+    var bests = buildBests(reg, state, ctx);
     var strip = bests.classList.contains('pg-strip');
     var top = h('div', 'pg-top' + (strip ? ' pg-top-solo' : ''));
     top.appendChild(buildHeatmap(state, now));

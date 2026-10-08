@@ -133,7 +133,7 @@ body{overflow-x:clip}
 .lp-spec-k{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .lp-spec-v{font-family:var(--mono);font-size:14.5px;font-weight:500;letter-spacing:-.01em;white-space:nowrap}
 
-.lp-cue-scroll{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);text-decoration:none}
+.lp-cue-scroll{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;margin-top:2px;padding-block:9px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);text-decoration:none}
 .lp-cue-scroll:hover{color:var(--lime)}
 .lp-cue-scroll svg{width:14px;height:14px}
 
@@ -319,7 +319,9 @@ body{overflow-x:clip}
 /* ---------- Responsive ---------- */
 @media(max-width:900px){
   .lp-hero{grid-template-columns:1fr;gap:clamp(14px,2.6vh,24px)}
-  .lp-rig{order:-1}
+  /* Copy leads on a phone. The instrument rig is the taller block, so putting it
+     first pushed the headline and the first action below the fold. */
+  .lp-copy{order:-1}
   .lp-h1{font-size:clamp(22px,5.4vw,32px);max-width:22ch}
   .lp-tele-grid{grid-template-columns:1fr}
   .lp-hist{border-left:0;border-top:1px solid var(--line)}
@@ -515,6 +517,7 @@ body{overflow-x:clip}
       <p class="lp-eyebrow">Drills</p>
       <h2 class="lp-h2">What each drill trains, and the evidence behind it.</h2>
       <ul class="lp-drills" id="drillList"></ul>
+      <div class="lp-note"><p id="drillsNote"></p></div>
     </section>
 
     <!-- 4. METHOD -->
@@ -772,6 +775,7 @@ body{overflow-x:clip}
   };
 
   var DRILLS = (window.Content && Content.DRILLS) || [];
+  var C = (window.Content && Content.COPY) || {};
   var list = document.getElementById("drillList");
   if (list) {
     DRILLS.forEach(function (d) {
@@ -787,18 +791,23 @@ body{overflow-x:clip}
         '<div class="lp-viz lp-viz-' + d.id + '" aria-hidden="true">' + (VIZ[d.id] || '') + '</div>' +
         '<div class="lp-drill-info">' +
           '<p class="lp-line"><span class="k">Trains</span><span class="lp-line-t">' + d.trains + '</span></p>' +
-          '<p class="lp-line"><span class="k">Evidence</span><span class="lp-line-t">' + d.evidence + '</span></p>' +
+          (d.landingEvidence ? '<p class="lp-line"><span class="k">Evidence</span><span class="lp-line-t">' + d.landingEvidence + '</span></p>' : '') +
         '</div>';
+      /* The Method view carries the full d.evidence audit text, including the
+         drills whose outcome is not documented in the allowed sources. The
+         landing list shows only the short d.landingEvidence line, so no card
+         repeats that audit phrasing. */
       list.appendChild(li);
     });
   }
+  var dn = document.getElementById("drillsNote");
+  if (dn && C.landingNote) dn.textContent = C.landingNote;
 
   /* ---- Method copy from content.js ---- */
-  var C = (window.Content && Content.COPY) || {};
   var ml = document.getElementById("methodLead");
   var mh = document.getElementById("methodHonest");
   if (ml && C.methodLead) ml.textContent = C.methodLead;
-  if (mh && C.methodHonest) mh.textContent = C.methodHonest;
+  if (mh && C.methodHonestLanding) mh.textContent = C.methodHonestLanding;
 
   /* ---- Sparkline of reaction times ---- */
   var RT = [520, 505, 541, 494, 470, 489, 455, 463, 431, 442, 416, 428, 402, 413, 398, 406, 391, 384];

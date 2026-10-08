@@ -459,7 +459,50 @@
     return Math.max(0, Math.min(Math.max(b, l + 2), r));
   }
 
+  /* Per-drill starting settings. One knob per drill, described here so the Train
+     view can render a panel from the same table the drill validates against.
+     min, max and step are all integers, so a snapped value is always an integer
+     and a drill never sees a fractional level or a trial count off the grid. */
+  var DRILL_OPTION_SPEC = {
+    nback: [{ key: "startLevel", label: "Starting level", min: 1, max: 4, step: 1, def: 2 }],
+    ufov: [{ key: "startExposure", label: "Start exposure", min: 100, max: 400, step: 50, def: 200 }],
+    palace: [{ key: "routeLength", label: "Route length", min: 5, max: 10, step: 1, def: 5 }],
+    reasoning: [{ key: "trials", label: "Trials", min: 8, max: 16, step: 4, def: 8 }],
+    spaced: [{ key: "reviewLimit", label: "Review limit", min: 5, max: 30, step: 5, def: 10 }],
+    switching: [{ key: "trials", label: "Trials", min: 12, max: 24, step: 6, def: 12 }],
+    sart: [{ key: "trials", label: "Trials", min: 20, max: 40, step: 10, def: 30 }],
+    crt: [{ key: "trials", label: "Trials", min: 10, max: 30, step: 10, def: 20 }],
+    math: [{ key: "startLevel", label: "Starting level", min: 1, max: 3, step: 1, def: 1 }]
+  };
+
+  function drillOptionSpec() { return DRILL_OPTION_SPEC; }
+
+  /* One value through the spec: a finite number is used, anything else falls back
+     to the default, then the result is clamped into range and snapped to the
+     step grid. Clamping again after the snap catches the case where rounding
+     pushes a value back past the top of the range. */
+  function snapDrillOption(value, spec) {
+    var v = (typeof value === "number" && isFinite(value)) ? value : spec.def;
+    v = Math.max(spec.min, Math.min(spec.max, v));
+    v = spec.min + Math.round((v - spec.min) / spec.step) * spec.step;
+    return Math.max(spec.min, Math.min(spec.max, v));
+  }
+
+  /* Every key for one drill, validated. An unknown id has nothing to validate,
+     so it returns an empty bag rather than throwing. */
+  function drillOptions(id, overrides) {
+    var list = DRILL_OPTION_SPEC[id];
+    if (!list) return {};
+    var o = overrides || {};
+    var out = {};
+    for (var i = 0; i < list.length; i++) {
+      out[list[i].key] = snapDrillOption(o[list[i].key], list[i]);
+    }
+    return out;
+  }
+
   var DrillsCore = { isMatch: isMatch, nbackChunkSize: nbackChunkSize, pressGuard: pressGuard, nextLevel: nextLevel, adaptExposure: adaptExposure, palaceScore: palaceScore, relationKey: relationKey,
+    drillOptionSpec: drillOptionSpec, drillOptions: drillOptions,
     PALACE_STUDY_SECONDS: PALACE_STUDY_SECONDS, PALACE_STUDY_MS: PALACE_STUDY_MS,
     PALACE_ROUTE: 5, bindKey: bindKey, digitIndex: digitIndex, silenceAudio: silenceAudio, reviewQueue: reviewQueue, switchCost: switchCost, nbackTrialCorrect: nbackTrialCorrect, nbackOutcome: nbackOutcome, nbackVoiceMode: nbackVoiceMode, isVowel: isVowel, dPrime: dPrime, ruleShiftAccuracy: ruleShiftAccuracy, mulberry32: mulberry32, seedFrom: seedFrom, randInt: randInt, pick: pick, nbackSequence: nbackSequence, NB_MODES: NB_MODES };
 
@@ -481,6 +524,10 @@
       rng: o.rng,
       seed: o.seed,
       mode: o.mode,
+      /* Validated starting settings. o.options is the nested form the Train view
+         will use; a flat object is accepted too, so a caller can pass startLevel
+         at the top level without wrapping it. */
+      options: drillOptions(id, o.options || o),
       onComplete: function (rec) {
         if (rec) {
           rec.meta = rec.meta || {};
@@ -518,7 +565,10 @@
     var voiceMode = nbackVoiceMode(mode);
     var TRIALS = 18;
     var BLOCK = 4;
-    var level = 2, maxLevel = 2;
+    /* The starting n and the level the set can climb to. Validated by
+       drillOptions, so it is always a whole number in 1..4. */
+    var startLevel = (opts.options && typeof opts.options.startLevel === "number") ? opts.options.startLevel : 2;
+    var level = startLevel, maxLevel = startLevel;
     var rng = rngFrom(opts);
     var correctTrials = 0;
     var blockCorrect = 0, blockCount = 0;
@@ -586,7 +636,7 @@
     var oneBtn = button("btn-primary", "Match");
     if (dual) { bar.appendChild(posBtn); bar.appendChild(letBtn); }
     else bar.appendChild(oneBtn);
-    var meta = el("div", "nb-meta mono", "n = 2 · 0 / " + TRIALS);
+    var meta = el("div", "nb-meta mono", "n = " + level + " · 0 / " + TRIALS);
 
     wrap.appendChild(cueEl);
     /* Arithmetic has no grid (the sum is the stimulus) and spatial has no letter
@@ -764,7 +814,9 @@
     var TRIALS = 10;
     var rng = rngFrom(opts);
     var timers = makeTimers();
-    var exposure = 200, i = 0, correctCount = 0, stopped = false, timer = 0, resolved = false;
+    /* Validated by drillOptions: a whole number of ms in 100..400. */
+    var exposure = (opts.options && typeof opts.options.startExposure === "number") ? opts.options.startExposure : 200;
+    var i = 0, correctCount = 0, stopped = false, timer = 0, resolved = false;
     var answer = { shape: null, pos: null, pickShape: null, pickPos: null };
 
     var wrap = el("div", "drill drill-ufov");
@@ -774,7 +826,7 @@
     stage.appendChild(shape); stage.appendChild(dot);
     var prompt = el("div", "drill-note", "Watch the center shape and the edge dot.");
     var bar = el("div", "drill-bar");
-    var meta = el("div", "nb-meta mono", "exposure 200 ms · 0 / " + TRIALS);
+    var meta = el("div", "nb-meta mono", "exposure " + exposure + " ms · 0 / " + TRIALS);
     wrap.appendChild(stage); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
 
@@ -887,7 +939,10 @@
       "Meadow", "Postcard", "Satchel", "Windmill", "Hammock", "Waterfall", "Pinecone",
       "Sundial", "Kite", "Buoy", "Campfire", "Treasure", "Shovel", "Footbridge", "Bucket"
     ];
+    /* Validated by drillOptions: a whole number of stops in 5..10. The literal
+       default stays on one line so the content check can read the shipped value. */
     var ROUTE = 5;
+    if (opts.options && typeof opts.options.routeLength === "number") ROUTE = opts.options.routeLength;
     var placed = [], recalled = [], idx = 0, stopped = false;
     /* The study clock needs two timers at once, the advance and the repaint,
        which makeTimers holds one of. So these two keep their own ids and stop()
@@ -1089,7 +1144,9 @@
       { relation: "sequence", a: "Waking", b: "Sleeping", c: "Sprout", correct: "Flower", wrong: ["Pencil", "Loud"] }
     ];
     var rng = rngFrom(opts);
-    var TRIALS = 8, i = 0, correctCount = 0, stopped = false;
+    /* Validated by drillOptions: 8, 12 or 16. */
+    var TRIALS = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 8;
+    var i = 0, correctCount = 0, stopped = false;
     /* The options currently on the bar, so a digit can reach the same button a
        click would. Named off opts on purpose: opts is the drill's parameter and
        holds onComplete, so shadowing it silently drops the run record. */
@@ -1157,6 +1214,9 @@
     var cards = (opts.cards || []).slice();
     var Spacing = globalThis.Spacing;
     var stopped = false;
+    /* Validated by drillOptions: at most this many due cards are reviewed in one
+       pass. Fewer due means fewer reviewed. */
+    var reviewLimit = (opts.options && typeof opts.options.reviewLimit === "number") ? opts.options.reviewLimit : 10;
     /* What the keyboard is looking at: the add form, the question, the grade, or
        a finished summary. One flag, so one handler covers every screen the drill
        puts up instead of a handler per screen. */
@@ -1202,6 +1262,7 @@
     function runReview() {
       var now = Date.now();
       var q = reviewQueue(cards, now);
+      if (q.length > reviewLimit) q = q.slice(0, reviewLimit);
       if (!q.length) {
         screen = "add";
         stage.textContent = "Nothing due";
@@ -1333,7 +1394,8 @@
   /* ---------- 6. Task Switching ---------- */
   function switching(container, opts) {
     var rng = rngFrom(opts);
-    var TRIALS = 12;
+    /* Validated by drillOptions: 12, 18 or 24. */
+    var TRIALS = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 12;
     var i = 0, correctCount = 0, stopped = false;
     var lastRule = null;
     var repeatTimes = [], switchTimes = [];

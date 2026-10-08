@@ -55,7 +55,7 @@ function injectStyles() {
     ".set-grid{display:grid;grid-template-columns:1fr;gap:var(--set-sec) var(--gap-5);align-items:start}",
     "@media (min-width:1080px){.set-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}",
     "@media (max-width:1079px){.set-group+.set-group{margin-top:var(--gap-5)}}",
-    ".set-group-l{margin:0 0 10px;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}",
+    ".set-group-l{margin:0 0 10px}",
 
     /* The card that answers the question the page was opened for. The accent edge
        is the same one the rail uses for the current page, so it reads as
@@ -995,7 +995,7 @@ export function render(container, ctx) {
     var colEl = el("div", "set-group");
     colEl.setAttribute("role", "group");
     colEl.setAttribute("aria-label", g.label);
-    colEl.appendChild(el("h2", "set-group-l", g.label));
+    colEl.appendChild(el("span", "set-group-l h-label", g.label));
     g.sections.forEach(function (s) {
       /* A section flagged `divider` gets a rule above it instead of plain
          spacing: the same device the rail uses between the account control and
