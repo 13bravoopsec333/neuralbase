@@ -188,9 +188,17 @@ function injectStyles() {
   var s = document.createElement("style");
   s.id = STYLE_ID;
   s.textContent = [
-    ".sd{display:block;max-width:680px;margin-inline:auto;--sd-gap:14px;--sd-pad:18px;--sd-in:12px}",
-    ".sd-stack{display:flex;flex-direction:column;gap:var(--sd-gap)}",
+    /* The root is a column that takes the frame's height, so the hero can grow into
+       it. .view centres it, so a tall page still starts at the top. */
+    ".sd{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;max-width:680px;margin-inline:auto;--sd-gap:14px;--sd-pad:18px;--sd-in:12px}",
+    ".sd-stack{display:flex;flex-direction:column;gap:var(--sd-gap);flex:1 1 auto;min-height:0}",
     ".sd .card{padding:var(--sd-pad)}",
+    /* The hero grows into the frame, but only so far. Past about 340px the card
+       stops being a number with a button under it and starts being an empty box
+       with a number floating in the middle, which is the other way this page can
+       read as unfinished. The frame centres the stack, so the leftover space sits
+       above and below rather than under one stretched card. */
+    ".sd-hero{flex:1 1 auto;max-height:340px;justify-content:center}",
 
     /* ---- the due count: the loudest thing on the page ---- */
     ".sd-hero{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:28px var(--sd-pad)}",
@@ -221,9 +229,11 @@ function injectStyles() {
 
     /* ---- one disclosure for everything else ---- */
     ".sd-tools{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden}",
-    ".sd-tools>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:15px 16px;font-size:14px;font-weight:600}",
+    ".sd-tools>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:14px 16px}",
     ".sd-tools>summary::-webkit-details-marker{display:none}",
-    ".sd-tools-label{flex:1}",
+    ".sd-tools-txt{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}",
+    ".sd-tools-label{font-size:14px;font-weight:600}",
+    ".sd-tools-sub{font-size:12px;color:var(--muted);line-height:1.45}",
     ".sd-caret{flex:none;width:9px;height:9px;margin-right:2px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg);transition:transform .2s ease}",
     ".sd-tools[open]>summary .sd-caret{transform:rotate(-135deg)}",
     ".sd-tools-body{display:flex;flex-direction:column;padding:0 16px 16px}",
@@ -1384,10 +1394,16 @@ function buildGradePref() {
 
 /* ---------------- the one disclosure ---------------- */
 
+/* The label carries the one line that says what is behind it, so the collapsed
+   row reads as a section with contents rather than as a lone word over an arrow. */
 function buildTools() {
   var d = h("details", "sd-tools");
   var summary = h("summary");
-  summary.appendChild(h("span", "sd-tools-label", "Card tools"));
+  var txt = h("span", "sd-tools-txt");
+  txt.appendChild(h("span", "sd-tools-label", "Card tools"));
+  txt.appendChild(h("span", "sd-tools-sub",
+    "Add and import cards, retention, and every card in the deck."));
+  summary.appendChild(txt);
   summary.appendChild(h("span", "sd-caret"));
   d.appendChild(summary);
 

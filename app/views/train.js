@@ -41,7 +41,6 @@ function iconEl(d) {
   if (d && d.icon) s.innerHTML = d.icon;
   return s;
 }
-function planOf(ctx) { return ctx && ctx.profile && ctx.profile.plan === 'pro' ? 'pro' : 'free'; }
 function clientId() {
   try { if (globalThis.crypto && globalThis.crypto.randomUUID) return globalThis.crypto.randomUUID(); } catch (e) { /* fall through */ }
   return 'run-' + Date.now() + '-' + Math.random().toString(16).slice(2);
@@ -55,10 +54,7 @@ function readMode(plan) {
   var v = null;
   try { v = localStorage.getItem(MODE_KEY); } catch (e) { return want; }
   if (!v) return want;
-  var ok = !Engine || typeof Engine.canAccessMode !== 'function'
-    ? true
-    : Engine.canAccessMode('nback', v, plan);
-  return ok ? v : want;
+  return v || want;
 }
 function writeMode(id) {
   try { localStorage.setItem(MODE_KEY, id); } catch (e) { /* degrade */ }
@@ -347,9 +343,11 @@ function injectStyles() {
   var s = document.createElement('style');
   s.id = 'nb-train-styles';
   s.textContent = [
-    /* The root is the shared centered column. The width is restated here so the view
-       still centers on its own while .view-mid-wide lands in styles.css. */
-    '.tr-view{display:block;max-width:1080px;margin-inline:auto}',
+    /* The root is the shared centered column, and it keeps the frame .view gives
+       every page: a flex column that takes the height the shell has left and
+       centers the panel and the programs band in it. display:block here would
+       opt this one view out and leave it clinging to the top. */
+    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);max-width:1080px;margin-inline:auto}',
     /* The topbar owns the view title now, so the panel head carries the drill's own
        name and one description line under it, not a second title block. */
     '.tr-desc{font-size:13px;color:var(--muted);line-height:1.45;margin:0 0 10px;max-width:62ch}',
@@ -367,7 +365,9 @@ function injectStyles() {
     /* The programs band is a size container so the grid below it responds to the
        width it actually has. Viewport breakpoints cannot see that the rail eats
        208px between 821 and 900px and not below it. */
-    '.tr-band{margin-top:14px;container-type:inline-size}',
+    /* The gap on .tr-view is the space above this band, so it carries no margin of
+       its own. */
+    '.tr-band{container-type:inline-size}',
     '.tr-band-meta{display:flex;align-items:baseline;gap:12px}',
     '.tr-modes{margin-top:2px}',
     '.tr-field{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:7px}',
@@ -377,7 +377,6 @@ function injectStyles() {
     '.tr-mode[aria-pressed="true"]{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
     '.tr-mode:disabled{opacity:.5;cursor:not-allowed}',
     '.tr-mode[aria-pressed="true"]:disabled{opacity:.7}',
-    '.tr-mode .tr-pro{font-size:10px;letter-spacing:.06em;color:var(--lime);border:1px solid var(--lime-edge);border-radius:8px;padding:1px 4px}',
     '.tr-blurb{font-size:13px;color:var(--muted);margin:7px 0 0;max-width:52ch}',
     '.tr-seed{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}',
     '.tr-seed-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);flex:none}',
@@ -412,8 +411,6 @@ function injectStyles() {
     /* One line, ellipsis past that. A name that wraps would push its card taller
        than the one beside it, which is the raggedness the grid cannot fix alone. */
     '.tr-prog-name{font-size:13px;font-weight:600;flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '.tr-prog-tag{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border:1px solid var(--line2);border-radius:8px;padding:2px 5px;flex:none;white-space:nowrap}',
-    '.tr-prog-tag.locked{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
     /* margin-top:auto lands the skill line on the same baseline in every card. */
     '.tr-prog-trains{font-size:12px;color:var(--muted);line-height:1.4;margin-top:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
     '.tr-empty{color:var(--dim);font-size:13px;margin:10px 0 0}'
@@ -435,8 +432,7 @@ function buildDOM(container) {
   dicon.setAttribute('aria-hidden', 'true');
   var dn = h('h3', null, 'Executive N-Back');
   chTitle.appendChild(dicon); chTitle.appendChild(dn);
-  var tag = h('span', 'mono cap', 'Free');
-  ch.appendChild(chTitle); ch.appendChild(tag);
+  ch.appendChild(chTitle);
   /* The drill's own description. The topbar owns the view title, so the panel head
      carries the name and this one line under it, nothing that repeats the topbar. */
   var ddesc = h('p', 'tr-desc', '');
@@ -451,7 +447,6 @@ function buildDOM(container) {
   var modeBtns = {};
   var MODES = (globalThis.Content && globalThis.Content.MODES) || [];
   var Engine = globalThis.Engine || {};
-  var proOnly = Engine.PRO_ONLY_MODES || [];
   MODES.forEach(function (m) {
     (function (m) {
       var b = h('button', 'tr-mode');
@@ -459,7 +454,6 @@ function buildDOM(container) {
       b.setAttribute('data-mode', m.id);
       b.setAttribute('aria-pressed', 'false');
       b.appendChild(h('span', null, m.name));
-      if (proOnly.indexOf(m.id) !== -1) b.appendChild(h('span', 'tr-pro', 'Pro'));
       b.addEventListener('click', function () { pickMode(m); });
       modeBtns[m.id] = b;
       modeSet.appendChild(b);
@@ -536,11 +530,8 @@ function buildDOM(container) {
   pc.appendChild(pch);
   var plist = h('ul', 'tr-progs');
   var progBtns = {};
-  /* Free drills first, then Pro, each keeping the registry order. Every card
-     already carries its Free or Pro tag, so the order does the grouping and no
-     second heading repeats the tags. */
-  var ordered = D.filter(function (p) { return !p.pro; })
-    .concat(D.filter(function (p) { return p.pro; }));
+  /* Registry order, which is the order the drills are meant to be tried in. */
+  var ordered = D.slice();
   ordered.forEach(function (p) {
     (function (p) {
       var li = h('li');
@@ -556,8 +547,6 @@ function buildDOM(container) {
       pname.title = p.name;
       nameWrap.appendChild(pname);
       top.appendChild(nameWrap);
-      var ptag = h('span', 'tr-prog-tag', p.pro ? 'Pro' : 'Free');
-      top.appendChild(ptag);
       b.appendChild(top);
       b.appendChild(h('span', 'tr-prog-trains', p.trains));
       b.addEventListener('click', function () { pickDrill(p.id); });
@@ -577,7 +566,7 @@ function buildDOM(container) {
   container.appendChild(live);
 
   ui = {
-    drillName: dn, drillIcon: dicon, drillTag: tag, drillDesc: ddesc, mount: mount,
+    drillName: dn, drillIcon: dicon, drillDesc: ddesc, mount: mount,
     sLast: last.v, sBest: best.v, sAvg: avg.v,
     statLAvg: avg.l, statLBest: best.l, live: live,
     startBtn: start, sessionVal: sessionVal, pips: pips, bandLevel: bandLevel, sideCol: col,
@@ -673,12 +662,6 @@ function pickMode(m) {
      change now would only desync the run. The buttons are disabled during a set;
      this guard is the backstop. */
   if (running) return;
-  var Engine = globalThis.Engine;
-  var plan = planOf(ctxRef);
-  if (Engine && typeof Engine.canAccessMode === 'function' && !Engine.canAccessMode('nback', m.id, plan)) {
-    if (ctxRef.navigate) ctxRef.navigate('pricing');
-    return;
-  }
   mode = m.id;
   writeMode(mode);
   paintAll();
@@ -686,12 +669,6 @@ function pickMode(m) {
 }
 
 function pickDrill(id) {
-  var Engine = globalThis.Engine;
-  var plan = planOf(ctxRef);
-  if (Engine && typeof Engine.canAccess === 'function' && !Engine.canAccess(id, plan)) {
-    if (ctxRef.navigate) ctxRef.navigate('pricing');
-    return;
-  }
   currentDrill = id;
   if (handle && handle.stop) handle.stop();
   handle = null;
@@ -728,23 +705,15 @@ function paintModes(d) {
   var isN = d.id === 'nback';
   ui.modesBlock.hidden = !isN;
   if (!isN) return;
-  var Engine = globalThis.Engine;
-  var plan = planOf(ctxRef);
-  var proOnly = (Engine && Engine.PRO_ONLY_MODES) || [];
   var MODES = (globalThis.Content && globalThis.Content.MODES) || [];
   MODES.forEach(function (m) {
     var b = ui.modeBtns && ui.modeBtns[m.id];
     if (!b) return;
-    var locked = Engine && typeof Engine.canAccessMode === 'function' && !Engine.canAccessMode('nback', m.id, plan);
-    /* A locked mode stays visible and pressable so the Pro tag can do its job.
-       Hiding it would leave a Free user unable to tell it exists. */
     b.setAttribute('aria-pressed', m.id === mode ? 'true' : 'false');
     /* A running set already committed to one mode, so the picker is disabled for
        the life of the set. The blurb below says why. */
     b.disabled = running;
-    var tagEl = b.querySelector('.tr-pro');
-    if (tagEl) tagEl.hidden = proOnly.indexOf(m.id) === -1;
-    b.setAttribute('aria-label', locked ? m.name + ', Pro mode' : m.name);
+    b.setAttribute('aria-label', m.name);
   });
   var cur = null;
   MODES.forEach(function (m) { if (m.id === mode) cur = m; });
@@ -776,10 +745,6 @@ function paintAll() {
   var d = drillById(currentDrill);
   if (ui.drillName) ui.drillName.textContent = d.name;
   if (ui.drillIcon) ui.drillIcon.innerHTML = d.icon || '';
-  if (ui.drillTag) {
-    ui.drillTag.textContent = d.pro ? 'Pro' : 'Free';
-    ui.drillTag.className = 'mono cap' + (d.pro ? ' tag-pro' : '');
-  }
   if (ui.drillDesc) ui.drillDesc.textContent = d.desc || '';
 
   /* Best is the lowest number for ufov and crt and the highest for the rest, so
@@ -797,19 +762,8 @@ function paintAll() {
   if (ui.bandLevel) ui.bandLevel.textContent = 'Level ' + Store.level(state);
 
   if (ui.progBtns) {
-    var plan = planOf(ctxRef);
     Object.keys(ui.progBtns).forEach(function (id) {
       var b = ui.progBtns[id];
-      var locked = Engine && typeof Engine.canAccess === 'function' && !Engine.canAccess(id, plan);
-      var tagEl = b.querySelector('.tr-prog-tag');
-      if (tagEl) {
-        /* The label states the drill's own tier, so the free-then-pro order
-           stays legible on every plan. `locked` only styles the card for someone
-           who cannot open it yet. Relabelling by access made a Pro account read
-           "Free" on all nine drills. */
-        tagEl.textContent = drillById(id).pro ? 'Pro' : 'Free';
-        tagEl.className = 'tr-prog-tag' + (locked ? ' locked' : '');
-      }
       b.setAttribute('aria-current', id === currentDrill ? 'true' : 'false');
     });
   }
@@ -821,9 +775,8 @@ function paintAll() {
 
 function runDrills(ids, interleave) {
   var Engine = globalThis.Engine;
-  var plan = planOf(ctxRef);
-  var allowed = (ids || []).filter(function (id) { return Engine.canAccess(id, plan); });
-  if (!allowed.length) { if (ctxRef.navigate) ctxRef.navigate('pricing'); return; }
+  var allowed = (ids || []).slice();
+  if (!allowed.length) return;
   pending = interleave ? Engine.interleave(allowed) : allowed.slice();
   sessionDrills = [];
   nextDrill();
@@ -962,7 +915,7 @@ export function render(container, ctx) {
   running = false;
   hidePR();
   ctxRef = ctx;
-  mode = readMode(planOf(ctx));
+  mode = readMode();
   seed = readSeed();
   writeSeed(seed);
   /* The shared centered column. Train carries a drill panel, a session card and
@@ -974,7 +927,7 @@ export function render(container, ctx) {
   var sel = takeSelect();
   if (sel && globalThis.Content && globalThis.Content.DRILLS) currentDrill = sel;
   data = readCache() || { runs: [], sessions: [], cards: [] };
-  state = toState(data, planOf(ctx));
+  state = toState(data);
   paintAll();
 
   var seq = writeSeq;
@@ -983,7 +936,7 @@ export function render(container, ctx) {
       if (!container.isConnected || writeSeq !== seq) return;
       if (res && res.ok && res.data) {
         data = res.data;
-        state = toState(data, planOf(ctx));
+        state = toState(data);
         writeCache(data);
         paintAll();
       }

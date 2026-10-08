@@ -6,20 +6,11 @@
     brand: "Neuralbase",
     today: "Today",
     startSession: "Start session",
-    upgrade: "Upgrade",
     trainTitle: "Train",
     circuitTitle: "Circuit",
     progressTitle: "Progress",
     methodTitle: "Method",
     settingsTitle: "Settings",
-    pricingTitle: "Pricing",
-    freePlan: "Free",
-    proPlan: "Pro",
-    proPrice: "$4.99 / month",
-    proCta: "Unlock Pro",
-    freeNote: "Free includes Executive N-Back, Speed of Processing, and Spaced Retrieval, with four of the six n-back modes.",
-    proNote: "Pro unlocks all nine drills, the circuit builder, adaptive mix, full history, and the arithmetic and spatial n-back modes.",
-    locked: "Pro",
     footer: "Neuralbase, a little training every day.",
     copyright: "© 2026 Neuralbase",
     methodLead: "Neuralbase runs nine short drills drawn from cognitive-training research: working memory, processing speed, memory strategy, reasoning, recall, mental flexibility, sustained attention, reaction speed, and mental arithmetic.",
@@ -52,15 +43,15 @@
   ];
 
   var DRILLS = [
-    { id: "nback", name: "Executive N-Back", icon: ICON_NBACK, desc: "Track a stream and flag the match n steps back.", trains: "Working memory updating.", works: "A cue names the rule and a stimulus appears each turn. Flag when it matches n steps back. Six modes change what the rule watches.", evidence: "Near transfer to working memory is reliable.", pro: false, direction: "higher", unit: "n", modes: ["dual", "visual", "letter", "vowel", "arithmetic", "spatial"] },
-    { id: "ufov", name: "Speed of Processing", icon: ICON_UFOV, desc: "Catch a target in the center and one at the edge.", trains: "Processing speed.", works: "Identify the center shape and locate the edge target as exposure shrinks.", evidence: "The strongest durability found, held at 10 years in the ACTIVE trial.", pro: false, direction: "lower", unit: "ms" },
-    { id: "palace", name: "Memory Palace", icon: ICON_PALACE, desc: "Place items along a route, then recall them in order.", trains: "Memory strategy.", works: "Items drop into loci along a path. Recall the route in order.", evidence: "Transfers to untrained memory material, durable 4 to 32 months.", pro: true, direction: "higher", unit: "items" },
-    { id: "reasoning", name: "Relational Reasoning", icon: ICON_REASONING, desc: "Find the relation that two cases share.", trains: "Reasoning.", works: "Two cases share a hidden relation. Pick the option that carries it.", evidence: "The strongest transfer lever found, d=0.50 across 57 experiments.", pro: true, direction: "higher", unit: "correct" },
-    { id: "spaced", name: "Spaced Retrieval", icon: ICON_SPACED, desc: "Review your own cards at growing intervals.", trains: "Recall.", works: "Add cards, then review each one when it comes due.", evidence: "Retrieval practice plus spacing, the highest real-world yield.", pro: false, direction: "higher", unit: "cards" },
-    { id: "switching", name: "Task Switching", icon: ICON_SWITCHING, desc: "Shift between two rules without slipping.", trains: "Mental flexibility.", works: "Alternate between judging color and shape as trials switch.", evidence: "Executive flexibility with near transfer.", pro: true, direction: "higher", unit: "correct" },
-    { id: "sart", name: "Signal Alert", icon: ICON_SART, desc: "Hold a steady watch for a rare target.", trains: "Sustained attention.", works: "A signal pops up now and then. Catch it without letting your attention drift.", evidence: "Improves trained vigilance and near transfer to similar watching tasks, not to general attention or grades.", pro: true, direction: "higher", unit: "correct" },
-    { id: "crt", name: "Simple Reaction", icon: ICON_CRT, desc: "Answer the instant a cue appears.", trains: "Simple reaction speed.", works: "A cue lights up and you tap as fast as you can. Fast taps that guess wrong do not count.", evidence: "Shrinks the specific basic speed-accuracy trade-off. Reliable broad speedup elsewhere is not shown.", pro: true, direction: "lower", unit: "ms" },
-    { id: "math", name: "Mental Arithmetic", icon: ICON_MATH, desc: "Work out short sums under time.", trains: "Mental arithmetic fluency.", works: "Two numbers appear, you answer with a choice, and the clock keeps moving.", evidence: "Mental math practice lifts the trained skill and shows some near transfer to numeracy, with no IQ change.", pro: true, direction: "higher", unit: "correct" }
+    { id: "nback", name: "Executive N-Back", icon: ICON_NBACK, desc: "Track a stream and flag the match n steps back.", trains: "Working memory updating.", works: "A cue names the rule and a stimulus appears each turn. Flag when it matches n steps back. Six modes change what the rule watches.", evidence: "Near transfer to working memory is reliable.", direction: "higher", unit: "n", modes: ["dual", "visual", "letter", "vowel", "arithmetic", "spatial"] },
+    { id: "ufov", name: "Speed of Processing", icon: ICON_UFOV, desc: "Catch a target in the center and one at the edge.", trains: "Processing speed.", works: "Identify the center shape and locate the edge target as exposure shrinks.", evidence: "The strongest durability found, held at 10 years in the ACTIVE trial.", direction: "lower", unit: "ms" },
+    { id: "palace", name: "Memory Palace", icon: ICON_PALACE, desc: "Place items along a route, then recall them in order.", trains: "Memory strategy.", works: "Items drop into loci along a path. Recall the route in order.", evidence: "Transfers to untrained memory material, durable 4 to 32 months.", direction: "higher", unit: "items" },
+    { id: "reasoning", name: "Relational Reasoning", icon: ICON_REASONING, desc: "Find the relation that two cases share.", trains: "Reasoning.", works: "Two cases share a hidden relation. Pick the option that carries it.", evidence: "The strongest transfer lever found, d=0.50 across 57 experiments.", direction: "higher", unit: "correct" },
+    { id: "spaced", name: "Spaced Retrieval", icon: ICON_SPACED, desc: "Review your own cards at growing intervals.", trains: "Recall.", works: "Add cards, then review each one when it comes due.", evidence: "Retrieval practice plus spacing, the highest real-world yield.", direction: "higher", unit: "cards" },
+    { id: "switching", name: "Task Switching", icon: ICON_SWITCHING, desc: "Shift between two rules without slipping.", trains: "Mental flexibility.", works: "Alternate between judging color and shape as trials switch.", evidence: "Executive flexibility with near transfer.", direction: "higher", unit: "correct" },
+    { id: "sart", name: "Signal Alert", icon: ICON_SART, desc: "Hold a steady watch for a rare target.", trains: "Sustained attention.", works: "A signal pops up now and then. Catch it without letting your attention drift.", evidence: "Improves trained vigilance and near transfer to similar watching tasks, not to general attention or grades.", direction: "higher", unit: "correct" },
+    { id: "crt", name: "Simple Reaction", icon: ICON_CRT, desc: "Answer the instant a cue appears.", trains: "Simple reaction speed.", works: "A cue lights up and you tap as fast as you can. Fast taps that guess wrong do not count.", evidence: "Shrinks the specific basic speed-accuracy trade-off. Reliable broad speedup elsewhere is not shown.", direction: "lower", unit: "ms" },
+    { id: "math", name: "Mental Arithmetic", icon: ICON_MATH, desc: "Work out short sums under time.", trains: "Mental arithmetic fluency.", works: "Two numbers appear, you answer with a choice, and the clock keeps moving.", evidence: "Mental math practice lifts the trained skill and shows some near transfer to numeracy, with no IQ change.", direction: "higher", unit: "correct" }
   ];
 
   var RAIL = ["train", "circuit", "progress", "method", "settings"];

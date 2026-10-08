@@ -109,10 +109,11 @@ function ensureStyles() {
     ".lb-tab{background:transparent;color:var(--muted);border:0;padding:8px 14px;font:inherit;cursor:pointer}",
     ".lb-tab.is-on{background:var(--accent-soft);color:var(--ink)}",
     ".lb-tab+.lb-tab{border-left:1px solid var(--line)}",
-    /* Which board you are looking at, spelled out over the list. The select above
-       already chooses it, but the list itself has to answer the question on its own. */
+    /* The board carries one line over the list: which way round the score runs.
+       The drill name is not repeated. The select directly above already says
+       which drill, and printing it again in a heading right under it read as a
+       mistake rather than as emphasis. */
     ".lb-title{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}",
-    ".lb-title h3{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}",
     ".lb-title-s{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);white-space:nowrap}",
     ".lb-list{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--panel)}",
     /* Column ruler over the rows: the left column is a place in the order, not a score. */
@@ -216,13 +217,11 @@ export async function render(container, ctx) {
   controls.appendChild(tabs);
   root.appendChild(controls);
 
-  /* The board names itself over the list: which drill, which window, and which way
-     round the score runs. The controls above already chose all three, but a list
-     read on its own has to say so. */
-const board = el("div", "lb-title");
-  const boardName = el("h3");
+  /* One line over the list, and only the thing the controls do not say on their
+     own: which way round the score runs. The drill is named by the select and the
+     window by the tabs, so both stay out of a heading that would only repeat them. */
+  const board = el("div", "lb-title");
   const boardSub = el("span", "lb-title-s");
-  board.appendChild(boardName);
   board.appendChild(boardSub);
   root.appendChild(board);
 
@@ -246,11 +245,8 @@ const board = el("div", "lb-title");
       tabBtns[id].classList.toggle("is-on", on);
       tabBtns[id].setAttribute("aria-selected", on ? "true" : "false");
     });
-    /* The board names itself over the list. The select and the tabs already chose
-       the drill and the window, so this repeats neither. It keeps only the one
-       thing the controls do not say on their own, which way round the score runs. */
-    const drill = currentDrill();
-    boardName.textContent = drill.name;
+    /* Only the direction line. The drill and the window are already named by the
+       controls immediately above, so repeating either one here is noise. */
     boardSub.textContent = HINTS[state.drillId] || "Ranked by best value.";
   }
 

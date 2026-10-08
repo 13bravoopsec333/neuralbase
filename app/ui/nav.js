@@ -15,7 +15,6 @@ const LABELS = {
   method: 'Method',
   profile: 'Profile',
   settings: 'Settings',
-  pricing: 'Upgrade',
 };
 
 const SUBS = {
@@ -29,7 +28,6 @@ const SUBS = {
   method: 'The evidence and its limits.',
   profile: 'What another player sees about you.',
   settings: '',
-  pricing: 'Free and Pro plans.',
 };
 
 /* Views reachable from the More sheet (everything that is not a bottom tab). */
@@ -216,19 +214,6 @@ export function mountShell(ctx) {
   if (railReopen) railReopen.addEventListener('click', () => setRailClosed(false));
 
   /* ---------- top right ---------- */
-  const upgrade = byId('upgradeBtn');
-  if (upgrade) {
-    if (plan === 'pro') {
-      upgrade.textContent = 'Pro';
-      upgrade.classList.remove('btn-ghost');
-      /* tag-pro, not tag. Plain .tag is --dim at 10px, which measured a 1.09
-         contrast ratio against the topbar, so a Pro subscriber's own badge was
-         effectively invisible. tag-pro is the readable variant that already
-         existed for exactly this state. */
-      upgrade.classList.add('tag-pro');
-    }
-    upgrade.addEventListener('click', () => go('pricing'));
-  }
   /* Settings is the last rail item now, so it binds with the other rail buttons above. */
 
   /* ---------- more sheet ---------- */
@@ -251,8 +236,6 @@ export function mountShell(ctx) {
   if (sheet) sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
   const sheetClose = byId('sheetClose');
   if (sheetClose) sheetClose.addEventListener('click', closeSheet);
-  const sheetUpgrade = byId('sheetUpgrade');
-  if (sheetUpgrade) sheetUpgrade.addEventListener('click', () => go('pricing'));
   const sheetSignOut = byId('sheetSignOut');
   if (sheetSignOut) sheetSignOut.addEventListener('click', signOut);
 
@@ -298,13 +281,10 @@ export function mountShell(ctx) {
       if (MORE_VIEWS.indexOf(view) !== -1) moreTab.setAttribute('aria-current', 'page');
       else moreTab.removeAttribute('aria-current');
     }
-    /* A Pro user is not being asked to upgrade, so the topbar should not say so.
-       The view itself already switches to a subscription page in that state. */
-    const isProPricing = view === 'pricing' && plan === 'pro';
     const title = byId('tbTitle');
-    if (title) title.textContent = isProPricing ? 'Subscription' : (LABELS[view] || 'Neuralbase');
+    if (title) title.textContent = LABELS[view] || 'Neuralbase';
     const sub = byId('tbSub');
-    if (sub) sub.textContent = isProPricing ? 'Your plan and billing.' : (SUBS[view] || '');
+    if (sub) sub.textContent = SUBS[view] || '';
   }
 
   return { setActive, closeMenu, closeSheet, name, plan };

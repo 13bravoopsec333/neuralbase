@@ -46,6 +46,17 @@ function injectStyles() {
        because neither is stretched to match a taller neighbour. */
     '.pg-top{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--pg-gap,14px);align-items:start}',
 
+    /* Heat cells scale up on a wide screen. The grid is the page's one large
+       surface, so it takes the room the centered column gives it instead of
+       sitting as a small block in the corner of a much wider card. */
+    '@media(min-width:900px){.pg-heat-card{--pg-cell:26px;--pg-cell-gap:5px;--pg-cell-r:3px}}',
+    /* With nothing trained the habit card is alone in the row, and a card sized
+       to its own grid pinned to the left edge reads as a leftover. One column,
+       centered, so it reads as the one thing the page has to say. The second
+       track has to go as well as the alignment: a grid still reserves a 1fr
+       column for the card that is not there. */
+    '.pg-top-solo{grid-template-columns:minmax(0,max-content);justify-content:center}',
+
     /* heatmap: columns are weeks, rows are weekdays Monday first */
     '.pg-heat-scroll{flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;padding-bottom:2px}',
     '.pg-heat-inner{width:max-content}',
@@ -296,6 +307,9 @@ function buildRecords(reg, state, now) {
 
 /* ---------------- per-drill bests ---------------- */
 
+/* Only drills with runs get a tile. Nine tiles reading "--" and "not trained" is
+   noise, not information: an untrained drill has no best, so it has nothing to
+   say here. The untrained case is one line under the heading instead. */
 function buildBests(reg, state) {
   var S = globalThis.Store;
   var card = h('div', 'card');
@@ -309,25 +323,35 @@ function buildBests(reg, state) {
     return card;
   }
 
-  var grid = h('div', 'pg-bests');
+  var trained = [];
   for (var i = 0; i < ids.length; i++) {
     var m = reg[ids[i]];
     var agg = S.aggregate(state, m.id, m.direction);
-    var box = h('div', 'pg-best' + (agg.best == null ? ' none' : ''));
+    if (agg.best != null) trained.push({ m: m, agg: agg });
+  }
+
+  if (!trained.length) {
+    card.classList.add('pg-strip');
+    card.appendChild(h('p', 'pg-empty',
+      'No drills trained yet. Finish a run and your best appears here.'));
+    return card;
+  }
+
+  var grid = h('div', 'pg-bests');
+  for (var t = 0; t < trained.length; t++) {
+    var m2 = trained[t].m;
+    var agg2 = trained[t].agg;
+    var box = h('div', 'pg-best');
     var top = h('div', 'pg-best-top');
-    top.appendChild(iconEl(m.icon));
-    top.appendChild(h('span', 'pg-best-name', m.name));
+    top.appendChild(iconEl(m2.icon));
+    top.appendChild(h('span', 'pg-best-name', m2.name));
     box.appendChild(top);
     var v = h('span', 'pg-best-v');
-    if (agg.best == null) {
-      v.textContent = '--';
-    } else {
-      v.appendChild(document.createTextNode(String(agg.best)));
-      if (m.unit) v.appendChild(h('span', 'u', ' ' + m.unit));
-    }
+    v.appendChild(document.createTextNode(String(agg2.best)));
+    if (m2.unit) v.appendChild(h('span', 'u', ' ' + m2.unit));
     box.appendChild(v);
-    box.appendChild(h('span', 'pg-best-c', agg.attempts
-      ? agg.attempts + (agg.attempts === 1 ? ' run' : ' runs')
+    box.appendChild(h('span', 'pg-best-c', agg2.attempts
+      ? agg2.attempts + (agg2.attempts === 1 ? ' run' : ' runs')
       : 'not trained'));
     grid.appendChild(box);
   }
@@ -585,11 +609,16 @@ export async function render(container, ctx) {
 
     /* Two content-sized cards share the top row: the habit grid and the per-drill
        bests. The record moments and the runs then run the full width below them,
-       so nothing short is left sitting beside something tall. */
-    var top = h('div', 'pg-top');
+       so nothing short is left sitting beside something tall. With nothing
+       trained the bests card is a one line strip, and a strip beside the tall
+       habit grid would leave a hole, so it drops to the full width row below. */
+    var bests = buildBests(reg, state);
+    var strip = bests.classList.contains('pg-strip');
+    var top = h('div', 'pg-top' + (strip ? ' pg-top-solo' : ''));
     top.appendChild(buildHeatmap(state, now));
-    top.appendChild(buildBests(reg, state));
+    if (!strip) top.appendChild(bests);
     root.appendChild(top);
+    if (strip) root.appendChild(bests);
 
     root.appendChild(buildRecords(reg, state, now));
 

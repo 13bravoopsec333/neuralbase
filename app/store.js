@@ -570,17 +570,6 @@
     return { nback: 1, ufov: 1, palace: 1, reasoning: 1, spaced: 1, switching: 1, sart: 1, crt: 1, math: 1 };
   }
 
-  /* Plan entitlements live in engine.js. Only consulted when the state names a
-     plan, otherwise the drillIds passed in are already the accessible set. */
-  function canAccess(drillId, plan) {
-    if (plan !== "free" && plan !== "pro") return true;
-    var E = (typeof globalThis !== "undefined" && globalThis.Engine) || null;
-    if (E && typeof E.canAccess === "function") {
-      try { return !!E.canAccess(drillId, plan); } catch (e) { return true; }
-    }
-    return true;
-  }
-
   /* Stable 0 to 1 hash, used only to nudge ties so the plan varies by day
      without shuffling when it is rendered again. */
   function hash01(str) {
@@ -597,9 +586,7 @@
      function of drill id and dayIndex only, so the same day always gives the
      same plan. */
   function dailyPlan(state, dayIndex, drillIds, count) {
-    var ids = (drillIds || []).filter(function (id) {
-      return typeof id === "string" && canAccess(id, state && state.plan);
-    });
+    var ids = (drillIds || []).filter(function (id) { return typeof id === "string"; });
     var want = Math.max(0, int(count, 3));
     if (!ids.length || !want) return [];
     var weights = goalWeights(state && state.goal);

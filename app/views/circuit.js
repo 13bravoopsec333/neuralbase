@@ -32,12 +32,26 @@ function injectStyles() {
     ".cx{--cx-sec:14px;--cx-in:12px}",
     ".cx .card+.card{margin-top:var(--cx-sec)}",
     ".cx .card-head{margin-bottom:var(--cx-in);flex-wrap:wrap}",
+    /* Today's set is a sequence of three, read top to bottom in run order, so it is
+       one column. Two columns left the third drill alone in the last row, and a
+       three wide row puts a name and its description on one line only on a
+       screen wide enough for it. */
+    ".cx .programs:not(.cx-list){grid-template-columns:minmax(0,1fr)}",
     ".cx .programs{margin-top:var(--cx-in)}",
     ".cx .row-actions{margin-top:var(--cx-in)}",
-    /* Two checkbox columns fit at 560 and up; below that they crowd, and the
-       shared .programs rule cannot win against .cb-list on its own. */
+    /* The adaptive block is a footer inside the picker card: a rule above it, the
+       label in the same instrument type as every other card head, the sentence
+       that says what it actually does, and the control on its own line. */
+    ".cx-adapt{margin-top:var(--cx-in);padding-top:var(--cx-in);border-top:1px solid var(--line)}",
+    ".cx-adapt-k{margin:0;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}",
+    ".cx-adapt-s{margin:5px 0 10px;font-size:13px;color:var(--muted);line-height:1.45;max-width:54ch}",
+    "@media (max-width:560px){.cx-adapt-s{max-width:none}}",
+    /* Three columns, because nine drills divide by three. Two left one box alone
+       in the last row, which read as an accident rather than a grid. */
     ".cx .cb-row{min-width:0}",
-    "@media (max-width:560px){.cx-list{grid-template-columns:1fr}}"
+    "@media (min-width:760px){.cx-list{grid-template-columns:repeat(3,minmax(0,1fr))}}",
+    "@media (max-width:760px){.cx-list{grid-template-columns:repeat(2,minmax(0,1fr))}}",
+    "@media (max-width:460px){.cx-list{grid-template-columns:1fr}}"
   ].join('');
   document.head.appendChild(s);
 }
@@ -60,7 +74,6 @@ function iconEl(d) {
   if (d && d.icon) s.innerHTML = d.icon;
   return s;
 }
-function planOf(ctx) { return ctx && ctx.profile && ctx.profile.plan === 'pro' ? 'pro' : 'free'; }
 function readCache() {
   try { var raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
 }
@@ -98,9 +111,8 @@ export function render(container, ctx) {
   container.innerHTML = '';
 
   var Engine = globalThis.Engine;
-  var plan = planOf(ctx);
   var day = (new Date().getDay() + 6) % 7;
-  var ids = Engine.dailyCircuit(day, plan);
+  var ids = Engine.dailyCircuit(day);
   customSel = readSequences();
   var D = (globalThis.Content && globalThis.Content.DRILLS) || [];
   var cached = readCache();
@@ -141,12 +153,11 @@ export function render(container, ctx) {
   var list = h('ul', 'programs cb-list cx-list');
   for (var k = 0; k < D.length; k++) {
     var d = D[k];
-    var locked = !Engine.canAccess(d.id, plan);
     var row = h('li');
-    var label = h('label', 'cb-row' + (locked ? ' locked' : ''));
+    var label = h('label', 'cb-row');
     var cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.className = 'cx-cb'; cb.value = d.id; cb.disabled = locked;
-    if (!locked && customSel.indexOf(d.id) !== -1) cb.checked = true;
+    cb.type = 'checkbox'; cb.className = 'cx-cb'; cb.value = d.id;
+    if (customSel.indexOf(d.id) !== -1) cb.checked = true;
     cb.addEventListener('change', (function (id) {
       return function () {
         if (this.checked) { if (customSel.indexOf(id) === -1) customSel.push(id); }
@@ -155,7 +166,7 @@ export function render(container, ctx) {
     })(d.id));
     label.appendChild(cb);
     label.appendChild(iconEl(d));
-    label.appendChild(document.createTextNode(d.name + (locked ? ' (Pro)' : '')));
+    label.appendChild(document.createTextNode(d.name));
     row.appendChild(label);
     list.appendChild(row);
   }
@@ -163,29 +174,31 @@ export function render(container, ctx) {
   var custom = h('button', 'btn-primary', 'Run custom');
   custom.type = 'button';
   bacts.appendChild(custom);
-  build.appendChild(bh); build.appendChild(list); build.appendChild(bacts);
-  container.appendChild(build);
 
-  var adapt = h('div', 'card');
-  var ah = h('div', 'card-head');
-  ah.appendChild(h('h3', null, 'Adaptive mix'));
-  var aacts = h('div', 'row-actions');
+  /* Adaptive lives here rather than in a card of its own. On its own it was a
+     heading over one button, and it also belongs with the picker it answers to:
+     the set you built and the set built for you are the same decision. */
+  var adapt = h('div', 'cx-adapt');
+  adapt.appendChild(h('p', 'cx-adapt-k', 'Adaptive mix'));
+  adapt.appendChild(h('p', 'cx-adapt-s',
+    'Picks three drills from your history, favoring the ones you ran least recently and those furthest from your best.'));
   var adaptive = h('button', 'btn-ghost', 'Build adaptive circuit');
   adaptive.type = 'button';
-  aacts.appendChild(adaptive);
-  adapt.appendChild(ah); adapt.appendChild(aacts);
-  container.appendChild(adapt);
+  adapt.appendChild(adaptive);
+
+  build.appendChild(bh); build.appendChild(list); build.appendChild(bacts); build.appendChild(adapt);
+  container.appendChild(build);
 
   run.addEventListener('click', function () {
     var dd = (new Date().getDay() + 6) % 7;
-    queueRun(Engine.dailyCircuit(dd, planOf(ctx)), false);
+    queueRun(Engine.dailyCircuit(dd), false);
   });
   custom.addEventListener('click', function () {
     saveSequence(customSel);
     queueRun(customSel.slice(), false);
   });
   adaptive.addEventListener('click', function () {
-    queueRun(Engine.adaptiveMix({ records: records }, 3, planOf(ctx)), false);
+    queueRun(Engine.adaptiveMix({ records: records }, 3), false);
   });
 
   if (ctx.db && ctx.db.loadUserData) {

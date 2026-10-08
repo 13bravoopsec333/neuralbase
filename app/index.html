@@ -185,7 +185,6 @@ body.rail-open .account-chev{display:block}
       </div>
     </div>
     <div class="tb-right">
-      <button class="btn-ghost" id="upgradeBtn" type="button">Upgrade</button>
     </div>
   </header>
 
@@ -200,7 +199,6 @@ body.rail-open .account-chev{display:block}
     <section class="view" id="view-method" tabindex="-1" aria-label="Method" hidden></section>
     <section class="view" id="view-profile" tabindex="-1" aria-label="Profile" hidden></section>
     <section class="view" id="view-settings" tabindex="-1" aria-label="Settings" hidden></section>
-    <section class="view" id="view-pricing" tabindex="-1" aria-label="Upgrade" hidden></section>
   </div>
 </main>
 
@@ -235,7 +233,6 @@ body.rail-open .account-chev{display:block}
     <button class="sheet-item" type="button" data-view="method">Method</button>
     <button class="sheet-item" type="button" data-view="settings">Settings</button>
     <div class="sheet-sep" aria-hidden="true"></div>
-    <button class="sheet-item" type="button" id="sheetUpgrade">Upgrade</button>
     <button class="sheet-item" type="button" id="sheetSignOut">Sign out</button>
     <button class="sheet-item sheet-close" type="button" id="sheetClose">Close</button>
   </div>
@@ -273,7 +270,7 @@ body.rail-open .account-chev{display:block}
   /* View modules that exist in app/views/. The router imports only names listed here, so a
      view that is not built yet renders a placeholder instead of a failed network request.
      Add a name as its module lands, e.g. ["dashboard","train","circuit"]. */
-  window.CORTEX_VIEWS = ["dashboard","onboarding","train","study","circuit","progress","leaderboards","method","profile","settings","pricing"];
+  window.CORTEX_VIEWS = ["dashboard","onboarding","train","study","circuit","progress","leaderboards","method","profile","settings"];
 </script>
 <script src="content.js"></script>
 <script src="store.js"></script>

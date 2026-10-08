@@ -25,7 +25,6 @@ const DEMO_KEYS = {
   profile: 'cortex.demo.profile',
   decks: 'cortex.demo.decks',
   kudos: 'cortex.demo.kudos',
-  redeemed: 'cortex.demo.redeemed',
 };
 
 const ANON_STORE_KEY = 'cortex.app';
@@ -586,13 +585,10 @@ export async function getProfile() {
    onboarded_at) already pass through with no change. Unknown keys are rejected
    by Postgres, which surfaces as { ok: false, error }.
 
-   `plan` is sent verbatim too and is refused by the database, which is the point.
-   Profiles is granted UPDATE per column (migration 002) and plan is not in the
-   grant, so a client cannot self-upgrade by writing it here or by calling PostgREST
-   directly. Postgres answers 42501 for a column outside the grant; it is named
-   plainly below so the caller sees why the write did not land instead of a bare
-   permission error. In demo mode there is no grant and no server, so plan still
-   moves locally, which is what the demo pricing page is for. */
+   Profiles is granted UPDATE per column (migration 002), so the server-owned
+   columns are refused by the database no matter which path writes them. Postgres
+   answers 42501 for a column outside the grant; it is named plainly below so the
+   caller sees why the write did not land instead of a bare permission error. */
 export async function updateProfile(patch) {
   const p = patch || {};
 
@@ -617,10 +613,8 @@ export async function updateProfile(patch) {
       .maybeSingle();
     if (error) {
       if (error.code === '23505') return fail('That username is taken.');
-      /* 42501 on a column the caller asked for is the column grant saying no, and
-         `plan` is the one that matters: a client cannot grant itself the paid tier.
-         The pricing page writes plan through here, so it gets a sentence it can
-         show rather than "permission denied for table profiles". */
+      /* 42501 on a column the caller asked for is the column grant saying no:
+         that column is owned by the server, not by this client. */
       if (error.code === '42501') return fail(SERVER_OWNED_WRITE);
       warn('updateProfile', error);
       return fail(error);
@@ -834,41 +828,6 @@ export async function toggleKudos(runClientId) {
   }
 }
 
-/* Redeeming a Pro key. plan is server-owned, so this is the only write path for
-   it and it goes through redeem_pro_key(). There is deliberately no updateProfile
-   fallback: a key either validates or it does not. */
-export async function redeemProKey(key) {
-  const clean = String(key == null ? '' : key).trim().toUpperCase();
-  if (!clean) return fail('empty_key');
-  if (clean.length > 64) return fail('invalid_key');
-
-  if (isDemo()) {
-    /* Demo has no key table, so any correctly-shaped code unlocks locally. The
-       shape check keeps the demo honest about what a real key looks like. */
-    if (!/^NB(-[A-F0-9]{4}){3}$/.test(clean)) return fail('invalid_key');
-    const prof = readJSON(DEMO_KEYS.profile, null);
-    if (!prof) return fail('backend_unavailable');
-    prof.plan = 'pro';
-    writeJSON(DEMO_KEYS.profile, prof);
-    writeJSON(DEMO_KEYS.redeemed, clean);
-    return { ok: true, plan: 'pro', demo: true };
-  }
-
-  const client = getClient();
-  if (!client) return fail('backend_unavailable');
-
-  try {
-    const { data, error } = await client.rpc('redeem_pro_key', { p_key: clean });
-    if (error) {
-      warn('redeemProKey', error);
-      return fail(error);
-    }
-    return { ok: true, plan: (data && data.plan) === 'pro' ? 'pro' : 'free' };
-  } catch (e) {
-    warn('redeemProKey', e);
-    return fail(e);
-  }
-}
 
 export async function kudosCounts(runClientIds) {
   /* A non-array is a caller bug, so it fails. An empty array is a legitimate
@@ -1044,7 +1003,6 @@ function demoPublicProfile(userId) {
         : (profile.display_name || profile.username || 'Demo'),
       avatar_url: on('show_avatar') ? profile.avatar_url || null : null,
       bio: profile.visibility === 'anon' ? null : bio,
-      plan: profile.plan || 'free',
       joined_on: on('show_joined') ? localDateOf(stampOf(profile)) : null,
       bests: on('show_bests') ? demoBests(runs) : null,
       streak: on('show_streak') ? streak : null,

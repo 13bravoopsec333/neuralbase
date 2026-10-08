@@ -254,7 +254,15 @@ function injectStyles() {
     ".dash-pr2-v{font-family:var(--mono);font-size:16px;color:var(--ink);font-variant-numeric:tabular-nums}",
     ".dash-pr2-when{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.05em}",
     /* Readings: three rows, the value right aligned, a rule between them. */
-    ".dash-stats{display:flex;flex-direction:column}",
+    /* The readings column stretches to the hero's height and spreads its rows over
+       it, so the two cards share one block instead of leaving a hole under the
+       shorter one. The rows carry their own rules, so spreading them reads as a
+       list with room in it, not as gaps. The wrapper and the card both have to
+       be flex for that: the grid stretches .dash-readings, and the card has to
+       fill what it is given. */
+    ".dash-readings{display:flex;flex-direction:column}",
+    ".dash-stats{display:flex;flex-direction:column;flex:1 1 auto}",
+    ".dash-stats-list{flex:1 1 auto;justify-content:space-evenly}",
     ".dash-stats-list{display:flex;flex-direction:column}",
     ".dash-stat{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px solid var(--line)}",
     ".dash-stats-list .dash-stat:last-child{border-bottom:0}",
@@ -427,13 +435,7 @@ function accessibleIds(plan) {
   var list = (typeof globalThis !== 'undefined' && globalThis.Content && globalThis.Content.DRILLS) || [];
   var ids = [];
   for (var i = 0; i < list.length; i++) ids.push(list[i].id);
-  var E = (typeof globalThis !== 'undefined' && globalThis.Engine) || null;
-  if (!E || typeof E.canAccess !== 'function') return ids;
-  var out = [];
-  for (var j = 0; j < ids.length; j++) {
-    if (E.canAccess(ids[j], plan)) out.push(ids[j]);
-  }
-  return out.length ? out : ids;
+  return ids;
 }
 
 /* One line on why these three. It names the rule, not a promise. */

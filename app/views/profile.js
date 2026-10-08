@@ -46,8 +46,12 @@ function injectStyles() {
     '.pf-foot{margin:0;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim);line-height:1.5}',
 
     /* A withheld section reads as absent, not as a box of zeros. The left rule is
-       the only mark: same weight as a divider, no empty frame to mistake for data. */
+       the only mark: same weight as a divider, no empty frame to mistake for data.
+       The heading and the line share a row, so a withheld section takes a strip
+       rather than a panel's worth of height. */
     '.pf-off{margin:0;font-size:13px;color:var(--dim);line-height:1.5;border-left:2px solid var(--line2);padding-left:10px}',
+    '.pf-strip{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:12px 14px}',
+    '.pf-strip .card-head{margin:0;flex:none}',
 
     /* Identity. Centered like a masthead, so the picture and the name read as one
        thing before any number does. */
@@ -160,7 +164,7 @@ function numOrNull(v) {
 /* A card whose data the owner withheld. One plain line, never an empty frame and
    never a zero. */
 function withheld(title, line, cap) {
-  var card = h('div', 'card');
+  var card = h('div', 'card pf-strip');
   var head = h('div', 'card-head');
   head.appendChild(h('h3', null, title));
   if (cap) head.appendChild(h('span', 'cap', cap));

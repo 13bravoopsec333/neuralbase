@@ -1,10 +1,13 @@
-/* Neuralbase engine: circuits, adaptive mix, entitlements, interleaving. Pure logic. */
+/* Neuralbase engine: circuits, adaptive mix, interleaving. Pure logic.
+
+   Everything here is available to everyone. There is no plan, no tier and no
+   entitlement check, so nothing in this file can lock a drill or an n-back mode.
+   The access functions are kept as named shims because a dozen call sites ask
+   through them, and they now answer the same way for every input; if that call
+   surface is ever cleaned up they can go with it. */
 (function () {
   "use strict";
 
-  var PLAN_FREE = "free";
-  var PLAN_PRO = "pro";
-  var FREE_DRILLS = ["nback", "ufov", "spaced"];
   var ALL_DRILLS = ["nback", "ufov", "palace", "reasoning", "spaced", "switching", "sart", "crt", "math"];
 
   /* N-back mode ids. These MUST match the MODES list in app/content.js. content.js and
@@ -14,39 +17,35 @@
   var DEFAULT_MODE = "dual";
   var NBACK_DRILL = "nback";
 
-  /* arithmetic and spatial add a second value to track or a spatial layout to read, so
-     they carry more setup and a steeper learning curve. Those get gated behind Pro;
-     dual, visual, letter, and vowel stay on Free. Flip this to [] to unlock everything. */
-  var PRO_ONLY_MODES = ["arithmetic", "spatial"];
-
   var Store = null;
   try {
     if (typeof require === "function") Store = require("./store.js");
   } catch (e) { Store = null; }
   if (!Store && typeof globalThis !== "undefined") Store = globalThis.Store;
 
-  function canAccess(drillId, plan) {
-    if (plan === PLAN_PRO) return ALL_DRILLS.indexOf(drillId) !== -1;
-    return FREE_DRILLS.indexOf(drillId) !== -1;
+  /* Always allowed. The plan argument is ignored and kept only so existing call
+     sites do not have to change shape in the same commit as the behaviour. */
+  function canAccess(drillId) {
+    return ALL_DRILLS.indexOf(drillId) !== -1;
   }
 
-  function lockedDrills(plan) {
-    return ALL_DRILLS.filter(function (id) { return !canAccess(id, plan); });
+  function lockedDrills() {
+    return [];
   }
 
-  function poolFor(plan) {
-    return plan === PLAN_FREE ? FREE_DRILLS.slice() : ALL_DRILLS.slice();
+  function poolFor() {
+    return ALL_DRILLS.slice();
   }
 
   /* A circuit is three drills. Walk the pool with a stride of 4 from a start that
-     advances one per day: 4 is coprime with both pool sizes (3 and 9), so a circuit can
+     advances one per day: 4 is coprime with the pool size (9), so a circuit can
      never repeat a drill, and consecutive days start at different offsets so two users
      on the same day are not trivially on the same sequence. */
   var CIRCUIT_SIZE = 3;
   var CIRCUIT_STRIDE = 4;
 
-  function dailyCircuit(dayIndex, plan) {
-    var pool = poolFor(plan || PLAN_PRO);
+  function dailyCircuit(dayIndex) {
+    var pool = poolFor();
     var out = [];
     var n = pool.length;
     var d = Math.abs(dayIndex | 0);
@@ -56,20 +55,20 @@
     return out;
   }
 
-  function canAccessMode(drillId, modeId, plan) {
+  /* Every mode of every drill is available. A mode id that is not real is still
+     rejected, because that is a programming error rather than a paywall. */
+  function canAccessMode(drillId, modeId) {
     if (drillId !== NBACK_DRILL) return false;
-    if (MODE_IDS.indexOf(modeId) === -1) return false;
-    if (plan === PLAN_PRO) return true;
-    return PRO_ONLY_MODES.indexOf(modeId) === -1;
+    return MODE_IDS.indexOf(modeId) !== -1;
   }
 
-  function modesFor(drillId, plan) {
+  function modesFor(drillId) {
     if (drillId !== NBACK_DRILL) return [];
-    return MODE_IDS.filter(function (id) { return canAccessMode(drillId, id, plan || PLAN_FREE); });
+    return MODE_IDS.slice();
   }
 
-  function adaptiveMix(state, count, plan) {
-    var pool = poolFor(plan || PLAN_FREE);
+  function adaptiveMix(state, count) {
+    var pool = poolFor();
     var now = Date.now();
     var records = (state && state.records) || [];
     var scored = pool.map(function (id) {
@@ -115,10 +114,11 @@
   }
 
   var api = {
-    PLAN_FREE: PLAN_FREE, PLAN_PRO: PLAN_PRO,
-    FREE_DRILLS: FREE_DRILLS, ALL_DRILLS: ALL_DRILLS,
-    MODE_IDS: MODE_IDS, PRO_ONLY_MODES: PRO_ONLY_MODES, DEFAULT_MODE: DEFAULT_MODE,
-    canAccess: canAccess, lockedDrills: lockedDrills, dailyCircuit: dailyCircuit, adaptiveMix: adaptiveMix, interleave: interleave,
+    ALL_DRILLS: ALL_DRILLS,
+    MODE_IDS: MODE_IDS, DEFAULT_MODE: DEFAULT_MODE,
+    canAccess: canAccess, lockedDrills: lockedDrills, poolFor: poolFor,
+    dailyCircuit: dailyCircuit,
+    adaptiveMix: adaptiveMix, interleave: interleave,
     canAccessMode: canAccessMode, modesFor: modesFor
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

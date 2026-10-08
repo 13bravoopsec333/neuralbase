@@ -87,10 +87,6 @@ function dirMap() {
   return out;
 }
 
-function planOf() {
-  return ctxRef && ctxRef.profile && ctxRef.profile.plan === "pro" ? "pro" : "free";
-}
-
 function num2(n) {
   var s = String(n);
   return s.length < 2 ? "0" + s : s;
@@ -201,13 +197,13 @@ function planIds(goal) {
   var Engine = globalThis.Engine;
   var pool = (Engine && Engine.ALL_DRILLS) || [];
   var day = (new Date().getDay() + 6) % 7;
-  var state = { records: [], sessions: [], days: [], cards: [], plan: planOf(), goal: goal, sequences: [] };
+  var state = { records: [], sessions: [], days: [], cards: [], goal: goal, sequences: [] };
   var out = [];
   if (Store && typeof Store.dailyPlan === "function") {
     try { out = Store.dailyPlan(state, day, pool, 3) || []; } catch (e) { out = []; }
   }
   if (!out.length && Engine && typeof Engine.dailyCircuit === "function") {
-    try { out = Engine.dailyCircuit(day, planOf()) || []; } catch (e) { out = []; }
+    try { out = Engine.dailyCircuit(day) || []; } catch (e) { out = []; }
   }
   return out;
 }
@@ -219,12 +215,7 @@ function seconds(ids) {
 }
 
 function allowed(id) {
-  if (NOT_CALIBRATABLE[id]) return false;
-  var Engine = globalThis.Engine;
-  if (Engine && typeof Engine.canAccess === "function") {
-    try { return !!Engine.canAccess(id, planOf()); } catch (e) { return true; }
-  }
-  return true;
+  return !NOT_CALIBRATABLE[id];
 }
 
 /* Up to three blocks inside the time budget. The goal's own plan goes first, cheapest
@@ -284,7 +275,7 @@ function indexNow() {
   var Store = globalThis.Store;
   if (!Store || typeof Store.baselineIndex !== "function") return null;
   try {
-    var state = { records: [], sessions: [], days: [], cards: [], plan: planOf(), goal: goalChosen(), sequences: [] };
+    var state = { records: [], sessions: [], days: [], cards: [], goal: goalChosen(), sequences: [] };
     var i;
     for (i = 0; i < histRecords.length; i++) state.records.push(histRecords[i]);
     for (var id in measured) {
@@ -562,7 +553,7 @@ function startBlock(idx) {
   };
   if (id === "nback") {
     var Engine = globalThis.Engine;
-    var modes = Engine && typeof Engine.modesFor === "function" ? Engine.modesFor("nback", planOf()) : [];
+    var modes = Engine && typeof Engine.modesFor === "function" ? Engine.modesFor("nback") : [];
     opts.mode = modes.length ? modes[0] : "dual";
   }
 

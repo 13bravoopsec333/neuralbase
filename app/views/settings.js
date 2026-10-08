@@ -43,9 +43,25 @@ function injectStyles() {
     /* One rhythm for the overlay: --set-sec between cards, --set-in inside a card.
        The rule above "Shared profile" reads the same section gap as the others, so
        that block no longer sits 8px tighter than the rest. */
-    ".set-view{--set-sec:18px;--set-in:12px}",
+    /* Wider than the other centered columns. The page is three columns of rows,
+       and at 780px each column was too narrow to hold a label and its control
+       on one line, so every row wrapped and the page grew taller still. */
+    ".set-view{--set-sec:16px;--set-in:12px;max-width:1320px}",
     ".set-view .set-note{margin-top:var(--set-in)}",
-    ".set-divider{height:1px;background:var(--line);margin:0}",
+    ".set-divider{height:1px;background:var(--line);margin:var(--set-sec) 0 0}",
+
+    /* Three groups. Each column is headed once, in the mono label style every
+       other surface uses, so a reader can jump to the group they came for. */
+    ".set-grid{display:grid;grid-template-columns:1fr;gap:var(--set-sec) var(--gap-5);align-items:start}",
+    "@media (min-width:1080px){.set-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}",
+    "@media (max-width:1079px){.set-group+.set-group{margin-top:var(--gap-5)}}",
+    ".set-group-l{margin:0 0 10px;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}",
+
+    /* The card that answers the question the page was opened for. The accent edge
+       is the same one the rail uses for the current page, so it reads as
+       "you are here" rather than as another kind of card. */
+    ".set-lead{border-color:var(--lime-edge)}",
+    ".set-lead>h3{font-size:14px}",
     ".set-bio{width:260px;max-width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--line2);border-radius:8px;padding:7px 9px;font:inherit;resize:vertical;min-height:64px}",
     ".set-times{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}",
     ".set-err{font-size:12px;color:var(--warn);text-align:right}",
@@ -178,9 +194,11 @@ function ensureReminderLoop() {
   checkReminder();
 }
 
-/* A settings card: an h3 title over a .set-list of rows. */
-function section(title) {
-  var card = el("section", "card");
+/* A settings card: an h3 title over a .set-list of rows.
+   `lead` marks the card that answers the question this page is opened for. It
+   gets the accent edge, so the eye lands on it before the rest. */
+function section(title, lead) {
+  var card = el("section", "card" + (lead ? " set-lead" : ""));
   card.appendChild(el("h3", null, title));
   var body = el("div", "set-list");
   body.style.marginTop = "4px";
@@ -248,15 +266,32 @@ export function render(container, ctx) {
     });
   }
 
-  var sections = [];
-  function push(title) {
-    var s = section(title);
-    sections.push(s);
+  /* Three groups, so the page reads as three decisions rather than seven
+     identical stacks. Each group is a labelled column at desktop width and a
+     labelled stack at phone width, and the groups go in the order a person
+     actually arrives with: how the app trains, how it looks and sounds, then
+     the account. */
+  var groups = [];
+  function group(label) {
+    var g = { label: label, sections: [] };
+    groups.push(g);
+    return g;
+  }
+  var gTrain = group("How you train");
+  var gApp = group("Look and sound");
+  var gYou = group("Your account");
+
+  /* Every section names the group it belongs to. The group decides the column it
+     lands in and how far down the page it sits, which is the hierarchy the page
+     was missing as a flat stack of identical cards. */
+  function push(title, group, lead) {
+    var s = section(title, lead);
+    group.sections.push(s);
     return s;
   }
 
   /* ---------- Appearance ---------- */
-  var appearance = push("Appearance");
+  var appearance = push("Appearance", gApp);
   var themeRow = row("Theme", "Change the look of the app.");
   var swatches = el("div");
   swatches.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;";
@@ -315,7 +350,7 @@ export function render(container, ctx) {
   function saveAudio() { writeJSON(AUDIO_KEY, prefs); applyAudio(); }
   applyAudio();
 
-  var sound = push("Sound");
+  var sound = push("Sound", gApp);
   var muteRow = row("Mute all", "Silences every cue, overrides the toggles below.");
   muteRow.right.appendChild(toggleSwitch(prefs.muted, "Mute all", function (on) {
     prefs.muted = on;
@@ -364,7 +399,7 @@ export function render(container, ctx) {
   sound.body.appendChild(volRow.el);
 
   /* ---------- Motion ---------- */
-  var motionSection = push("Motion");
+  var motionSection = push("Motion", gApp);
   var explicit = null;
   try { explicit = localStorage.getItem(MOTION_KEY); } catch (e) { explicit = null; }
   var lockedToSystem = systemReduced() && explicit === null;
@@ -382,7 +417,7 @@ export function render(container, ctx) {
   motionSection.body.appendChild(motionRow.el);
 
   /* ---------- Training ---------- */
-  var training = push("Training");
+  var training = push("Training", gTrain, true);
 
   /* Reopen setup. Boot sends a first run here, but there has to be a way back for
      someone who skipped it or wants to recalibrate once the history has grown. */
@@ -435,7 +470,6 @@ export function render(container, ctx) {
   var Engine = globalThis.Engine || {};
   var allIds = Engine.ALL_DRILLS ? Engine.ALL_DRILLS.slice()
     : ((globalThis.Content && globalThis.Content.DRILLS) || []).map(function (d) { return d.id; });
-  var userPlan = (profile.plan || "free") === "pro" ? "pro" : "free";
   var pickedGoal = (Store.GOALS || []).indexOf(profile.goal) !== -1 ? profile.goal : "fresh";
 
   function drillName(id) {
@@ -457,7 +491,7 @@ export function render(container, ctx) {
       if (!id || !isFinite(v)) continue;
       records.push({ drillId: id, value: v, unit: r.unit || "", t: Date.parse(r.created_at || r.createdAt || "") || 0, meta: null });
     }
-    return { records: records, goal: pickedGoal, plan: userPlan };
+    return { records: records, goal: pickedGoal };
   }
 
   var pickRow = row("Training goal", "Sets which drills your daily plan picks.");
@@ -499,7 +533,7 @@ export function render(container, ctx) {
       ? Store.dailyPlan(planState(), localDayIndex(Date.now()), allIds, goal)
       : [];
     var reachable = allIds.filter(function (id) {
-      return typeof Engine.canAccess === "function" ? Engine.canAccess(id, userPlan) : true;
+      return true;
     }).length;
     planCount.textContent = ids.length + (ids.length === 1 ? " drill today." : " drills today.");
     /* On Pro the row caption already says the goal picks the drills, so a second
@@ -539,7 +573,7 @@ export function render(container, ctx) {
   /* Honest ceiling, stated in the section itself: there is no service worker
      and no push backend here, so the only thing a reminder can do is appear in
      a tab that is open. Everything below is local. */
-  var reminders = push("Reminders");
+  var reminders = push("Reminders", gTrain);
   var remLocal = readJSON(REMINDER_KEY, {}) || {};
 
   var timeRow = row("Reminder time", "");
@@ -729,7 +763,7 @@ export function render(container, ctx) {
   reminders.el.appendChild(remNote);
 
   /* ---------- Account ---------- */
-  var account = push("Account");
+  var account = push("Account", gYou);
 
   var nameRow = row("Display name", "2 to 24 characters. Shown on leaderboards.");
   var nameWrap = el("div");
@@ -826,7 +860,7 @@ export function render(container, ctx) {
   /* What another person sees when they open this profile from a leaderboard.
      These toggles are enforced server-side: profile_public() returns null for
      anything switched off, so this is a real withholding and not a cosmetic hide. */
-  var privacy = push("Shared profile");
+  var privacy = push("Shared profile", gYou);
   privacy.divider = true;
 
   var privacyNote = el("p", "set-note",
@@ -881,18 +915,6 @@ export function render(container, ctx) {
   });
   bioRow.right.appendChild(bioInput);
   privacy.body.appendChild(bioRow.el);
-
-  /* ---------- Plan ---------- */
-  var plan = push("Plan");
-  var isPro = (profile.plan || "free") === "pro";
-  var planRow = row("Manage plan", isPro ? "You are on Pro." : "You are on Free. Pro is $4.99 per month.");
-  var planTag = el("span", "status-tag " + (isPro ? "available" : ""), isPro ? "Pro" : "Free");
-  var plansBtn = el("button", "btn-ghost", isPro ? "Manage" : "Upgrade");
-  plansBtn.type = "button";
-  plansBtn.addEventListener("click", function () { navigate("pricing"); });
-  planRow.right.appendChild(planTag);
-  planRow.right.appendChild(plansBtn);
-  plan.body.appendChild(planRow.el);
 
   var deleteRow = row("Delete account", "Permanently removes your account and all data.");
   var deleteBtn = el("button", "btn-danger", "Delete");
@@ -955,24 +977,34 @@ export function render(container, ctx) {
      reminderDue above; this is only the clock that calls it. */
   ensureReminderLoop();
 
-  /* ---------- assemble ---------- */
+  /* ---------- assemble ----------
+     Three columns at desktop width, one stack at phone width. Each column is
+     headed by the group label, so the page reads as three decisions rather than
+     seven identical cards. At phone width the same three groups stack in the
+     same order, which keeps the reading order and the visual order identical. */
   var col = el("div", "view-mid set-view");
-  sections.forEach(function (s, i) {
-    if (i > 0) {
-      /* A section flagged `divider` gets a full-width rule above it instead of
-         plain spacing, the same device the rail uses to separate the account
-         control from the modules. The rule reads the same section gap as every
-         other card, so the block it introduces is not spaced differently. */
+  var wrap = el("div", "set-grid");
+  groups.forEach(function (g) {
+    var colEl = el("div", "set-group");
+    colEl.setAttribute("role", "group");
+    colEl.setAttribute("aria-label", g.label);
+    colEl.appendChild(el("h2", "set-group-l", g.label));
+    g.sections.forEach(function (s) {
+      /* A section flagged `divider` gets a rule above it instead of plain
+         spacing: the same device the rail uses between the account control and
+         the modules, and it reads the same gap as every other card. */
       if (s.divider) {
         var rule = el("div", "set-divider");
         rule.setAttribute("aria-hidden", "true");
-        rule.style.marginTop = "var(--set-sec)";
-        col.appendChild(rule);
+        colEl.appendChild(rule);
+      } else {
+        s.el.style.marginTop = "var(--set-sec)";
       }
-      s.el.style.marginTop = "var(--set-sec)";
-    }
-    col.appendChild(s.el);
+      colEl.appendChild(s.el);
+    });
+    wrap.appendChild(colEl);
   });
+  col.appendChild(wrap);
   col.appendChild(live);
   container.appendChild(col);
 }

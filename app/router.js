@@ -15,7 +15,6 @@ const VIEWS = [
   'method',
   'profile',
   'settings',
-  'pricing',
 ];
 
 const LABELS = {
@@ -29,7 +28,6 @@ const LABELS = {
   method: 'Method',
   profile: 'Profile',
   settings: 'Settings',
-  pricing: 'Upgrade',
 };
 
 const NOTES = {
@@ -43,7 +41,6 @@ const NOTES = {
   method: 'The evidence note lands here.',
   profile: 'Your name, plan, and personal records land here.',
   settings: 'Theme, sound, motion, account, and plan land here.',
-  pricing: 'Free and Pro plans land here.',
 };
 
 const REGISTERED = Array.isArray(globalThis.CORTEX_VIEWS) ? globalThis.CORTEX_VIEWS.slice() : [];
