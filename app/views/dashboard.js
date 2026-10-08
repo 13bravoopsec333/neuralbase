@@ -243,7 +243,7 @@ function injectStyles() {
     ".dash-ring svg{width:100%;height:100%;display:block}",
     ".dash-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}",
     ".dash-ring-num{--nb-readout:46px}",
-    ".dash-ring-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);text-align:center}",
+    
     ".dash-over{position:absolute;top:-2px;right:-2px;font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--panel);border:1px solid var(--accent-edge);border-radius:999px;padding:1px 6px}",
     ".dash-goal-say{margin:0;font-size:16px;font-weight:600;line-height:1.4;color:var(--ink);text-align:center;max-width:32ch}",
     ".dash-goal-cap{margin:0;font-size:12px;line-height:1.45;color:var(--dim);text-align:center;max-width:40ch}",
@@ -355,8 +355,10 @@ function buildGoalBlock(ctx, n, goal, reduced, isNew) {
   var num = h("span", "nb-readout dash-ring-num");
   num.setAttribute("aria-hidden", "true");
   center.appendChild(num);
-  /* The bare count sits over this line, so "3" reads "3 of 3 sessions today". */
-  center.appendChild(h("span", "dash-ring-label", "of " + goal + " sessions today"));
+  /* Nothing else goes inside the ring. A label here ("of 3 sessions today") measured
+     129px wide inside a 130px hole, so its text touched the stroke at both sides. It
+     was also saying nothing the sentence below the ring does not already say in
+     better words, so it is gone rather than shrunk. */
 
   /* The plain sentence. It names what is done and what is left, in the words a
      person would use, so the state of today needs no decoding. */

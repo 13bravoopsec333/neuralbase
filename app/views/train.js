@@ -9,10 +9,13 @@ var QUEUE_KEY = 'cortex.train.queue';
 var MODE_KEY = 'cortex.train.mode';
 var SEED_KEY = 'cortex.train.seed';
 
+/* The idle copy. Painted in three places, so it lives in one string. */
+var IDLE_NOTE = 'Pick a program below, then start when you are ready.';
+
 /* Drills whose trials come from a seedable stream, so a seed means something
    for them. Spaced Retrieval is a due-card queue, Signal Alert and Simple
    Reaction draw their own targets, and Mental Arithmetic steps its own level,
-   so the seed control stays out of the way there. */
+   so the seed is not passed to those. */
 var SEEDED = { nback: 1, ufov: 1, palace: 1, reasoning: 1, switching: 1 };
 
 function h(tag, cls, text) {
@@ -61,8 +64,9 @@ function writeMode(id) {
 }
 
 /* A seed is an 8 digit hex label. Short enough to read out loud, wide enough
-   that a collision is not worth worrying about, and it doubles as the label
-   under the run so a result can be matched to the sequence that produced it. */
+   that a collision is not worth worrying about. It is not on screen: the same
+   seed is replayed on a repeat visit, so a run can be compared against the one
+   before it. */
 function newSeed() {
   var n = Math.floor(Math.random() * 0xffffffff) >>> 0;
   var s = ('00000000' + n.toString(16)).slice(-8);
@@ -168,19 +172,18 @@ var handle = null;
 var writeSeq = 0;
 var mode = null;
 var seed = null;
-var prShown = false;
-/* True from the moment a set starts until it ends. The mode picker and the seed
-   control both change the trial stream a running drill already committed to, so
-   they are locked for the life of the set and unlocked at the finish. */
+/* True from the moment a set starts until it ends. The mode picker changes the
+   trial stream a running drill already committed to, so it is locked for the
+   life of the set and unlocked at the finish. */
 var running = false;
 
 /* ---------- focus mode ----------
    A running drill gets the whole screen. app/focus.css was written for this and
    loaded, but nothing switched it on, so a set ran in a 320px box in the middle
-   of the Train page with the rail, the topbar and the session card all still
-   competing for attention. The stage is a real node here, not a CSS class on
-   body: the drill has to be moved into it, and moved back on exit, so the
-   running drill keeps its DOM and its timers. */
+   of the Train page with the programs band and the topbar all still competing
+   for attention. The stage is a real node here, not a CSS class on body: the
+   drill has to be moved into it, and moved back on exit, so the running drill
+   keeps its DOM and its timers. */
 var focus = { stage: null, scrim: null, on: false, drill: null, from: null };
 
 function enterFocus() {
@@ -249,8 +252,8 @@ function enterFocus() {
   });
 
   /* Leaving the stage ends the set. Putting a still-running drill back into the
-     320px box would be the complaint again with the fix halfway applied, and the
-     run was abandoned either way, so it is stopped rather than recorded. */
+     page-sized box would be the complaint again with the fix halfway applied, and
+     the run was abandoned either way, so it is stopped rather than recorded. */
   function out() {
     /* Stage down first: leaveFocus puts the drill node back in the mount, and
        stopSet then clears the mount and writes the idle placeholder, so the two
@@ -282,17 +285,21 @@ function stopSet() {
   running = false;
   pending = [];
   sessionDrills = [];
-  if (ui.sideCol) ui.sideCol.classList.remove('tr-live');
   if (ui.startBtn) { ui.startBtn.disabled = false; ui.startBtn.textContent = 'Start'; }
   hidePR();
-  if (ui.mount) {
-    ui.mount.replaceChildren();
-    var ph = h('div', 'drill');
-    ph.appendChild(h('div', 'drill-note', 'Press start to begin.'));
-    ui.mount.appendChild(ph);
-  }
+  paintIdle();
   setIdle(true);
   paintAll();
+}
+
+/* The idle mount. One drill wrapper with one line in it, so every paint of it
+   looks the same. */
+function paintIdle() {
+  if (!ui.mount) return;
+  ui.mount.replaceChildren();
+  var ph = h('div', 'drill');
+  ph.appendChild(h('div', 'drill-note tr-idle-note', IDLE_NOTE));
+  ui.mount.appendChild(ph);
 }
 
 function leaveFocus() {
@@ -343,31 +350,29 @@ function injectStyles() {
   var s = document.createElement('style');
   s.id = 'nb-train-styles';
   s.textContent = [
-    /* The root is the shared centered column, and it keeps the frame .view gives
-       every page: a flex column that takes the height the shell has left and
-       centers the panel and the programs band in it. display:block here would
-       opt this one view out and leave it clinging to the top. */
-    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);max-width:1080px;margin-inline:auto}',
+    /* The root is one centered column that keeps the frame .view gives every page:
+       a flex column taking the height the shell has left. display:block here would
+       opt this one view out and leave it clinging to the top.
+
+       Two changes from the first version. The 1080px ceiling is gone, because it
+       was sized for the old two column grid and left the drill boxed in a narrow
+       lane with dead space on both sides at any wide viewport. The panel now takes
+       the full width of the frame, and the mount below it takes the leftover
+       height, so the drill area is where the eye lands rather than a band of empty
+       panel under a narrow lane. max-width:none cancels the view-mid-wide ceiling
+       the container carries: that is a measure width, and a measure is a limit on
+       running text, not on the card the text sits in. */
+    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0}',
+    '.tr-panel{align-self:stretch;width:100%;max-width:none;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}',
     /* The topbar owns the view title now, so the panel head carries the drill's own
        name and one description line under it, not a second title block. */
     '.tr-desc{font-size:13px;color:var(--muted);line-height:1.45;margin:0 0 10px;max-width:62ch}',
-    /* Right rail. It does not stretch to the drill panel beside it. Two attempts to
-       make the two top cards share one height both produced dead space: first the
-       meter stretched into three 340px empty columns, then the card held a header
-       and a 6px bar inside 250px of nothing. A rail that is simply shorter reads
-       as breathing room, where a stretched empty card reads as something missing. */
-    '.tr-side{align-self:start}',
-    '.tr-session{display:flex;flex-direction:column;gap:14px}',
-    '.tr-session .card-head{margin-bottom:0}',
-    '.tr-session .pips{margin-bottom:0}',
-    /* Below the two-column breakpoint the cards stack anyway. */
-    '@media (max-width:820px){.tr-side{align-self:auto}.tr-session{height:auto}.tr-session .pips{flex:none}}',
-    /* The programs band is a size container so the grid below it responds to the
-       width it actually has. Viewport breakpoints cannot see that the rail eats
-       208px between 821 and 900px and not below it. */
-    /* The gap on .tr-view is the space above this band, so it carries no margin of
-       its own. */
-    '.tr-band{container-type:inline-size}',
+    /* The programs band stays a size container so the grid below it responds to the
+       width it actually has. Viewport breakpoints cannot see how much the frame
+       left over. The gap on .tr-view is the space above this band, so it carries
+       no margin of its own. It is full width, same as the panel, so the two cards
+       read as one column rather than a wide panel over a narrower strip. */
+    '.tr-band{align-self:stretch;container-type:inline-size;width:100%}',
     '.tr-band-meta{display:flex;align-items:baseline;gap:12px}',
     '.tr-modes{margin-top:2px}',
     '.tr-field{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:7px}',
@@ -378,18 +383,17 @@ function injectStyles() {
     '.tr-mode:disabled{opacity:.5;cursor:not-allowed}',
     '.tr-mode[aria-pressed="true"]:disabled{opacity:.7}',
     '.tr-blurb{font-size:13px;color:var(--muted);margin:7px 0 0;max-width:52ch}',
-    '.tr-seed{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}',
-    '.tr-seed-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);flex:none}',
-    '.tr-seed-val{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;letter-spacing:.06em;color:var(--ink);border:1px solid var(--line2);border-radius:8px;padding:3px 8px;background:var(--panel2);flex:none}',
-    '.tr-seed-btn{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;border-radius:8px;background:transparent;border:1px solid var(--line2);color:var(--muted);transition:border-color .15s ease,color .15s ease;flex:none}',
-    '.tr-seed-btn:not(:disabled):hover{border-color:var(--lime-edge);color:var(--ink)}',
-    '.tr-seed-btn:disabled{opacity:.5;cursor:not-allowed}',
-    '.tr-seed-note{font-size:12px;color:var(--dim);margin:0 0 0 auto;text-align:right;flex:1 1 auto}',
-    /* The shared .drill-mount reserves 238px for a running drill. That reserve is a
-       void when nothing is running, so the idle mount is only as tall as its
-       placeholder. A running drill sizes its own stage. */
-    '.tr-view .drill-mount{min-height:0}',
-    '.tr-view .drill-mount.tr-idle{min-height:52px;justify-content:center;align-items:center;text-align:center;border:1px dashed var(--line2);border-radius:8px}',
+    /* The mount takes what is left of the panel, so the drill area grows with the
+       window instead of sitting at the shared 238px reserve. flex:1 has nothing to
+       absorb on a page that already scrolls, so the idle box also carries a floor
+       set against the viewport height. It is the area the drill will occupy, so it
+       is drawn as one, dashed and centred, with the one idle line in the middle.
+       The clamp caps it: past about a third of the screen the idle box is more
+       empty than useful, and an oversized empty box reads as something missing. */
+    '.tr-view .drill-mount{flex:1 1 auto;min-height:clamp(220px,30vh,420px)}',
+    '.tr-view .drill-mount.tr-idle{justify-content:safe center;align-items:center;text-align:center;border:1px dashed var(--line2);border-radius:8px;padding:20px}',
+    '.tr-view .drill-mount.tr-idle .drill{max-width:46ch}',
+    '.tr-idle-note{font-size:14px;line-height:1.5}',
     '.tr-pr{display:flex;align-items:baseline;gap:8px;margin-top:11px;padding:9px 10px;border:1px solid var(--lime-edge);background:var(--lime-soft);border-radius:8px}',
     '.tr-pr-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--lime);flex:none}',
     '.tr-pr-copy{font-size:13px;color:var(--ink);margin:0;line-height:1.45}',
@@ -413,7 +417,9 @@ function injectStyles() {
     '.tr-prog-name{font-size:13px;font-weight:600;flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     /* margin-top:auto lands the skill line on the same baseline in every card. */
     '.tr-prog-trains{font-size:12px;color:var(--muted);line-height:1.4;margin-top:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
-    '.tr-empty{color:var(--dim);font-size:13px;margin:10px 0 0}'
+    /* The panel is the only card in the column, so it can take a little of the
+       panel padding off its sides on a phone to give the drill more width. */
+    '@media (max-width:420px){.tr-panel{padding:10px}.tr-band{padding:12px}}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -424,8 +430,7 @@ function buildDOM(container) {
 
   var D = (globalThis.Content && globalThis.Content.DRILLS) || [];
 
-  var grid = h('div', 'train-grid');
-  var panel = h('div', 'card panel-card');
+  var panel = h('div', 'card panel-card tr-panel');
   var ch = h('div', 'card-head');
   var chTitle = h('span', 'card-title');
   var dicon = h('span', 'drill-ic');
@@ -463,21 +468,7 @@ function buildDOM(container) {
   var modeBlurb = h('p', 'tr-blurb', '');
   modesBlock.appendChild(modeBlurb);
 
-  /* Seed readout. Reads as an instrument control, because that is what it is:
-     the same seed replays the identical trial sequence. */
-  var seedRow = h('div', 'tr-seed');
-  seedRow.appendChild(h('span', 'tr-seed-label', 'Seed'));
-  var seedVal = h('span', 'tr-seed-val', '--------');
-  seedRow.appendChild(seedVal);
-  var seedBtn = h('button', 'tr-seed-btn', 'New seed');
-  seedBtn.type = 'button';
-  seedBtn.setAttribute('aria-label', 'New seed');
-  seedRow.appendChild(seedBtn);
-  var seedNote = h('span', 'tr-seed-note', '');
-  seedRow.appendChild(seedNote);
-
   var mount = h('div', 'drill-mount tr-idle');
-  mount.innerHTML = '<div class="drill"><div class="drill-note">Press start to begin.</div></div>';
   var stats = h('div', 'stats');
   var last = statCell('Last'), best = statCell('Best'), avg = statCell('Average');
   stats.appendChild(last.wrap); stats.appendChild(best.wrap); stats.appendChild(avg.wrap);
@@ -497,28 +488,15 @@ function buildDOM(container) {
   panel.appendChild(ch);
   panel.appendChild(ddesc);
   panel.appendChild(modesBlock);
-  panel.appendChild(seedRow);
   panel.appendChild(mount);
   panel.appendChild(stats);
   panel.appendChild(pr);
   panel.appendChild(actions);
 
-  var col = h('div', 'col tr-side');
-  var sc = h('div', 'card session-card tr-session');
-  var sch = h('div', 'card-head');
-  sch.appendChild(h('h3', null, "Today's session"));
-  var sessionVal = h('span', 'mono cap', '0 of 3 today');
-  sch.appendChild(sessionVal);
-  /* The pips are the daily goal, filled by sessions run today. They say the same
-     thing as the count above, one look instead of one read. */
-  var pips = h('div', 'pips');
-  sc.appendChild(sch); sc.appendChild(pips);
-  col.appendChild(sc);
-
   /* Programs band. A full width card under the panel, so the nine drills get the
-     room a uniform grid needs instead of sharing a rail with the session card.
-     Real buttons, so every drill is reachable by keyboard, with the Pro gate
-     doing the same thing here as it does in Programs. */
+     room a uniform grid needs. Real buttons, so every drill is reachable by
+     keyboard, with the Pro gate doing the same thing here as it does in
+     Programs. */
   var pc = h('div', 'card programs-card tr-band');
   var pch = h('div', 'card-head');
   pch.appendChild(h('h3', null, 'Training programs'));
@@ -557,8 +535,7 @@ function buildDOM(container) {
   });
   pc.appendChild(plist);
 
-  grid.appendChild(panel); grid.appendChild(col);
-  container.appendChild(grid);
+  container.appendChild(panel);
   container.appendChild(pc);
 
   var live = h('div', 'sr');
@@ -569,23 +546,14 @@ function buildDOM(container) {
     drillName: dn, drillIcon: dicon, drillDesc: ddesc, mount: mount,
     sLast: last.v, sBest: best.v, sAvg: avg.v,
     statLAvg: avg.l, statLBest: best.l, live: live,
-    startBtn: start, sessionVal: sessionVal, pips: pips, bandLevel: bandLevel, sideCol: col,
+    startBtn: start, bandLevel: bandLevel,
     modesBlock: modesBlock, modeBtns: modeBtns, modeBlurb: modeBlurb,
-    seedRow: seedRow, seedVal: seedVal, seedBtn: seedBtn, seedNote: seedNote,
     pr: pr, prCopy: prCopy, progBtns: progBtns
   };
+  paintIdle();
   start.addEventListener('click', function () {
     if (ctxRef.audio && ctxRef.audio.resume) { try { ctxRef.audio.resume(); } catch (e) { /* degrade */ } }
     startDrill();
-  });
-  seedBtn.addEventListener('click', function () {
-    /* Locked for the life of a set: a new seed would hand a running drill a stream
-       it never drew. The button is disabled too; this is the belt to that. */
-    if (running) return;
-    seed = newSeed();
-    writeSeed(seed);
-    paintAll();
-    say(seed + ' set.');
   });
 }
 
@@ -597,54 +565,12 @@ function setNum(node, val, suffix) {
   else node.textContent = val + (suffix || '');
 }
 
-/* The idle placeholder is the only content that needs the small reserved height.
+/* The idle placeholder is the only content that needs the reserved height.
    A running drill brings its own stage, so the flag comes off. */
 function setIdle(on) {
   if (!ui.mount) return;
   if (on) ui.mount.classList.add('tr-idle');
   else ui.mount.classList.remove('tr-idle');
-}
-
-/* The daily target, read from the profile the way the dashboard reads it, so the
-   same number drives the ring there and the meter here. Three when nothing is set. */
-function dailyGoal() {
-  var p = ctxRef && ctxRef.profile;
-  var g = p ? Number(p.daily_goal != null ? p.daily_goal : p.dailyGoal) : NaN;
-  if (!isFinite(g) || g < 1) g = 3;
-  return Math.round(g);
-}
-/* The card answers one question about today: how much of the plan is done. The
-   count and the pips are the same fact, one read and one look. */
-function paintToday() {
-  var Store = globalThis.Store;
-  if (!ui.sessionVal) return;
-  var todayKey = Store.iso(new Date());
-  var goal = dailyGoal();
-  var today = 0;
-  for (var i = 0; i < state.sessions.length; i++) {
-    if (Store.iso(new Date(state.sessions[i].t)) === todayKey) today++;
-  }
-  /* A run logged today counts even before its session write lands, so the meter
-     never lags the drill the user just finished. */
-  if (!today) {
-    for (var r = 0; r < state.records.length; r++) {
-      if (state.records[r].drillId && Store.iso(new Date(state.records[r].t)) === todayKey) { today = 1; break; }
-    }
-  }
-  /* Past the target the count is not a fraction of anything, so the chip stops
-     reading like one. "9 of 3" is nonsense; the goal is met, and the day's total
-     is what is worth saying. */
-  ui.sessionVal.textContent = today >= goal
-    ? 'Goal met \u00b7 ' + today + ' today'
-    : today + ' of ' + goal + ' today';
-
-  if (ui.pips) {
-    while (ui.pips.firstChild) ui.pips.removeChild(ui.pips.firstChild);
-    /* Capped so a large target cannot push the row past the card edge. */
-    var shown = Math.min(goal, 8);
-    var lit = Math.min(today, shown);
-    for (var p = 0; p < shown; p++) ui.pips.appendChild(h('span', 'pip' + (p < lit ? ' on' : '')));
-  }
 }
 
 function say(msg) {
@@ -672,7 +598,7 @@ function pickDrill(id) {
   currentDrill = id;
   if (handle && handle.stop) handle.stop();
   handle = null;
-  ui.mount.innerHTML = '<div class="drill"><div class="drill-note">Press start to begin.</div></div>';
+  paintIdle();
   setIdle(true);
   hidePR();
   paintAll();
@@ -695,7 +621,6 @@ function showPR(rec, d) {
 }
 
 function hidePR() {
-  prShown = false;
   if (ui.pr) ui.pr.hidden = true;
   if (ui.prCopy) ui.prCopy.textContent = '';
 }
@@ -727,21 +652,8 @@ function paintModes(d) {
   }
 }
 
-function paintSeed(d) {
-  if (!ui.seedRow) return;
-  var seeded = !!SEEDED[d.id];
-  ui.seedRow.hidden = !seeded;
-  if (!seeded) return;
-  ui.seedVal.textContent = seed || '--------';
-  if (ui.seedBtn) ui.seedBtn.disabled = running;
-  ui.seedNote.textContent = running
-    ? 'Locked while a set runs.'
-    : 'Same seed, same sequence.';
-}
-
 function paintAll() {
   var Store = globalThis.Store;
-  var Engine = globalThis.Engine;
   var d = drillById(currentDrill);
   if (ui.drillName) ui.drillName.textContent = d.name;
   if (ui.drillIcon) ui.drillIcon.innerHTML = d.icon || '';
@@ -769,8 +681,6 @@ function paintAll() {
   }
 
   paintModes(d);
-  paintSeed(d);
-  paintToday();
 }
 
 function runDrills(ids, interleave) {
@@ -789,17 +699,16 @@ function nextDrill() {
   if (!pending.length) return finishSession();
   currentDrill = pending.shift();
   sessionDrills.push(currentDrill);
-  /* The set is live. Mode and seed lock here and stay locked until finishSession
-     unlocks them, so the running drill keeps the stream it started with. */
+  /* The set is live. The mode locks here and stays locked until finishSession
+     unlocks it, so the running drill keeps the stream it started with. */
   var firstOfSet = !running;
   running = true;
-  if (ui.sideCol) ui.sideCol.classList.add('tr-live');
   setIdle(false);
   if (ui.startBtn) { ui.startBtn.disabled = false; ui.startBtn.textContent = 'Restart'; }
   hidePR();
   paintAll();
-  if (firstOfSet && (currentDrill === 'nback' || SEEDED[currentDrill])) {
-    say('Mode and seed lock while a set runs.');
+  if (firstOfSet && currentDrill === 'nback') {
+    say('Mode locked while a set runs.');
   }
   var Drills = globalThis.Drills;
   handle = Drills.start(currentDrill, ui.mount, {
@@ -869,9 +778,8 @@ function finishSession() {
   handle = null;
   /* The set is over, so the stage comes down and the page comes back. */
   leaveFocus();
-  /* The set is over, so the mode picker and seed control come back. */
+  /* The set is over, so the mode picker comes back. */
   running = false;
-  if (ui.sideCol) ui.sideCol.classList.remove('tr-live');
   if (ui.startBtn) { ui.startBtn.disabled = false; ui.startBtn.textContent = 'Start'; }
   if (sessionDrills.length) {
     var Store = globalThis.Store;
@@ -918,8 +826,8 @@ export function render(container, ctx) {
   mode = readMode();
   seed = readSeed();
   writeSeed(seed);
-  /* The shared centered column. Train carries a drill panel, a session card and
-     the nine program cards, so it takes the wide one rather than the 780 column. */
+  /* The shared centered column. Train carries a drill panel and the nine program
+     cards, so it takes the wide one rather than the 780 column. */
   container.classList.add('view', 'view-mid-wide', 'tr-view');
   container.setAttribute('aria-label', 'Train');
   buildDOM(container);

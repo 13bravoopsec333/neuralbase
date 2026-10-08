@@ -134,9 +134,21 @@
       if (rule === "sum") {
         var sum;
         if (wantMatch) sum = sumSeq[i - level];
-        else if (wantLure && level > 1) sum = sumSeq[i - 1];
-        else sum = randInt(rng, 17) + 2;
-        /* Single digit operands, total under 20. */
+        else if (wantLure && level > 1 && sumSeq[i - 1] !== sumSeq[i - level]) sum = sumSeq[i - 1];
+        /* Sums run 4 to 17 so every one of them splits into more than one pair of
+           single digits. The wider 2 to 18 range included totals that have a single
+           valid split: 18 can only be 9+9, so those trials always looked identical
+           and the sum was readable off the digits without adding anything up. */
+        else {
+          /* Rejected on purpose. A trial meant to be a non-target that happened to
+             draw the same total as the one n steps back scored anyway, so the real
+             target rate ran 0.34 to 0.44 against the 30 percent the other modes
+             hold, and the mode was quietly easier than its copy claims. With 14
+             possible totals that collision lands about one time in seven. */
+          sum = randInt(rng, 14) + 4;
+          if (i >= level && sum === sumSeq[i - level]) sum = 4 + (sum - 3) % 14;
+          if (level > 1 && sum === sumSeq[i - 1]) sum = 4 + (sum - 3) % 14;
+        }
         var lo = Math.max(1, sum - 9), hi = Math.min(9, sum - 1);
         var a = lo + randInt(rng, hi - lo + 1);
         st.a = a; st.b = sum - a; st.sum = sum;

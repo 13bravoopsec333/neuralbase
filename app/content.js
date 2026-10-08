@@ -34,9 +34,9 @@
      rule-cued behaviour. Mode ids are mirrored in app/engine.js, which cannot import
      this file, so the two lists have to be kept in sync by hand. */
   var MODES = [
-    { id: "dual", name: "Dual n-back", blurb: "Position and letter both cue the match, the original rule." },
-    { id: "visual", name: "Visual", blurb: "Only the position repeats, letters change freely." },
-    { id: "letter", name: "Letter", blurb: "Only the letter repeats, positions change freely." },
+    { id: "dual", name: "Dual n-back", blurb: "A cue names which rule is live, and the rule changes mid-set." },
+    { id: "visual", name: "Visual", blurb: "A target is a repeated position. A repeated letter is a trap." },
+    { id: "letter", name: "Letter", blurb: "A target is a repeated letter. A repeated position is a trap." },
     { id: "vowel", name: "Vowel", blurb: "Count a match only when the repeated letter is a vowel." },
     { id: "arithmetic", name: "Arithmetic", blurb: "Two digits appear and their sum is the stimulus. Flag a repeated sum." },
     { id: "spatial", name: "Spatial", blurb: "A shape appears in one cell. Flag a repeated place, whatever the shape." }
