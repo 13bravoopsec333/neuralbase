@@ -847,7 +847,11 @@ export function render(container, ctx) {
     Promise.resolve(fn()).then(function (r) {
       signOutBtn.disabled = false;
       if (r && r.ok === false) { say("Could not sign out."); return; }
-      navigate("landing");
+      /* No navigate() here on purpose. ctx.navigate is the router, which only
+         knows the routed views and falls back to Dashboard for anything else, so
+         "landing" was never a route it could honour. Signing out already leaves
+         the app: lib/auth.js emits SIGNED_OUT and app.js replaces the location
+         with landing.html. */
     }).catch(function () {
       signOutBtn.disabled = false;
       say("Could not sign out.");
@@ -916,11 +920,14 @@ export function render(container, ctx) {
   bioRow.right.appendChild(bioInput);
   privacy.body.appendChild(bioRow.el);
 
+  /* These belong with the Account group, which is where the display name, email
+     and sign-out rows already live. They used to be appended into a separate
+     Plan group, which came out with the paywall. */
   var deleteRow = row("Delete account", "Permanently removes your account and all data.");
   var deleteBtn = el("button", "btn-danger", "Delete");
   deleteBtn.type = "button";
   deleteRow.right.appendChild(deleteBtn);
-  plan.body.appendChild(deleteRow.el);
+  account.body.appendChild(deleteRow.el);
 
   var confirm = el("div", "confirm");
   confirm.hidden = true;
@@ -941,7 +948,7 @@ export function render(container, ctx) {
   confirmActions.appendChild(confirmBtn);
   confirmActions.appendChild(cancelBtn);
   confirm.appendChild(confirmActions);
-  plan.body.appendChild(confirm);
+  account.body.appendChild(confirm);
 
   confirmInput.addEventListener("input", function () {
     confirmBtn.disabled = confirmInput.value.trim() !== "DELETE";
@@ -966,7 +973,7 @@ export function render(container, ctx) {
     confirmBtn.disabled = true;
     Promise.resolve(fn()).then(function (r) {
       if (r && r.ok === false) { confirmBtn.disabled = false; say("Could not delete the account."); return; }
-      navigate("landing");
+      /* Same as sign-out above: the SIGNED_OUT listener in app.js does the leave. */
     }).catch(function () {
       confirmBtn.disabled = false;
       say("Could not delete the account.");

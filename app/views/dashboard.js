@@ -755,7 +755,10 @@ function readCache() {
 
 function paint(container, ctx, data) {
   var runs = Array.isArray(data && data.runs) ? data.runs : [];
-  var profile = ctx.profile || data.profile || {};
+  /* data is null on a cold first paint, before anything has been cached, so the
+     profile has to come through the same guard as the runs. Reading data.profile
+     unguarded threw on exactly that first visit. */
+  var profile = ctx.profile || (data && data.profile) || {};
   var reg = drillRegistry();
   var now = Date.now();
   var today = localDate(now);
