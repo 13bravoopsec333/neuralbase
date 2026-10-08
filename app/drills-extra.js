@@ -319,8 +319,9 @@
   var SART_BEAT = 1000;
   var SART_FILLERS = [1, 2, 4, 5, 6, 7, 8, 9];
 
-  function sartDigit(rng) {
-    return randInt(rng, 10) === SART_TARGET ? SART_TARGET : pick(rng, SART_FILLERS);
+  function sartDigit(rng, target) {
+    var t = target == null ? SART_TARGET : target;
+    return randInt(rng, 10) === t ? t : pick(rng, SART_FILLERS);
   }
 
   function sart(container, opts) {
@@ -331,6 +332,9 @@
     var i = 0, trials = [], timerId = 0;
     /* Validated by drillOptions: 20, 30 or 40. Default keeps the 30-trial set. */
     var total = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : SART_TRIALS;
+    /* Validated by drillOptions: 1 to 9. The digit the player must withhold on.
+       Default 3 is the classic SART target. */
+    var targetDigit = (opts.options && typeof opts.options.targetDigit === "number") ? opts.options.targetDigit : SART_TARGET;
     var curDigit = 0, shownAt = 0, resolved = true;
 
     var wrap = el("div", "drill drill-sart");
@@ -338,7 +342,7 @@
     var live = el("div", "nx-sr");
     live.setAttribute("aria-live", "polite");
     live.setAttribute("aria-atomic", "true");
-    var cue = el("div", "nx-cue", "Press only on the digit 3.");
+    var cue = el("div", "nx-cue", "Press only on the digit " + targetDigit + ".");
     cue.setAttribute("aria-live", "polite");
     var bar = el("div", "drill-bar");
     var pressBtn = button("btn-primary nx-press", "Press on 3");
@@ -365,7 +369,7 @@
     function react(rt) {
       resolved = true;
       clock.clear(timerId);
-      var target = curDigit === SART_TARGET;
+      var target = curDigit === targetDigit;
       trials.push({
         digit: curDigit,
         pressed: true,
@@ -387,7 +391,7 @@
     function withhold() {
       resolved = true;
       clock.clear(timerId);
-      var target = curDigit === SART_TARGET;
+      var target = curDigit === targetDigit;
       trials.push({ digit: curDigit, pressed: false, rt: null });
       if (target) {
         stage.className = "nx-digit mono warn";
@@ -411,7 +415,7 @@
       if (stopped) return;
       if (i >= total) return finish();
       i++;
-      curDigit = sartDigit(rng);
+      curDigit = sartDigit(rng, targetDigit);
       resolved = false;
       shownAt = Date.now();
       stage.className = "nx-digit mono";
@@ -429,7 +433,7 @@
          The clock and the listeners still go: nothing should outlive the drill
          just because the last clip is allowed to ring. */
       teardown(false);
-      var sc = scoreSart(trials);
+      var sc = scoreSart(trials, targetDigit);
       container.appendChild(summaryEl(
         "Set complete",
         sc.correct + " of " + sc.trials + " correctly withheld · " +
@@ -481,6 +485,11 @@
     var i = 0, choice = 2, hits = 0, misses = 0, rts = [];
     /* Validated by drillOptions: 10, 20 or 30. Default keeps the 20-trial set. */
     var total = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : CRT_TRIALS;
+    /* Validated by drillOptions: 2 or 3. The number of lights the set starts on.
+       The adaptive rule still widens or narrows it after a hit, so this is a
+       starting point, not a fixed count. Default 2 keeps the old start. */
+    var choices = (opts.options && typeof opts.options.choices === "number") ? opts.options.choices : 2;
+    choice = choices;
     var shownAt = 0, litIdx = -1, targetLane = 0, resolved = true, timerId = 0;
     var lanes = [], laneEls = [];
 
@@ -489,7 +498,7 @@
     var cue = el("div", "nx-cue", "Wait for a light, then press it.");
     cue.setAttribute("aria-live", "polite");
     var note = el("div", "drill-note", "Two lights, then three once you are quick. Trains simple reaction speed.");
-    var meta = el("div", "nb-meta mono", "0 / " + total);
+    var meta = el("div", "nb-meta mono", "0 / " + total + " · " + choice + " lights");
     wrap.appendChild(stage);
     wrap.appendChild(cue);
     wrap.appendChild(note);
@@ -653,8 +662,17 @@
     var startLevel = (opts.options && typeof opts.options.startLevel === "number") ? opts.options.startLevel : 1;
     level = startLevel - 1;
     levelSet = startLevel > 1;
+    /* Validated by drillOptions: 3 to 8 seconds. The per-problem clock. Default 4
+       keeps the four second window the drill has always used. */
+    var secondsPerProblem = (opts.options && typeof opts.options.secondsPerProblem === "number") ? opts.options.secondsPerProblem : 4;
+    var problemMs = secondsPerProblem * 1000;
     var cur = null, shownAt = 0, resolved = true, timerId = 0;
     var times = [];
+
+    /* Trial count, running score and the per-problem clock, on screen. */
+    function metaText() {
+      return i + " / " + MATH_TRIALS + " · " + correct + " correct · " + secondsPerProblem + " s";
+    }
 
     var wrap = el("div", "drill drill-math");
     var prompt = el("div", "nx-problem mono", "");
@@ -682,7 +700,7 @@
       padKeys.push(b);
     });
     var note = el("div", "drill-note", "Small sums first, then times tables. Trains mental arithmetic fluency.");
-    var meta = el("div", "nb-meta mono", "0 / " + MATH_TRIALS);
+    var meta = el("div", "nb-meta mono", metaText());
     wrap.appendChild(prompt);
     wrap.appendChild(cue);
     wrap.appendChild(row);
@@ -718,7 +736,7 @@
         playSfx("incorrect");
       }
       i++;
-      meta.textContent = i + " / " + MATH_TRIALS + " · " + correct + " correct";
+      meta.textContent = metaText();
       input.value = "";
       clock.set(next, 240);
     }
@@ -727,11 +745,11 @@
       if (stopped || done || resolved) return;
       resolved = true;
       clock.clear(timerId);
-      times.push(MATH_MS);
+      times.push(problemMs);
       cue.textContent = "time, it was " + cur.expected;
       playSfx("incorrect");
       i++;
-      meta.textContent = i + " / " + MATH_TRIALS + " · " + correct + " correct";
+      meta.textContent = metaText();
       clock.set(next, 240);
     }
 
@@ -752,7 +770,7 @@
       cue.textContent = "Type the answer, then press enter.";
       input.value = "";
       try { input.focus(); } catch (e) {}
-      timerId = clock.set(timeout, MATH_MS);
+      timerId = clock.set(timeout, problemMs);
     }
 
     function finish() {

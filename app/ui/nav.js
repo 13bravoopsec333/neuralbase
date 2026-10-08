@@ -12,7 +12,6 @@ const LABELS = {
   circuit: 'Circuit',
   progress: 'Progress',
   leaderboards: 'Leaderboards',
-  method: 'Method',
   profile: 'Profile',
   settings: 'Settings',
 };
@@ -25,13 +24,12 @@ const SUBS = {
   circuit: 'Today\u2019s mix, built or adaptive.',
   progress: 'Trends over time.',
   leaderboards: 'Where you stand, per drill.',
-  method: 'The evidence and its limits.',
   profile: 'What another player sees about you.',
   settings: '',
 };
 
 /* Views reachable from the More sheet (everything that is not a bottom tab). */
-const MORE_VIEWS = ['study', 'leaderboards', 'method', 'settings'];
+const MORE_VIEWS = ['study', 'leaderboards', 'settings'];
 
 function byId(id) {
   return document.getElementById(id);

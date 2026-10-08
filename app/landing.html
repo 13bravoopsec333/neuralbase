@@ -56,7 +56,7 @@ body{overflow-x:clip}
 .lp-h2{margin:12px 0 0;font-size:clamp(19px,2.3vw,28px);line-height:1.16;font-weight:600;letter-spacing:-.028em;max-width:32ch}
 .lp-lead{margin:12px 0 0;color:var(--muted);font-size:clamp(13px,1.15vw,15px);line-height:1.6;max-width:58ch}
 
-/* ---------- Centred sections (method, plans, faq) ----------
+/* ---------- Centred sections (plans, faq) ----------
    One reading axis down the middle of the page. The eyebrow turns into a
    symmetric rule pair, the heading and body sit on a centred measure, and
    block content (claims, tiers, questions) is centred as a group rather
@@ -250,17 +250,11 @@ body{overflow-x:clip}
   transition:border-color .18s ease,color .18s ease,background .18s ease}
 .lp-ma-t.ans.on{border-color:var(--lime-edge);color:var(--lime);background:var(--lime-soft)}
 
-/* ---------- Method note ---------- */
+/* ---------- Note panel ---------- */
 .lp-note{margin:clamp(20px,3vh,30px) auto 0;width:100%;max-width:min(700px,100%);border:1px solid var(--line);border-top:2px solid var(--lime-edge);
   border-radius:var(--r);background:var(--panel);padding:clamp(18px,3vh,28px) clamp(16px,3vw,30px)}
 .lp-note p{margin:0;color:var(--muted);line-height:1.62}
 .lp-note p+p{margin-top:12px}
-.lp-note p.lead{color:var(--ink);font-size:clamp(14px,1.3vw,16px);line-height:1.5}
-.lp-claims{margin:18px 0 0;padding:16px 0 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:15px;max-width:min(44ch,100%);margin-left:auto;margin-right:auto}
-.lp-claims>div{display:flex;flex-direction:column;gap:5px;align-items:center;text-align:center}
-.lp-claims>div+div{border-top:1px solid var(--line);padding-top:15px}
-.lp-claims dt{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
-.lp-claims dd{margin:0;color:var(--ink);font-size:13.5px;line-height:1.45}
 
 /* ---------- Plans ---------- */
 .lp-tiers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;width:100%;max-width:min(700px,100%);margin:clamp(20px,3vh,30px) auto 0}
@@ -378,9 +372,9 @@ body{overflow-x:clip}
       <a class="lp-brand" href="landing.html">
         <span class="rail-mark" aria-hidden="true">
           <svg viewBox="0 0 64 64" width="20" height="20" fill="currentColor">
-            <rect x="7" y="7" width="8" height="8"/><rect x="7" y="17" width="8" height="8"/><rect x="7" y="27" width="8" height="8"/><rect x="7" y="37" width="8" height="8"/><rect x="7" y="47" width="8" height="8"/>
-            <rect x="47" y="7" width="8" height="8"/><rect x="47" y="17" width="8" height="8"/><rect x="47" y="27" width="8" height="8"/><rect x="47" y="37" width="8" height="8"/><rect x="47" y="47" width="8" height="8"/>
-            <rect x="17" y="17" width="8" height="8"/><rect x="27" y="27" width="8" height="8"/><rect x="37" y="37" width="8" height="8"/>
+            <rect x="8" y="8" width="8" height="8"/><rect x="8" y="18" width="8" height="8"/><rect x="8" y="28" width="8" height="8"/><rect x="8" y="38" width="8" height="8"/><rect x="8" y="48" width="8" height="8"/>
+            <rect x="48" y="8" width="8" height="8"/><rect x="48" y="18" width="8" height="8"/><rect x="48" y="28" width="8" height="8"/><rect x="48" y="38" width="8" height="8"/><rect x="48" y="48" width="8" height="8"/>
+            <rect x="18" y="18" width="8" height="8"/><rect x="28" y="28" width="8" height="8"/><rect x="38" y="38" width="8" height="8"/>
           </svg>
         </span>
         <span class="lp-word">Neuralbase</span>
@@ -520,24 +514,7 @@ body{overflow-x:clip}
       <div class="lp-note"><p id="drillsNote"></p></div>
     </section>
 
-    <!-- 4. METHOD -->
-    <section class="lp-sec lp-sec-mid" id="method">
-      <p class="lp-eyebrow">Method</p>
-      <h2 class="lp-h2">What Neuralbase claims, and what it does not.</h2>
-      <div class="lp-note">
-        <p class="lead" id="methodLead"></p>
-        <p id="methodHonest"></p>
-        <dl class="lp-claims">
-          <div><dt>Near transfer</dt><dd>Reliable for similar tasks.</dd></div>
-          <div><dt>Broad transfer</dt><dd>Not demonstrated. Not claimed.</dd></div>
-          <div><dt>IQ</dt><dd>No claim is made.</dd></div>
-        </dl>
-      </div>
-      <!-- The claims above and the limits below are the honest core of this page.
-           Nothing in this block gets shortened for being verbose. -->
-    </section>
-
-    <!-- 5. PLANS -->
+    <!-- 4. PLANS -->
     <section class="lp-sec lp-sec-mid" id="plans">
       <!-- One heading, not an eyebrow and a heading saying the same word. The
            FAQ heading below already carries the rule pair the eyebrow drew. -->
@@ -556,7 +533,7 @@ body{overflow-x:clip}
       </div>
     </section>
 
-    <!-- 6. FAQ -->
+    <!-- 5. FAQ -->
     <section class="lp-sec lp-sec-mid" id="faq" data-reveal>
       <h2 class="lp-h2 lp-faq-h2">FAQ</h2>
       <div class="lp-faq">
@@ -594,9 +571,9 @@ body{overflow-x:clip}
       <span class="lp-foot-brand">
         <span class="rail-mark" aria-hidden="true">
           <svg viewBox="0 0 64 64" width="20" height="20" fill="currentColor">
-            <rect x="7" y="7" width="8" height="8"/><rect x="7" y="17" width="8" height="8"/><rect x="7" y="27" width="8" height="8"/><rect x="7" y="37" width="8" height="8"/><rect x="7" y="47" width="8" height="8"/>
-            <rect x="47" y="7" width="8" height="8"/><rect x="47" y="17" width="8" height="8"/><rect x="47" y="27" width="8" height="8"/><rect x="47" y="37" width="8" height="8"/><rect x="47" y="47" width="8" height="8"/>
-            <rect x="17" y="17" width="8" height="8"/><rect x="27" y="27" width="8" height="8"/><rect x="37" y="37" width="8" height="8"/>
+            <rect x="8" y="8" width="8" height="8"/><rect x="8" y="18" width="8" height="8"/><rect x="8" y="28" width="8" height="8"/><rect x="8" y="38" width="8" height="8"/><rect x="8" y="48" width="8" height="8"/>
+            <rect x="48" y="8" width="8" height="8"/><rect x="48" y="18" width="8" height="8"/><rect x="48" y="28" width="8" height="8"/><rect x="48" y="38" width="8" height="8"/><rect x="48" y="48" width="8" height="8"/>
+            <rect x="18" y="18" width="8" height="8"/><rect x="28" y="28" width="8" height="8"/><rect x="38" y="38" width="8" height="8"/>
           </svg>
         </span>
         Neuralbase
@@ -604,7 +581,6 @@ body{overflow-x:clip}
       <nav class="lp-foot-nav" aria-label="Footer">
         <a href="auth.html">Sign in</a>
         <a href="auth.html">Create account</a>
-        <a href="#method">Method</a>
       </nav>
       <p class="lp-foot-copy">&copy; 2026 Neuralbase</p>
     </div>
@@ -793,8 +769,8 @@ body{overflow-x:clip}
           '<p class="lp-line"><span class="k">Trains</span><span class="lp-line-t">' + d.trains + '</span></p>' +
           (d.landingEvidence ? '<p class="lp-line"><span class="k">Evidence</span><span class="lp-line-t">' + d.landingEvidence + '</span></p>' : '') +
         '</div>';
-      /* The Method view carries the full d.evidence audit text, including the
-         drills whose outcome is not documented in the allowed sources. The
+      /* The full d.evidence audit text, including the drills whose outcome is
+         not documented in the allowed sources, lives in the drill registry. The
          landing list shows only the short d.landingEvidence line, so no card
          repeats that audit phrasing. */
       list.appendChild(li);
@@ -802,12 +778,6 @@ body{overflow-x:clip}
   }
   var dn = document.getElementById("drillsNote");
   if (dn && C.landingNote) dn.textContent = C.landingNote;
-
-  /* ---- Method copy from content.js ---- */
-  var ml = document.getElementById("methodLead");
-  var mh = document.getElementById("methodHonest");
-  if (ml && C.methodLead) ml.textContent = C.methodLead;
-  if (mh && C.methodHonestLanding) mh.textContent = C.methodHonestLanding;
 
   /* ---- Sparkline of reaction times ---- */
   var RT = [520, 505, 541, 494, 470, 489, 455, 463, 431, 442, 416, 428, 402, 413, 398, 406, 391, 384];

@@ -12,7 +12,6 @@ const VIEWS = [
   'circuit',
   'progress',
   'leaderboards',
-  'method',
   'profile',
   'settings',
 ];
@@ -25,7 +24,6 @@ const LABELS = {
   circuit: 'Circuit',
   progress: 'Progress',
   leaderboards: 'Leaderboards',
-  method: 'Method',
   profile: 'Profile',
   settings: 'Settings',
 };
@@ -38,7 +36,6 @@ const NOTES = {
   circuit: 'Today\u2019s mix, the builder, and adaptive mode land here.',
   progress: 'Trends and records land here.',
   leaderboards: 'Per-drill rankings land here.',
-  method: 'The evidence note lands here.',
   profile: 'Your name, plan, and personal records land here.',
   settings: 'Theme, sound, motion, account, and plan land here.',
 };

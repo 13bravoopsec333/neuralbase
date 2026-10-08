@@ -90,3 +90,168 @@ export async function myRank(drillId, window = 'all') {
   const me = board.find((row) => row.isMe);
   return me || null;
 }
+
+/* ---------------- friends ---------------- */
+
+/* The friends RPC returns one row per relationship with a `kind` discriminator
+   (friend | incoming | outgoing) and the counterpart's public fields, so the
+   Friends view is one round trip. Grouped here into the three lists the view
+   renders. Display names are plain strings; callers render them with textContent,
+   never innerHTML. In demo mode there is one local account and no other people,
+   so the honest answer is empty lists, not a fabricated friend. */
+
+function isUuid(v) {
+  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+
+async function currentUid(client) {
+  try {
+    const { data } = await client.auth.getSession();
+    return data && data.session && data.session.user ? data.session.user.id : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function friendsList() {
+  if (isDemo()) return { ok: true, data: { friends: [], incoming: [], outgoing: [] }, demo: true };
+
+  const client = getClient();
+  if (!client) return fail('backend_unavailable');
+
+  try {
+    const { data, error } = await client.rpc('friends_list');
+    if (error) {
+      warn('friendsList', error);
+      return fail(error);
+    }
+    const out = { friends: [], incoming: [], outgoing: [] };
+    (data || []).forEach((row) => {
+      if (!row) return;
+      const userId = row.user_id;
+      const username = row.username;
+      const displayName = row.display_name;
+      if (row.kind === 'friend') out.friends.push({ userId, username, displayName, since: row.at });
+      else if (row.kind === 'incoming') out.incoming.push({ userId, username, displayName, requestedAt: row.at });
+      else if (row.kind === 'outgoing') out.outgoing.push({ userId, username, displayName, requestedAt: row.at });
+    });
+    return { ok: true, data: out };
+  } catch (e) {
+    warn('friendsList', e);
+    return fail(e);
+  }
+}
+
+/* Search by handle. The RPC returns id/username/display_name and nothing else, so
+   no email or private column can cross the wire; the map below picks exactly those
+   three fields into the documented shape, and an empty query short-circuits to an
+   empty list instead of a request. */
+export async function friendSearch(username) {
+  const q = typeof username === 'string' ? username.trim() : '';
+  if (!q) return { ok: true, data: [] };
+
+  if (isDemo()) return { ok: true, data: [], demo: true };
+
+  const client = getClient();
+  if (!client) return fail('backend_unavailable');
+
+  try {
+    const { data, error } = await client.rpc('search_profile_by_username', { p_username: q });
+    if (error) {
+      warn('friendSearch', error);
+      return fail(error);
+    }
+    return {
+      ok: true,
+      data: (data || []).map((row) => ({
+        userId: row.id,
+        username: row.username,
+        displayName: row.display_name,
+      })),
+    };
+  } catch (e) {
+    warn('friendSearch', e);
+    return fail(e);
+  }
+}
+
+/* Send a request, or answer one the other person already sent. The RPC returns a
+   status text and is the only path that can see the reverse row, so a mutual
+   request is flipped to accepted in place rather than duplicated. status is added
+   alongside ok, so an existing caller that only checks ok keeps working. */
+export async function friendRequest(userId) {
+  if (!isUuid(userId)) return fail('invalid_user_id');
+  if (isDemo()) return { ok: true, status: 'requested', demo: true };
+
+  const client = getClient();
+  if (!client) return fail('backend_unavailable');
+  const uid = await currentUid(client);
+  if (!uid) return fail('no_user');
+  if (uid === userId) return fail('cannot_friend_self');
+
+  try {
+    const { data, error } = await client.rpc('friend_request', { p_user_id: userId });
+    if (error) {
+      warn('friendRequest', error);
+      return fail(error);
+    }
+    /* requested | accepted | already_pending | already_friends */
+    return { ok: true, status: data || 'requested' };
+  } catch (e) {
+    warn('friendRequest', e);
+    return fail(e);
+  }
+}
+
+/* Accept a request. The filter names the requester; RLS restricts the update to
+   the rows where the caller is the addressee, so a request addressed to someone
+   else is simply not a row this statement can reach. The addressee's own accept
+   stamps responded_at, which is in the update column grant for exactly this. */
+export async function friendAccept(userId) {
+  if (!isUuid(userId)) return fail('invalid_user_id');
+  if (isDemo()) return { ok: true, demo: true };
+
+  const client = getClient();
+  if (!client) return fail('backend_unavailable');
+
+  try {
+    const { error } = await client
+      .from('friendships')
+      .update({ status: 'accepted', responded_at: new Date().toISOString() })
+      .eq('requester_id', userId);
+    if (error) {
+      warn('friendAccept', error);
+      return fail(error);
+    }
+    return { ok: true };
+  } catch (e) {
+    warn('friendAccept', e);
+    return fail(e);
+  }
+}
+
+/* Remove a friendship or a pending request, in either direction. The or-filter
+   names every row that involves the other person; RLS keeps only the ones the
+   caller is a party to. */
+export async function friendRemove(userId) {
+  if (!isUuid(userId)) return fail('invalid_user_id');
+  if (isDemo()) return { ok: true, demo: true };
+
+  const client = getClient();
+  if (!client) return fail('backend_unavailable');
+
+  try {
+    const { error } = await client
+      .from('friendships')
+      .delete()
+      .or('requester_id.eq.' + userId + ',addressee_id.eq.' + userId);
+    if (error) {
+      warn('friendRemove', error);
+      return fail(error);
+    }
+    return { ok: true };
+  } catch (e) {
+    warn('friendRemove', e);
+    return fail(e);
+  }
+}

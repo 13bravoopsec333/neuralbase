@@ -641,8 +641,8 @@ function buildSummaryStep() {
   box.appendChild(skills);
 
   /* What these numbers are and are not. This stays: it is the same disclosure as
-     the IQ claim on Method, told at the moment the reader first sees a score. Only
-     the last sentence, describing how the plan uses them afterwards, went. */
+     the IQ statement elsewhere, told at the moment the reader first sees a score.
+     Only the last sentence, describing how the plan uses them afterwards, went. */
   box.appendChild(h("p", "onb-note", "These are starting points for the drills themselves, measured once, each in its own unit. They are not an intelligence score and they say nothing about ability outside training."));
 
   var actions = h("div", "onb-actions");
