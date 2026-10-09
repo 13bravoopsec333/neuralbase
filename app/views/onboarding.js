@@ -425,8 +425,8 @@ function paintPreview() {
   node.appendChild(h("p", "onb-preview-cap", planCaption(selectedGoal, ids)));
 }
 
-/* One honest sentence under the plan. Some of a goal's highest-weight drills sit
-   behind Pro, so the count is stated rather than implied. */
+/* One honest sentence under the plan, naming how much of the goal's
+   highest-weight set is in today's mix. */
 function planCaption(goal, ids) {
   var word = (GOAL_META.filter(function (m) { return m.id === goal; })[0] || { word: goal }).word.toLowerCase();
   var top = topWeight(goal);
@@ -438,15 +438,8 @@ function planCaption(goal, ids) {
     if (weightOf(goal, drills()[i].id) === top) wanted.push(drills()[i].id);
   }
   for (i = 0; i < ids.length; i++) if (wanted.indexOf(ids[i]) !== -1) counted++;
-  var out = ids.length + " drills, weighted for " + word + ". " + counted + " of the " + wanted.length
-    + " drills that count most for this goal " + (counted === 1 ? "is" : "are") + " in today's mix";
-  var outside = wanted.length - counted;
-  if (outside > 0) out += outside === 1 ? ", one is Pro." : ", " + outside + " are Pro.";
-  /* The Pro count stays, because a reader on Free needs to know that a drill the
-     goal asks for is one they cannot open today. Only the closing sentence about
-     the mix moving with history went: it described a future the reader cannot
-     act on and the plan is on screen to show the same thing. */
-  return out + ".";
+  return ids.length + " drills, weighted for " + word + ". " + counted + " of the " + wanted.length
+    + " drills that count most for this goal " + (counted === 1 ? "is" : "are") + " in today's mix.";
 }
 
 /* ---------------- step 2: the calibration block ---------------- */

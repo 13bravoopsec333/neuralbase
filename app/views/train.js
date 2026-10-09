@@ -46,8 +46,8 @@ function clientId() {
   return 'run-' + Date.now() + '-' + Math.random().toString(16).slice(2);
 }
 /* Mode picker state. The remembered mode is validated against the current plan
-   on every read, so downgrading from Pro falls back to the default instead of
-   silently handing Drills a mode the user cannot open. */
+   on every read, so an unknown mode falls back to the default instead of
+   silently handing Drills a mode that no longer exists. */
 function readMode(plan) {
   var Engine = globalThis.Engine;
   var want = Engine && Engine.DEFAULT_MODE ? Engine.DEFAULT_MODE : 'dual';
@@ -721,8 +721,7 @@ function buildDOM(container) {
 
   /* Programs band. A full width card under the panel, so the nine drills get the
      room a uniform grid needs. Real buttons, so every drill is reachable by
-     keyboard, with the Pro gate doing the same thing here as it does in
-     Programs. */
+     keyboard, same as the mode buttons in the panel above. */
   var pc = h('div', 'card programs-card tr-band');
   var pch = h('div', 'card-head');
   pch.appendChild(h('h3', null, 'Training programs'));
@@ -805,9 +804,8 @@ function say(msg) {
   window.setTimeout(function () { n.textContent = msg; }, 30);
 }
 
-/* Mode selection, including the Pro gate. A Free user tapping an Arithmetic or
-   Spatial button lands on pricing and keeps the mode they had, the same rule
-   the drill list follows. */
+/* Mode selection. Every mode is open, so the only guard is a running set: the
+   mode buttons lock while one is in progress. */
 function pickMode(m) {
   /* A set already running drew its stream from the mode it started with, so a
      change now would only desync the run. The buttons are disabled during a set;

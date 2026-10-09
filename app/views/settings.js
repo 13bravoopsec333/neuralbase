@@ -536,9 +536,8 @@ export function render(container, ctx) {
       return true;
     }).length;
     planCount.textContent = ids.length + (ids.length === 1 ? " drill today." : " drills today.");
-    /* On Pro the row caption already says the goal picks the drills, so a second
-       sentence saying that is noise. On Free the caveat earns its place: it is
-       the only thing explaining why pressing these buttons changes nothing. */
+    /* The caveat only earns its place when some drills are out of reach, so it
+       stays empty and hidden when every drill is available. */
     planCap.textContent = reachable < allIds.length
       ? "Free includes " + reachable + " drills, so the set stays the same each day."
       : "";

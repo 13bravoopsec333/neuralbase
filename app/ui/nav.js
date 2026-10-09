@@ -60,12 +60,9 @@ export function mountShell(ctx) {
     meta.display_name ||
     meta.username ||
     (user.email ? String(user.email).split('@')[0] : 'Account');
-  const plan = String(profile.plan || 'free').toLowerCase();
 
   const nameEl = byId('accountName');
   if (nameEl) nameEl.textContent = name;
-  const planEl = byId('accountPlan');
-  if (planEl) planEl.textContent = plan === 'pro' ? 'Pro' : 'Free';
 
   ['avatarRail', 'avatarMobile'].forEach((id) => {
     const el = byId(id);
@@ -321,5 +318,5 @@ export function mountShell(ctx) {
     if (sub) sub.textContent = SUBS[view] || '';
   }
 
-  return { setActive, closeMenu, closeSheet, name, plan };
+  return { setActive, closeMenu, closeSheet, name };
 }
