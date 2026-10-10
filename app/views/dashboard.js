@@ -368,10 +368,20 @@ function injectStyles() {
     ".dash-friends-slot{min-width:0}",
     ".dash-friends-fallback{margin:0 0 8px;font-size:13px;font-weight:600}",
 
+    /* ---- v3 information sections ---- */
+    /* A dense grid under the calendar. The min() keeps the track from overflowing a
+       360px screen, so the grid is one column there and two or three on a wide page.
+       align-items:start stops a short card being stretched to a tall neighbour. */
+    /* The sections are uneven heights, so a row-based grid left a dead region
+       beside whichever column ended first. Multi-column flows them into balanced
+       columns instead, and break-inside keeps a section whole. */
+    ".dash-sections{columns:2;column-gap:var(--gap-2);min-width:0}",
+    ".dash-sections>*{break-inside:avoid;margin:0 0 var(--gap-2);min-width:0}",
+
     /* Entrance: one orchestrated rise, staggered. Nothing under reduced motion. */
     "@media(prefers-reduced-motion:no-preference){.dash-strip,.dash-cal,.dash-drills,.dash-friends{animation:rise .42s cubic-bezier(.3,.9,.3,1) both}.dash-cal{animation-delay:.05s}.dash-drills{animation-delay:.1s}.dash-friends{animation-delay:.15s}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}",
 
-    "@media(max-width:900px){.dash-strip{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.hs-next{grid-column:1 / -1}.dash-drill-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}",
+    "@media(max-width:900px){.dash-sections{columns:1}.dash-strip{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.hs-next{grid-column:1 / -1}.dash-drill-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}",
     "@media(max-width:560px){.dash{gap:var(--gap-2)}.dash-strip{grid-template-columns:1fr;gap:var(--gap-2)}.hs-next{grid-column:auto}.hs{padding:10px 12px}.dash-cal{min-height:0;padding:12px}.cal-tools{margin-left:0}.cal-month{font-size:19px}.cal-grid{display:flex;flex-direction:column;gap:6px}.cal-cell{flex-direction:row;align-items:center;gap:10px;padding:9px 11px}.cal-cell-wd{display:block;width:34px;flex:none;font-family:var(--mono);font-size:11px;color:var(--dim)}.cal-cell-top{flex:none;gap:0}.cal-cell-top .cal-n{display:none}.cal-pips{width:70px;flex:none;margin:0}.cal-cell-st{display:block;margin-left:auto;font-size:11px;color:var(--muted)}.cal-cell.today .cal-flag{display:none}.cal-wd{display:none}.cal-sum{margin-left:0;text-align:left}.dash-drill-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}"
   ].join("");
   document.head.appendChild(s);
@@ -861,6 +871,73 @@ function buildFriendsSection(ctx) {
   return section;
 }
 
+/* ---------------- v3 information sections ---------------- */
+
+/* The five v3 sections live in app/views/dash/, one file each, all exporting
+   build(ctx, data). They are written in parallel with this shell, so a missing or
+   broken module must never blank the page: each is pulled through a dynamic import
+   wrapped in a catch, and the real specifier strings are the real paths. Nothing is
+   stubbed and no section is faked here. A module that fails to load simply does not
+   render, and the calendar and the rest of the dashboard stand. */
+var SECTION_FILES = [
+  ['records', './dash/records.js'],
+  ['load', './dash/load.js'],
+  ['rank', './dash/rank.js'],
+  ['upcoming', './dash/upcoming.js'],
+  ['patterns', './dash/patterns.js']
+];
+var SECTION_ORDER = ['records', 'load', 'rank', 'upcoming', 'patterns'];
+
+async function loadSections() {
+  var mods = {};
+  await Promise.all(SECTION_FILES.map(function (pair) {
+    return import(pair[1]).then(function (m) {
+      mods[pair[0]] = (m && typeof m.build === 'function') ? m.build : null;
+    }).catch(function () { mods[pair[0]] = null; });
+  }));
+  return mods;
+}
+
+/* One normalized object, built once, handed to every section builder. The shape is
+   the one the design brief fixes: profile, runs (newest last), sessions, cards,
+   records (the personal-best moments), now. Nothing here is invented; each field
+   comes from the same state the calendar already reads. */
+function buildData(profile, state, raw, now, reg) {
+  var stored = readStore();
+  var cards = (raw && Array.isArray(raw.cards)) ? raw.cards
+    : (Array.isArray(state.cards) ? state.cards : ((stored && Array.isArray(stored.cards)) ? stored.cards : []));
+  var records = [];
+  try {
+    if (globalThis.Store && typeof globalThis.Store.personalRecords === 'function') {
+      records = globalThis.Store.personalRecords(state, dirMap(reg));
+    }
+  } catch (e) { records = []; }
+  return {
+    profile: profile || {},
+    runs: state.records || [],
+    sessions: state.sessions || [],
+    cards: cards,
+    records: records,
+    now: now
+  };
+}
+
+/* Build the sections that are available and place them in one grid below the
+   calendar. A builder that throws is dropped, not allowed to take the page down. */
+function buildSections(ctx, data, mods) {
+  var wrap = h('div', 'dash-sections');
+  if (!mods) return wrap;
+  for (var i = 0; i < SECTION_ORDER.length; i++) {
+    var fn = mods[SECTION_ORDER[i]];
+    if (typeof fn !== 'function') continue;
+    try {
+      var node = fn(ctx, data);
+      if (node) wrap.appendChild(node);
+    } catch (e) { /* one broken section must not blank the dashboard */ }
+  }
+  return wrap;
+}
+
 /* ---------------- navigation ---------------- */
 
 function go(ctx, view) {
@@ -878,12 +955,12 @@ function readCache() {
   } catch (e) { return null; }
 }
 
-function paint(container, ctx, data) {
-  var runs = Array.isArray(data && data.runs) ? data.runs : [];
-  /* data is null on a cold first paint, before anything has been cached, so the
+function paint(container, ctx, raw, mods) {
+  var runs = Array.isArray(raw && raw.runs) ? raw.runs : [];
+  /* raw is null on a cold first paint, before anything has been cached, so the
      profile has to come through the same guard as the runs. Reading data.profile
      unguarded threw on exactly that first visit. */
-  var profile = ctx.profile || (data && data.profile) || {};
+  var profile = ctx.profile || (raw && raw.profile) || {};
   var reg = drillRegistry();
   var now = Date.now();
   var today = localDate(now);
@@ -891,7 +968,10 @@ function paint(container, ctx, data) {
   if (!isFinite(goal) || goal < 1) goal = 3;
 
   var S = globalThis.Store;
-  var state = toState(data, profile, readStore());
+  var state = toState(raw, profile, readStore());
+  /* The one normalized object every section builder reads. Built once per paint,
+     from the same state the calendar uses, so no section invents a number. */
+  var data = buildData(profile, state, raw, now, reg);
   var sessionsToday = state.sessions.filter(function (s) { return dayKeyOf(s) === today; });
   var runsToday = runs.filter(function (r) { return dayKeyOf(r) === today; });
 
@@ -939,6 +1019,7 @@ function paint(container, ctx, data) {
   root.appendChild(strip);
 
   root.appendChild(buildCalendar(ctx, state, goal, now));
+  root.appendChild(buildSections(ctx, data, mods));
   root.appendChild(buildDrillRow(reg, state));
   root.appendChild(buildFriendsSection(ctx));
 
@@ -951,14 +1032,21 @@ export async function render(container, ctx) {
   if (!container) return;
   injectStyles();
 
-  paint(container, ctx, readCache());
+  /* Start the section modules loading, then paint from the cache straight away.
+     The sections appear on the second paint once the modules and the network data
+     have both settled, so a slow import never delays the calendar. */
+  var modsPromise = loadSections();
+  paint(container, ctx, readCache(), null);
 
+  var next = readCache();
   if (ctx.db && typeof ctx.db.loadUserData === "function") {
     try {
       var res = await ctx.db.loadUserData();
-      if (container.isConnected && res && res.ok && res.data) paint(container, ctx, res.data);
+      if (res && res.ok && res.data) next = res.data;
     } catch (e) { /* keep the cached paint */ }
   }
+  var mods = await modsPromise;
+  if (container.isConnected) paint(container, ctx, next, mods);
 }
 
 /* ---------------- today's plan ---------------- */
