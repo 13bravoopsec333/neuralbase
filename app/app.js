@@ -1,13 +1,13 @@
-/* Neuralbase v2 bootstrap: config, session, data, shell, router.
-   Demo mode (no Supabase keys) runs fully local. A configured backend with no session
-   redirects to landing.html. No secrets live here; config.js holds the public anon key. */
+/* Neuralbase bootstrap: config, session, data, router.
+   The app is drills-only. Demo mode (no Supabase keys) runs fully local. A
+   configured backend with no session redirects to auth.html. No secrets live
+   here; config.js holds the public anon key. */
 
 import { isDemo } from './lib/supabase.js';
 import * as auth from './lib/auth.js';
 import * as db from './lib/db.js';
 import * as api from './lib/api.js';
 import { audio } from './ui/audio.js';
-import { mountShell } from './ui/nav.js';
 import * as router from './router.js';
 
 const ANON_KEY = 'cortex.app';
@@ -45,18 +45,35 @@ function fallbackProfile(user) {
   };
 }
 
+function displayNameOf(user, profile) {
+  const meta = (user && user.user_metadata) || {};
+  return (
+    (profile && (profile.display_name || profile.username)) ||
+    meta.display_name ||
+    meta.username ||
+    (user && user.email ? String(user.email).split('@')[0] : 'Account')
+  );
+}
+
+async function signOut() {
+  try { await auth.signOut(); } catch (e) { /* leave the app regardless */ }
+  window.location.href = 'auth.html';
+}
+
 async function boot() {
   const themes = glob('Themes') || { boot() {}, apply() {}, current() { return 'graphite'; }, has() { return false; } };
   const motion = glob('Motion') || { reduced() { return false; }, reveal() {}, countUp() {}, flash() {} };
 
+  /* ---------- theme ---------- */
+  if (themes.boot) themes.boot();
+
   /* ---------- session ---------- */
   const got = await auth.getSession();
   const session = got && got.ok ? got.session : null;
-  let user = session && session.user ? session.user : null;
+  const user = session && session.user ? session.user : null;
 
-  const demo = isDemo();
   if (!user) {
-    window.location.replace('landing.html');
+    window.location.replace('auth.html');
     return;
   }
 
@@ -69,7 +86,7 @@ async function boot() {
   /* ---------- context ---------- */
   const ctx = {
     user, profile, db, api, audio, themes, motion, navigate: () => {},
-    signOut: async function () { return auth.signOut(); },
+    signOut,
     deleteAccount: async function () {
       try { await db.deleteAccount(); } catch (e) {}
       try { await auth.signOut(); } catch (e) {}
@@ -96,25 +113,26 @@ async function boot() {
   }
 
   /* ---------- demo banner ---------- */
-  if (demo) {
+  if (isDemo()) {
     const banner = document.getElementById('demoBanner');
     if (banner) banner.hidden = false;
   }
 
-  /* ---------- shell + router ---------- */
+  /* ---------- header: account name and sign out ---------- */
+  const nameEl = document.getElementById('accountName');
+  if (nameEl) nameEl.textContent = displayNameOf(user, profile);
+  const outBtn = document.getElementById('signOutBtn');
+  if (outBtn) outBtn.addEventListener('click', signOut);
+
+  /* ---------- router: the single drills view ---------- */
   router.initRouter(ctx);
   ctx.navigate = router.navigate;
-  ctx.shell = mountShell(ctx);
-  /* First run goes to setup, so the goal and the baseline are chosen before the
-     dashboard plans anything around them. onboarded_at is set by the last step,
-     which is why an absent value is the honest first-run signal. Anyone who has
-     already finished setup, or who skipped it, lands on the dashboard. */
-  await router.navigate(profile && profile.onboarded_at ? 'dashboard' : 'onboarding');
+  await router.navigate('train');
 
   /* ---------- react to later auth changes ---------- */
   auth.onAuthChange((event, s) => {
     if (event === 'SIGNED_OUT') {
-      window.location.replace('landing.html');
+      window.location.replace('auth.html');
       return;
     }
     if (event === 'SIGNED_IN' && s && s.user) {

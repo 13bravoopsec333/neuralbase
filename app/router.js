@@ -1,43 +1,18 @@
-/* Neuralbase router: one document, one visible view at a time.
-   navigate(name) shows the matching section, hides the rest, and renders the view module
-   from app/views/<name>.js via its render(container, ctx). Only modules registered in
-   globalThis.CORTEX_VIEWS (see index.html) are imported, so an unbuilt view shows a
-   placeholder instead of firing a request that would 404. */
+/* Neuralbase router: one document, one visible view.
+   The app is drills-only now, so there is a single route. navigate() shows the
+   drills section and renders app/views/train.js via its render(container, ctx).
+   Only modules registered in globalThis.CORTEX_VIEWS (see index.html) are
+   imported, so an unbuilt view shows a placeholder instead of firing a request
+   that would 404. */
 
-const VIEWS = [
-  'dashboard',
-  'onboarding',
-  'train',
-  'study',
-  'circuit',
-  'progress',
-  'leaderboards',
-  'profile',
-  'settings',
-];
+const VIEWS = ['train'];
 
 const LABELS = {
-  dashboard: 'Dashboard',
-  onboarding: 'Welcome',
-  train: 'Train',
-  study: 'Study',
-  circuit: 'Circuit',
-  progress: 'Progress',
-  leaderboards: 'Leaderboards',
-  profile: 'Profile',
-  settings: 'Settings',
+  train: 'Drills',
 };
 
 const NOTES = {
-  dashboard: 'Your daily goal, stats, and today\u2019s circuit land here.',
-  onboarding: 'Pick a goal, then calibrate your starting point.',
   train: 'The drill host and set controls land here.',
-  study: 'Your cards, due queue, and review land here.',
-  circuit: 'Today\u2019s mix, the builder, and adaptive mode land here.',
-  progress: 'Trends and records land here.',
-  leaderboards: 'Per-drill rankings land here.',
-  profile: 'Your name, plan, and personal records land here.',
-  settings: 'Theme, sound, motion, account, and plan land here.',
 };
 
 const REGISTERED = Array.isArray(globalThis.CORTEX_VIEWS) ? globalThis.CORTEX_VIEWS.slice() : [];
@@ -130,7 +105,7 @@ function teardown(name) {
 }
 
 export async function navigate(view) {
-  const name = VIEWS.indexOf(view) !== -1 ? view : 'dashboard';
+  const name = VIEWS.indexOf(view) !== -1 ? view : 'train';
   showLoader();
 
   /* Whatever is on screen goes away before the next view is built, so a drill
@@ -147,8 +122,6 @@ export async function navigate(view) {
 
   const sec = sectionFor(name);
   if (!sec) return;
-
-  if (ctx && ctx.shell && ctx.shell.setActive) ctx.shell.setActive(name);
 
   const mod = await loadModule(name);
   sec.replaceChildren();

@@ -21,14 +21,6 @@ function h(tag, cls, text) {
   if (text != null) n.textContent = text;
   return n;
 }
-function statCell(label) {
-  var w = h('div', 'stat');
-  var l = h('span', 'stat-l', label);
-  w.appendChild(l);
-  var v = h('span', 'stat-v mono', '--');
-  w.appendChild(v);
-  return { wrap: w, v: v, l: l };
-}
 function drillById(id) {
   var D = (globalThis.Content && globalThis.Content.DRILLS) || [];
   for (var i = 0; i < D.length; i++) if (D[i].id === id) return D[i];
@@ -258,8 +250,7 @@ function enterFocus() {
 
   var bar = h('div', 'nb-focus-bar');
   var title = h('p', 'nb-focus-title', '');
-  var named = ui && ui.drillName ? (ui.drillName.textContent || '') : '';
-  title.textContent = named.trim();
+  title.textContent = drillById(currentDrill).name;
   bar.appendChild(title);
 
   var fsHint = h('span', 'nb-fs-hint', '');
@@ -412,7 +403,6 @@ function stopSet() {
   pending = [];
   sessionDrills = [];
   if (ui.startBtn) { ui.startBtn.disabled = false; ui.startBtn.textContent = 'Start'; }
-  hidePR();
   paintIdle();
   setIdle(true);
   paintAll();
@@ -558,104 +548,62 @@ function dirMap() {
   return m;
 }
 
-/* A millisecond value reads as slow or fast, so the unit rides along with the
-   number. A count of correct answers does not need one. */
-function unitSuffix(d) {
-  var u = (d && d.unit) || '';
-  return u && u !== 'correct' && u !== 'items' && u !== 'cards' ? ' ' + u : '';
-}
-
 /* Scoped styles. Theme tokens only, so every theme picks them up. */
 function injectStyles() {
   if (typeof document === 'undefined' || document.getElementById('nb-train-styles')) return;
   var s = document.createElement('style');
   s.id = 'nb-train-styles';
   s.textContent = [
-    /* The root is one centered column that keeps the frame .view gives every page:
-       a flex column taking the height the shell has left. display:block here would
-       opt this one view out and leave it clinging to the top.
-
-       Two changes from the first version. The 1080px ceiling is gone, because it
-       was sized for the old two column grid and left the drill boxed in a narrow
-       lane with dead space on both sides at any wide viewport. The panel now takes
-       the full width of the frame, and the mount below it takes the leftover
-       height, so the drill area is where the eye lands rather than a band of empty
-       panel under a narrow lane. max-width:none cancels the view-mid-wide ceiling
-       the container carries: that is a measure width, and a measure is a limit on
-       running text, not on the card the text sits in. */
-    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0}',
-    '.tr-panel{align-self:stretch;width:100%;max-width:none;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}',
-    /* The topbar owns the view title now, so the panel head carries the drill's own
-       name and one description line under it, not a second title block. */
-    '.tr-desc{font-size:13px;color:var(--muted);line-height:1.45;margin:0 0 10px;max-width:62ch}',
-    /* The programs band stays a size container so the grid below it responds to the
-       width it actually has. Viewport breakpoints cannot see how much the frame
-       left over. The gap on .tr-view is the space above this band, so it carries
-       no margin of its own. It is full width, same as the panel, so the two cards
-       read as one column rather than a wide panel over a narrower strip. */
-    '.tr-band{align-self:stretch;container-type:inline-size;width:100%}',
-    '.tr-band-meta{display:flex;align-items:baseline;gap:12px}',
-    '.tr-modes{margin-top:2px}',
-    '.tr-field{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:7px}',
-    '.tr-modeset{display:flex;gap:6px;flex-wrap:wrap}',
+    /* The root is one column that keeps the frame .view gives every page: a flex
+       column taking the height the shell has left. max-width:none cancels the
+       view-mid-wide ceiling the container carries, because that is a measure width
+       for running text, not a limit on the drill area. */
+    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0}',
+    /* The drill selector. The old nine-card programs band is gone: it was a second,
+       larger copy of the drill list. This row of small buttons is the one place a
+       drill is chosen, kept small so the drill area keeps the screen. */
+    '.tr-picker{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-self:center;max-width:100%}',
+    '.tr-drill{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:8px;background:transparent;border:1px solid var(--line2);color:var(--muted);font-size:12px;font-weight:600;max-width:100%;transition:border-color .15s ease,color .15s ease,background .15s ease}',
+    '.tr-drill .drill-ic{width:15px;height:15px}',
+    '.tr-drill:hover{border-color:var(--lime-edge);color:var(--ink)}',
+    '.tr-drill[aria-pressed="true"]{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
+    '.tr-drill-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    /* One short line: the selected drill's name and its one description line. */
+    '.tr-line{margin:0;text-align:center;color:var(--muted);font-size:13px;line-height:1.4;max-width:70ch;align-self:center}',
+    /* The drill area takes the rest of the viewport. Idle it holds the settings
+       panel; a run adopts its .drill node into the focus stage. */
+    '.tr-view .drill-mount{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center}',
+    /* Settings panel: one labelled segmented control per setting, centered in the
+       mount. Compact and quiet, tokens only. */
+    '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:460px;margin-inline:auto}',
+    '.tr-set-row{display:flex;flex-direction:column;gap:7px}',
+    '.tr-set-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}',
+    '.tr-set-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}',
+    '.tr-set-val{font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}',
+    '.tr-seg{display:flex;flex-wrap:wrap;gap:6px}',
+    '.tr-seg-btn{min-width:40px;min-height:34px;padding:6px 10px;border-radius:8px;background:transparent;border:1px solid var(--line2);color:var(--muted);font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;transition:border-color .15s ease,color .15s ease,background .15s ease}',
+    '.tr-seg-btn:not(:disabled):hover{border-color:var(--lime-edge);color:var(--ink)}',
+    '.tr-seg-btn[aria-pressed="true"]{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
     '.tr-mode{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:6px 9px;border-radius:8px;background:transparent;border:1px solid var(--line2);color:var(--muted);display:inline-flex;align-items:center;gap:6px;transition:border-color .15s ease,color .15s ease}',
     '.tr-mode:not(:disabled):hover{border-color:var(--lime-edge);color:var(--ink)}',
     '.tr-mode[aria-pressed="true"]{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
     '.tr-mode:disabled{opacity:.5;cursor:not-allowed}',
     '.tr-mode[aria-pressed="true"]:disabled{opacity:.7}',
-    '.tr-blurb{font-size:13px;color:var(--muted);margin:7px 0 0;max-width:52ch}',
-    /* The mount takes what is left of the panel, so the drill area grows with the
-       window instead of sitting at the shared 238px reserve. flex:1 has nothing to
-       absorb on a page that already scrolls, so the idle box also carries a floor
-       set against the viewport height. It is the area the drill will occupy, so it
-       is drawn as one, dashed and centred, with the one idle line in the middle.
-       The clamp caps it: past about a third of the screen the idle box is more
-       empty than useful, and an oversized empty box reads as something missing. */
-    '.tr-view .drill-mount{flex:1 1 auto;min-height:clamp(220px,30vh,420px)}',
-    /* Idle, the mount holds the settings panel, so it is a plain top-aligned column
-       rather than the dashed centered placeholder the one-line idle used. */
-    '.tr-view .drill-mount.tr-idle{flex:0 0 auto;min-height:0;justify-content:flex-start}',
-    /* Settings panel: one labelled segmented control per setting, centered in the
-       mount. Every colour is a token. */
-    '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:520px;margin-inline:auto}',
-    '.tr-set-row{display:flex;flex-direction:column;gap:8px}',
-    '.tr-set-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}',
-    '.tr-set-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}',
-    '.tr-set-val{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums}',
-    '.tr-seg{display:flex;flex-wrap:wrap;gap:6px}',
-    '.tr-seg-btn{min-width:44px;min-height:38px;padding:8px 12px;border-radius:8px;background:transparent;border:1px solid var(--line2);color:var(--muted);font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;transition:border-color .15s ease,color .15s ease,background .15s ease}',
-    '.tr-seg-btn:not(:disabled):hover{border-color:var(--lime-edge);color:var(--ink)}',
-    '.tr-seg-btn[aria-pressed="true"]{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
-    /* Start: centered under the panel, deliberately larger than a stock .btn-primary,
-       and still the only primary action on the page. */
+    '.tr-modes{margin-top:2px}',
+    '.tr-field{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}',
+    '.tr-modeset{display:flex;gap:6px;flex-wrap:wrap}',
+    '.tr-blurb{font-size:12px;color:var(--muted);margin:6px 0 0;max-width:52ch}',
+    /* Every control is a real button, so every one carries a visible focus ring. */
+    '.tr-drill:focus-visible,.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-start:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
+    /* Start: centered under the panel, the one primary action on the page. */
     '.tr-actions{justify-content:center}',
-    '.tr-start{padding:14px 28px;font-size:16px;border-radius:10px;min-width:200px}',
-    '.tr-pr{display:flex;align-items:baseline;gap:8px;margin-top:11px;padding:9px 10px;border:1px solid var(--lime-edge);background:var(--lime-soft);border-radius:8px}',
-    '.tr-pr-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--lime);flex:none}',
-    '.tr-pr-copy{font-size:13px;color:var(--ink);margin:0;line-height:1.45}',
-    '.tr-pr-copy .mono{font-variant-numeric:tabular-nums}',
-    /* One uniform grid. grid-auto-rows:1fr sizes every row to the tallest card in
-       the band, so all nine land on identical heights no matter how their text
-       wraps, and each card fills its row. */
-    '.tr-progs{padding:0;list-style:none;margin:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:1fr;gap:10px}',
-    '@container (max-width:660px){.tr-progs{grid-template-columns:repeat(2,minmax(0,1fr))}}',
-    '@container (max-width:440px){.tr-progs{grid-template-columns:minmax(0,1fr)}}',
-    '.tr-progs>li{display:flex;min-width:0}',
-    /* Hover moves the border only. A transform here would slide a card out of its
-       column, which is the raggedness this grid exists to remove. */
-    '.tr-prog{width:100%;flex:1 1 auto;min-width:0;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:5px;transition:border-color .15s ease,background .15s ease}',
-    '.tr-prog:hover{border-color:var(--lime-edge)}',
-    '.tr-prog[aria-current="true"]{border-color:var(--lime-edge);background:var(--lime-soft)}',
-    '.tr-prog-top{display:flex;align-items:center;gap:9px;min-width:0;width:100%}',
-    '.tr-prog .prog-name{flex:1 1 auto;min-width:0;overflow:hidden}',
-    /* One line, ellipsis past that. A name that wraps would push its card taller
-       than the one beside it, which is the raggedness the grid cannot fix alone. */
-    '.tr-prog-name{font-size:13px;font-weight:600;flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    /* margin-top:auto lands the skill line on the same baseline in every card. */
-    '.tr-prog-trains{font-size:12px;color:var(--muted);line-height:1.4;margin-top:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
-    /* The panel is the only card in the column, so it can take a little of the
-       panel padding off its sides on a phone to give the drill more width. */
-    '@media (max-width:420px){.tr-panel{padding:10px}.tr-band{padding:12px}}',
+    '.tr-start{padding:12px 26px;font-size:15px;border-radius:10px;min-width:180px}',
+    /* The focus stage. focus.css sizes the stage; these rules lift its width cap
+       and trim its gutter so a running drill is edge to edge. Later in the
+       document than focus.css, so an equal-specificity rule here wins. */
+    '.nb-focus-stage{padding:max(12px,2vh) max(12px,2vw)}',
+    '.nb-focus-stage .drill-mount{max-width:none}',
+    '.nb-focus-stage .drill{max-width:none}',
     /* The exit confirmation is a native modal dialog, so it needs the shared card
        rhythm by hand. Styled from here rather than focus.css, which is frozen. */
     '.nb-focus-stage dialog{border:1px solid var(--line2);border-radius:14px;background:var(--panel);color:var(--ink);padding:22px;width:min(420px,calc(100vw - 40px));box-shadow:0 30px 70px rgba(0,0,0,.55)}',
@@ -669,7 +617,13 @@ function injectStyles() {
     '.nb-focus-stage dialog .nb-dialog-keep{background:var(--lime);color:var(--bg);border:1px solid var(--lime)}',
     '.nb-focus-stage dialog .nb-dialog-keep:hover{opacity:.9}',
     '.nb-focus-stage dialog .nb-dialog-end{background:transparent;border:1px solid var(--line2);color:var(--ink)}',
-    '.nb-focus-stage dialog .nb-dialog-end:hover{border-color:var(--warn);color:var(--warn)}'
+    '.nb-focus-stage dialog .nb-dialog-end:hover{border-color:var(--warn);color:var(--warn)}',
+    /* On a phone the names would wrap the selector to five rows. The icons stay,
+       the name rides on the button's label and on the line below, so the selector
+       stays a couple of rows and the drill area keeps the screen. */
+    '@media (max-width:560px){.tr-drill{padding:8px}.tr-drill-name{display:none}.tr-drill .drill-ic{width:20px;height:20px}}',
+    /* Reduced motion: no transitions on any of the chrome. */
+    '@media (prefers-reduced-motion:reduce){.tr-drill,.tr-seg-btn,.tr-mode,.nb-focus-stage dialog button{transition:none}}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -680,113 +634,74 @@ function buildDOM(container) {
 
   var D = (globalThis.Content && globalThis.Content.DRILLS) || [];
 
-  var panel = h('div', 'card panel-card tr-panel');
-  var ch = h('div', 'card-head');
-  var chTitle = h('span', 'card-title');
-  var dicon = h('span', 'drill-ic');
-  dicon.setAttribute('aria-hidden', 'true');
-  var dn = h('h3', null, 'Executive N-Back');
-  chTitle.appendChild(dicon); chTitle.appendChild(dn);
-  ch.appendChild(chTitle);
-  /* The drill's own description. The topbar owns the view title, so the panel head
-     carries the name and this one line under it, nothing that repeats the topbar. */
-  var ddesc = h('p', 'tr-desc', '');
+  /* The drill selector. Real buttons in a labelled group, so every drill is one
+     click or one keypress away. Arrow keys move focus and selection together, and
+     only the selected button is a tab stop, so the group is one stop, not nine. */
+  var picker = h('div', 'tr-picker');
+  picker.setAttribute('role', 'group');
+  picker.setAttribute('aria-label', 'Choose a drill');
+  var pickBtns = {};
+  var order = D.map(function (p) { return p.id; });
+  D.forEach(function (p) {
+    (function (p) {
+      var b = h('button', 'tr-drill');
+      b.type = 'button';
+      b.setAttribute('data-drill', p.id);
+      b.setAttribute('aria-pressed', 'false');
+      b.setAttribute('aria-label', p.name);
+      b.title = p.name;
+      b.appendChild(iconEl(p));
+      b.appendChild(h('span', 'tr-drill-name', p.name));
+      b.addEventListener('click', function () { pickDrill(p.id); });
+      pickBtns[p.id] = b;
+      picker.appendChild(b);
+    })(p);
+  });
+  picker.addEventListener('keydown', function (e) {
+    var i = order.indexOf(currentDrill);
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); i = (i + 1) % order.length; }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); i = (i - 1 + order.length) % order.length; }
+    else if (e.key === 'Home') { e.preventDefault(); i = 0; }
+    else if (e.key === 'End') { e.preventDefault(); i = order.length - 1; }
+    else return;
+    var id = order[i];
+    var next = pickBtns[id];
+    if (next && next.focus) next.focus();
+    pickDrill(id);
+  });
 
+  /* One short line: the selected drill's name and its one description line. */
+  var line = h('p', 'tr-line', '');
+
+  /* The drill area. It takes the rest of the viewport; idle it holds the settings
+     panel, and a run adopts its .drill node into the focus stage. */
   var mount = h('div', 'drill-mount tr-idle');
-  var stats = h('div', 'stats');
-  var last = statCell('Last'), best = statCell('Best'), avg = statCell('Average');
-  stats.appendChild(last.wrap); stats.appendChild(best.wrap); stats.appendChild(avg.wrap);
 
-  var pr = h('div', 'tr-pr');
-  pr.hidden = true;
-  pr.setAttribute('aria-live', 'polite');
-  pr.appendChild(h('span', 'tr-pr-label', 'Best'));
-  var prCopy = h('p', 'tr-pr-copy', '');
-  pr.appendChild(prCopy);
-
-  /* Start sits directly under the mount, centered, and is the panel's one primary
-     action. The mode picker used to live here; it now renders inside the settings
-     panel, for n-back only. */
+  /* Start sits under the mount and is the one primary action on the page. */
   var actions = h('div', 'row-actions tr-actions');
   var start = h('button', 'btn-primary tr-start', 'Start');
   start.type = 'button';
   actions.appendChild(start);
 
-  panel.appendChild(ch);
-  panel.appendChild(ddesc);
-  panel.appendChild(mount);
-  panel.appendChild(actions);
-  panel.appendChild(stats);
-  panel.appendChild(pr);
-
-  /* Programs band. A full width card under the panel, so the nine drills get the
-     room a uniform grid needs. Real buttons, so every drill is reachable by
-     keyboard, same as the mode buttons in the panel above. */
-  var pc = h('div', 'card programs-card tr-band');
-  var pch = h('div', 'card-head');
-  pch.appendChild(h('h3', null, 'Training programs'));
-  var bandMeta = h('span', 'tr-band-meta');
-  var bandLevel = h('span', 'mono cap', 'Level 1');
-  bandMeta.appendChild(bandLevel);
-  bandMeta.appendChild(h('span', 'mono cap', D.length + ' drills'));
-  pch.appendChild(bandMeta);
-  pc.appendChild(pch);
-  var plist = h('ul', 'tr-progs');
-  var progBtns = {};
-  /* Registry order, which is the order the drills are meant to be tried in. */
-  var ordered = D.slice();
-  ordered.forEach(function (p) {
-    (function (p) {
-      var li = h('li');
-      var b = h('button', 'tr-prog');
-      b.type = 'button';
-      b.setAttribute('data-drill', p.id);
-      var top = h('span', 'tr-prog-top');
-      var nameWrap = h('span', 'prog-name');
-      nameWrap.appendChild(iconEl(p));
-      var pname = h('span', 'tr-prog-name', p.name);
-      /* The name is one line with an ellipsis, so the full text rides on title
-         for anyone who cannot see the whole string. */
-      pname.title = p.name;
-      nameWrap.appendChild(pname);
-      top.appendChild(nameWrap);
-      b.appendChild(top);
-      b.appendChild(h('span', 'tr-prog-trains', p.trains));
-      b.addEventListener('click', function () { pickDrill(p.id); });
-      progBtns[p.id] = b;
-      li.appendChild(b);
-      plist.appendChild(li);
-    })(p);
-  });
-  pc.appendChild(plist);
-
-  container.appendChild(panel);
-  container.appendChild(pc);
-
   var live = h('div', 'sr');
   live.setAttribute('aria-live', 'polite');
+
+  container.appendChild(picker);
+  container.appendChild(line);
+  container.appendChild(mount);
+  container.appendChild(actions);
   container.appendChild(live);
 
   ui = {
-    drillName: dn, drillIcon: dicon, drillDesc: ddesc, mount: mount,
-    sLast: last.v, sBest: best.v, sAvg: avg.v,
-    statLAvg: avg.l, statLBest: best.l, live: live,
-    startBtn: start, bandLevel: bandLevel,
+    line: line, mount: mount, live: live, startBtn: start,
+    pickBtns: pickBtns,
     modesBlock: null, modeBtns: {}, modeBlurb: null,
-    pr: pr, prCopy: prCopy, progBtns: progBtns, container: container
+    container: container
   };
   start.addEventListener('click', function () {
     if (ctxRef.audio && ctxRef.audio.resume) { try { ctxRef.audio.resume(); } catch (e) { /* degrade */ } }
     startDrill();
   });
-}
-
-function setNum(node, val, suffix) {
-  if (!node) return;
-  if (val == null) { node.textContent = '--'; return; }
-  var M = ctxRef && ctxRef.motion;
-  if (M && M.countUp) M.countUp(node, val, { suffix: suffix || '', duration: 400 });
-  else node.textContent = val + (suffix || '');
 }
 
 /* The idle placeholder is the only content that needs the reserved height.
@@ -823,28 +738,10 @@ export function pickDrill(id) {
   handle = null;
   paintIdle();
   setIdle(true);
-  hidePR();
   paintAll();
   /* Selecting a program only selects it: the panel swaps to this drill's settings
      and Start is the one way to begin. It must never launch a drill on its own. */
   say(drillById(id).name + ' selected. Press Start when ready.');
-}
-
-function showPR(rec, d) {
-  if (!ui.pr || !ui.prCopy) return;
-  var dir = d.direction === 'lower' ? 'lower' : 'higher';
-  var unit = rec.unit || d.unit || '';
-  var now = rec.value + (unit ? ' ' + unit : '');
-  var prev = rec.prev + (unit ? ' ' + unit : '');
-  var word = dir === 'lower' ? 'under' : 'over';
-  ui.prCopy.textContent = d.name + ' ' + now + ', ' + word + ' the previous best of ' + prev + '.';
-  ui.pr.hidden = false;
-  say('New personal best on ' + d.name + '. ' + now + ', previous best ' + (prev || 'none') + '.');
-}
-
-function hidePR() {
-  if (ui.pr) ui.pr.hidden = true;
-  if (ui.prCopy) ui.prCopy.textContent = '';
 }
 
 function paintModes(d) {
@@ -875,30 +772,17 @@ function paintModes(d) {
 }
 
 function paintAll() {
-  var Store = globalThis.Store;
   var d = drillById(currentDrill);
-  if (ui.drillName) ui.drillName.textContent = d.name;
-  if (ui.drillIcon) ui.drillIcon.innerHTML = d.icon || '';
-  if (ui.drillDesc) ui.drillDesc.textContent = d.desc || '';
+  if (ui.line) ui.line.textContent = d.name + '. ' + (d.desc || '');
 
-  /* Best is the lowest number for ufov and crt and the highest for the rest, so
-     the stat label carries the direction instead of leaving the reader to guess
-     from the unit. */
-  var lower = d.direction === 'lower';
-  if (ui.statLBest) ui.statLBest.textContent = lower ? 'Best (low)' : 'Best (high)';
-  if (ui.statLAvg) ui.statLAvg.textContent = lower ? 'Average (low)' : 'Average (high)';
-  var suffix = unitSuffix(d);
-
-  var a = Store.aggregate(state, d.id, d.direction);
-  setNum(ui.sLast, a.recent.length ? a.recent[a.recent.length - 1] : null, suffix);
-  setNum(ui.sBest, a.best, suffix);
-  setNum(ui.sAvg, a.avg, suffix);
-  if (ui.bandLevel) ui.bandLevel.textContent = 'Level ' + Store.level(state);
-
-  if (ui.progBtns) {
-    Object.keys(ui.progBtns).forEach(function (id) {
-      var b = ui.progBtns[id];
-      b.setAttribute('aria-current', id === currentDrill ? 'true' : 'false');
+  /* Roving tabindex: the selected drill is the group's one tab stop, and its
+     pressed state is what the eye reads. */
+  if (ui.pickBtns) {
+    Object.keys(ui.pickBtns).forEach(function (id) {
+      var b = ui.pickBtns[id];
+      var on = id === currentDrill;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
     });
   }
 
@@ -927,7 +811,6 @@ function nextDrill() {
   running = true;
   setIdle(false);
   if (ui.startBtn) { ui.startBtn.disabled = false; ui.startBtn.textContent = 'Restart'; }
-  hidePR();
   paintAll();
   if (firstOfSet && currentDrill === 'nback') {
     say('Mode locked while a set runs.');
@@ -989,8 +872,12 @@ function recordRun(rec) {
   }
   Store.record(state, rec);
   if (isPR) {
-    var withPrev = { drillId: rec.drillId, value: rec.value, unit: rec.unit || '', prev: prevBest };
-    showPR(withPrev, d);
+    /* No banner any more: a run that beats the old best is announced to assistive
+       tech instead of drawing a card over the screen. */
+    var unit = rec.unit || d.unit || '';
+    var now = rec.value + (unit ? ' ' + unit : '');
+    var prev = prevBest + (unit ? ' ' + unit : '');
+    say('New personal best on ' + d.name + '. ' + now + ', previous best ' + (prevBest == null ? 'none' : prev) + '.');
   }
   var row = {
     drillId: rec.drillId, value: rec.value, unit: rec.unit || '',
@@ -1054,13 +941,13 @@ export function render(container, ctx) {
   pending = [];
   sessionDrills = [];
   running = false;
-  hidePR();
   ctxRef = ctx;
   mode = readMode();
   seed = readSeed();
   writeSeed(seed);
-  /* The shared centered column. Train carries a drill panel and the nine program
-     cards, so it takes the wide one rather than the 780 column. */
+  /* The shared centered column. Train is now the drills and nothing else, so it
+     takes the full width the frame gives and its own max-width:none rule lifts
+     the wide-column ceiling. */
   container.classList.add('view', 'view-mid-wide', 'tr-view');
   container.setAttribute('aria-label', 'Train');
   buildDOM(container);
