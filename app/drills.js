@@ -74,10 +74,16 @@
   /* Fixed rule per single-dimension mode. "spatial" is position plus a shape. */
   var NB_RULE = { visual: "position", letter: "letter", vowel: "vowel", arithmetic: "sum", spatial: "spatial" };
 
-  /* Pure trial generator: the stimuli array for one block at one level. */
-  function nbackSequence(level, trials, seed, mode, cueLength) {
+  /* Pure trial generator: the stimuli array for one block at one level.
+     `prev` is the tail of the stimuli already shown (the last `level` of them),
+     handed in by the drill so a warm-up trial at a chunk boundary cannot repeat
+     the item n back from the chunk that just ended. */
+  function nbackSequence(level, trials, seed, mode, cueLength, prev) {
     var m = NB_MODES.indexOf(mode) >= 0 ? mode : "dual";
     var rng = mulberry32(seed == null ? 0 : seed);
+    /* Only a full tail is usable: fewer than `level` entries means there is no
+       item n back to collide with, which is the very start of the set. */
+    var ref = (prev && prev.length === level) ? prev : null;
     /* How many trials one rule stays live before the cue switches. Validated by
        drillOptions, so it is a whole number in 4..10. */
     var cueLen = (typeof cueLength === "number" && isFinite(cueLength)) ? Math.max(1, Math.round(cueLength)) : 6;
@@ -152,6 +158,10 @@
           if (i >= level && sum === sumSeq[i - level]) sum = 4 + (sum - 3) % 14;
           if (level > 1 && sum === sumSeq[i - 1]) sum = 4 + (sum - 3) % 14;
         }
+        /* A warm-up trial has no in-chunk reference, so it must not repeat the
+           sum from n steps back in the previous chunk either, or an honest Match
+           press on it scores as a false alarm. */
+        if (ref && i < level && sum === ref[i].sum) sum = 4 + (sum - 3) % 14;
         var lo = Math.max(1, sum - 9), hi = Math.min(9, sum - 1);
         var a = lo + randInt(rng, hi - lo + 1);
         st.a = a; st.b = sum - a; st.sum = sum;
@@ -179,6 +189,17 @@
           var wantLMatch = posRule ? (wantLure && level > 1) : wantMatch;
           if (wantLMatch) l = letSeq[i - level];
           else { l = pick(rng, NB_LETTERS); if (i >= level && l === letSeq[i - level]) l = NB_LETTERS[(NB_LETTERS.indexOf(l) + 1) % NB_LETTERS.length]; }
+        }
+
+        /* A warm-up trial (i < level) has no in-chunk reference, so it must not
+           repeat the item n back from the previous chunk in the live rule's
+           dimension, or it looks exactly like a target that scores as a false
+           alarm. Position rules collide on the cell, letter rules on the letter. */
+        if (ref && i < level) {
+          if (posRule && p === ref[i].pos) p = (p + 1) % 9;
+          if (!posRule && (rule === "letter" || rule === "vowel") && l === ref[i].letter) {
+            l = NB_LETTERS[(NB_LETTERS.indexOf(l) + 1) % NB_LETTERS.length];
+          }
         }
 
         var pMatch = i >= level && p === posSeq[i - level];
@@ -217,25 +238,40 @@
   var PALACE_STUDY_SECONDS = 2.5;
   var PALACE_STUDY_MS = Math.round(PALACE_STUDY_SECONDS * 1000);
 
-  /* Timer bag: one pending timeout, cleared on stop, paused while the tab is hidden. */
+  /* Timer bag: one pending timeout, cleared on stop, frozen while the tab is
+     hidden or the exit confirm is up. Freeze keeps the time already served, so a
+     resumed clock carries the remainder instead of restarting the interval. */
   function makeTimers() {
     var slot = null;
+    function freeze() {
+      if (!slot || slot.paused) return;
+      clearTimeout(slot.id);
+      slot.remaining = Math.max(0, slot.deadline - Date.now());
+      slot.paused = true;
+    }
+    function thaw() {
+      if (!slot || !slot.paused) return;
+      slot.deadline = Date.now() + slot.remaining;
+      slot.id = setTimeout(slot.fn, slot.remaining);
+      slot.paused = false;
+    }
     var onVis = function () {
       if (typeof document === "undefined") return;
-      if (document.visibilityState === "hidden") {
-        if (slot && !slot.paused) { clearTimeout(slot.id); slot.paused = true; }
-      } else if (slot && slot.paused) {
-        slot.id = setTimeout(slot.fn, slot.ms);
-        slot.paused = false;
-      }
+      if (document.visibilityState === "hidden") freeze(); else thaw();
     };
+    /* The focus stage dispatches these on the exit confirm and on Keep Training,
+       so a trial behind the modal does not time out and score as no response. */
+    var onPause = function () { freeze(); };
+    var onResume = function () { thaw(); };
     if (typeof document !== "undefined" && document.addEventListener) {
       document.addEventListener("visibilitychange", onVis);
+      document.addEventListener("nb:pause", onPause);
+      document.addEventListener("nb:resume", onResume);
     }
     return {
       set: function (fn, ms) {
         if (slot) clearTimeout(slot.id);
-        slot = { fn: fn, ms: ms, id: setTimeout(fn, ms), paused: false };
+        slot = { fn: fn, ms: ms, id: setTimeout(fn, ms), paused: false, deadline: Date.now() + ms, remaining: ms };
         return slot.id;
       },
       clear: function () {
@@ -245,8 +281,27 @@
         if (slot) { clearTimeout(slot.id); slot = null; }
         if (typeof document !== "undefined" && document.removeEventListener) {
           document.removeEventListener("visibilitychange", onVis);
+          document.removeEventListener("nb:pause", onPause);
+          document.removeEventListener("nb:resume", onResume);
         }
       }
+    };
+  }
+
+  /* Raw-timer drills (palace, reasoning) keep their own ids and cannot use the
+     makeTimers bag, so this subscribes them to the same freeze signals. */
+  function onFreeze(pause, resume) {
+    if (typeof document === "undefined" || !document.addEventListener) return function () {};
+    var onVis = function () { if (document.visibilityState === "hidden") pause(); else resume(); };
+    var onPause = function () { pause(); };
+    var onResume = function () { resume(); };
+    document.addEventListener("visibilitychange", onVis);
+    document.addEventListener("nb:pause", onPause);
+    document.addEventListener("nb:resume", onResume);
+    return function () {
+      document.removeEventListener("visibilitychange", onVis);
+      document.removeEventListener("nb:pause", onPause);
+      document.removeEventListener("nb:resume", onResume);
     };
   }
 
@@ -519,7 +574,7 @@
     reasoning: [
       { key: "trials", label: "Trials", type: "number", min: 8, max: 20, step: 4, def: 8 },
       { key: "timeLimit", label: "Time limit", type: "choice", options: [{ value: 0, label: "Off" }, { value: 10, label: "10 s" }, { value: 20, label: "20 s" }], def: 0 },
-      { key: "relationSet", label: "Relations", type: "choice", options: [{ value: "all", label: "All" }, { value: "part-whole", label: "Part-whole" }, { value: "function", label: "Function" }, { value: "category", label: "Category" }, { value: "opposite", label: "Opposite" }, { value: "sequence", label: "Sequence" }], def: "all" }
+      { key: "relationSet", label: "Relations", type: "choice", options: [{ value: "all", label: "All" }, { value: "part-whole", label: "Part-whole" }, { value: "function", label: "Function" }, { value: "category", label: "Category" }, { value: "opposite", label: "Opposite" }, { value: "sequence", label: "Sequence" }, { value: "cause-effect", label: "Cause-effect" }], def: "all" }
     ],
     spaced: [
       { key: "reviewLimit", label: "Review limit", type: "number", min: 5, max: 30, step: 5, def: 10 },
@@ -685,8 +740,9 @@
        switches. Default 6. */
     var cueLength = (opts.options && typeof opts.options.cueLength === "number") ? opts.options.cueLength : 6;
     /* Validated by drillOptions: 1500, 2000 or 3000 ms. How long the stimulus
-       stays on screen before it blanks. The response window after it stays at
-       2500 ms, so a longer stimulus simply stays visible to the end of the trial. */
+       stays on screen before it blanks. The response window is the 2500 ms base,
+       widened to outlast the stimulus when the 3 s option is picked, so the
+       blank is always seen. */
     var stimMs = (opts.options && typeof opts.options.stimulusMs === "number") ? opts.options.stimulusMs : 2000;
     var level = startLevel, maxLevel = startLevel;
     var rng = rngFrom(opts);
@@ -700,11 +756,14 @@
     var perTrial = [];
     var cur = null;
     var queue = [];
+    /* Every stimulus the drill has shown, so the next chunk can be told the item
+       n back at its warm-up trials and cannot repeat it. */
+    var seen = [];
     var timers = makeTimers();
     var timer = 0;
-    /* The stimulus blank runs on its own clock so the trial window can stay one
-       makeTimers slot. Cleared on stop and at the start of every trial. */
-    var blankTimer = 0;
+    /* The stimulus blank runs on its own bag so it freezes with the trial window
+       without sharing makeTimers' single slot. */
+    var blankTimers = makeTimers();
 
     /* Audio is optional and global. Every cue checks `stopped` first, so a cue
        queued before a stop cannot fire afterwards, and a mode with no matching
@@ -723,7 +782,7 @@
     function halt(silent) {
       stopped = true;
       clearTimeout(timer);
-      clearTimeout(blankTimer);
+      blankTimers.destroy();
       timers.destroy();
       unbindKey();
       if (silent) silenceAudio();
@@ -861,9 +920,12 @@
       if (!queue.length) {
         var batch = nbackChunkSize(BLOCK, level, TRIALS - i);
         if (batch <= 0) return null;
-        queue = nbackSequence(level, batch, randInt(rng, 4294967296), mode, cueLength);
+        /* The tail of what has been shown rides into the next chunk, so a
+           warm-up trial at the boundary cannot repeat the item n back. */
+        queue = nbackSequence(level, batch, randInt(rng, 4294967296), mode, cueLength, seen.slice(-level));
       }
       var st = queue.shift();
+      seen.push(st);
       if (st.cueChanged) playSfx("tap");
       return st;
     }
@@ -880,11 +942,13 @@
       i++;
       paint();
       playLetter(cur.letter);
-      clearTimeout(blankTimer);
-      if (stimMs < 2500) {
-        blankTimer = setTimeout(function () { if (!stopped) clearStimulus(); }, stimMs);
-      }
-      timer = timers.set(endTrial, 2500);
+      blankTimers.clear();
+      /* The blank always runs at the stimulus time. The trial window keeps its
+         2500 ms base, and outlasts the stimulus when the 3 s option is picked,
+         so the blank lands before the trial ends instead of after it. */
+      blankTimers.set(function () { if (!stopped) clearStimulus(); }, stimMs);
+      if (stimMs < 2500) timer = timers.set(endTrial, 2500);
+      else timer = timers.set(endTrial, stimMs + 500);
     }
 
     function endTrial() {
@@ -916,7 +980,7 @@
       stopped = true;
       finished = true;
       timers.destroy();
-      clearTimeout(blankTimer);
+      blankTimers.destroy();
       unbindKey();
       /* Accuracy and d-prime are over the trials that carried a comparison. Counting
          the warm-up trials, which auto-pass because the right answer is to do
@@ -1107,9 +1171,9 @@
        that look like the same thing. */
     var WORDS = [
       "River", "Candle", "Anchor", "Marble", "Falcon", "Garden", "Compass", "Lantern",
-      "Bridge", "Cactus", "Lighthouse", "Kettle", "Anvil", "Bonfire", "Drawbridge",
+      "Bridge", "Cactus", "Lighthouse", "Kettle", "Anvil", "Bonfire",
       "Meadow", "Postcard", "Satchel", "Windmill", "Hammock", "Waterfall", "Pinecone",
-      "Sundial", "Kite", "Buoy", "Campfire", "Treasure", "Shovel", "Footbridge", "Bucket"
+      "Sundial", "Kite", "Buoy", "Treasure", "Shovel", "Bucket"
     ];
     /* Two digit numbers for the numbers set, distinct and short enough to place. */
     var NUMBERS = [
@@ -1135,7 +1199,7 @@
        which makeTimers holds one of. So these two keep their own ids and stop()
        clears both by hand. */
     var studyTimer = 0, tickTimer = 0;
-    var deadline = 0, phase = "encode";
+    var deadline = 0, phase = "encode", pausedAt = 0;
 
     injectStyles();
     var wrap = el("div", "drill drill-palace");
@@ -1194,6 +1258,7 @@
       b.setAttribute("aria-label", "Place now, key Enter");
       b.addEventListener("click", next);
       bar.appendChild(b);
+      pausedAt = 0;
       deadline = Date.now() + PALACE_STUDY_MS;
       tickTimer = setInterval(paint, 100);
       studyTimer = setTimeout(next, PALACE_STUDY_MS);
@@ -1214,6 +1279,25 @@
       idx++;
       place();
     }
+    /* The study clock keeps its own ids, so it cannot use the makeTimers bag. It
+       still has to freeze with the tab and with the exit confirm: a hidden tab or
+       an open dialog must not drain the picture-it time. The held span is added
+       back to the deadline so the item gets its full remaining seconds. */
+    function pauseClock() {
+      if (stopped || phase !== "encode" || !studyTimer || pausedAt) return;
+      pausedAt = Date.now();
+      clearTimeout(studyTimer); clearInterval(tickTimer);
+      studyTimer = 0; tickTimer = 0;
+    }
+    function resumeClock() {
+      if (stopped || phase !== "encode" || !pausedAt) return;
+      deadline += Date.now() - pausedAt;
+      pausedAt = 0;
+      tickTimer = setInterval(paint, 100);
+      studyTimer = setTimeout(next, Math.max(0, deadline - Date.now()));
+      paint();
+    }
+    var detachFreeze = onFreeze(pauseClock, resumeClock);
     function recall() {
       /* Recall keeps no timer. Thinking is the task here and a clock would only
          punish it, so the phase waits on the player and nothing else. Any order
@@ -1243,6 +1327,7 @@
       stopped = true;
       clearTimeout(studyTimer);
       clearInterval(tickTimer);
+      detachFreeze();
       unbindKey();
       var sc = palaceScore(placed, recalled, RECALL_ORDER);
       var summary = el("div", "drill-summary");
@@ -1273,6 +1358,7 @@
            fire into a torn down drill and the bar would keep draining. */
         clearTimeout(studyTimer);
         clearInterval(tickTimer);
+        detachFreeze();
         unbindKey();
       }
     };
@@ -1319,14 +1405,14 @@
       { relation: "opposite", a: "Gather", b: "Scatter", c: "Inflate", correct: "Deflate", wrong: ["Pump", "Purple"] },
 
       /* cause and effect: a brings about b */
-      { relation: "cause-effect", a: "Rain", b: "Wet", c: "Fire", correct: "Smoke", wrong: ["Bright", "Day"] },
-      { relation: "cause-effect", a: "Ice", b: "Cold", c: "Sunlight", correct: "Heat", wrong: ["Basket", "Fast"] },
-      { relation: "cause-effect", a: "Smoke", b: "Ash", c: "Rain", correct: "Flood", wrong: ["Window", "Heavy"] },
-      { relation: "cause-effect", a: "Rust", b: "Iron", c: "Magnet", correct: "Attract", wrong: ["Paper", "Bright"] },
-      { relation: "cause-effect", a: "Noise", b: "Ear", c: "Light", correct: "Eye", wrong: ["Cloud", "Dry"] },
-      { relation: "cause-effect", a: "Plant", b: "Water", c: "Practice", correct: "Better", wrong: ["Cold", "Door"] },
-      { relation: "cause-effect", a: "Fever", b: "Rest", c: "Hunger", correct: "Food", wrong: ["Wall", "Loud"] },
-      { relation: "cause-effect", a: "Knife", b: "Cut", c: "Soap", correct: "Grease", wrong: ["Pillow", "Seven"] },
+      { relation: "cause-effect", a: "Rain", b: "Wet", c: "Fire", correct: "Smoke", wrong: ["Pillow", "Day"] },
+      { relation: "cause-effect", a: "Cloud", b: "Rain", c: "Spark", correct: "Fire", wrong: ["Paper", "Fast"] },
+      { relation: "cause-effect", a: "Sun", b: "Warm", c: "Winter", correct: "Cold", wrong: ["Window", "Loud"] },
+      { relation: "cause-effect", a: "Friction", b: "Heat", c: "Water", correct: "Rust", wrong: ["Paper", "Bright"] },
+      { relation: "cause-effect", a: "Exercise", b: "Sweat", c: "Cold", correct: "Shiver", wrong: ["Chair", "Bright"] },
+      { relation: "cause-effect", a: "Virus", b: "Fever", c: "Hunger", correct: "Eating", wrong: ["Wall", "Loud"] },
+      { relation: "cause-effect", a: "Smoking", b: "Cough", c: "Rain", correct: "Flood", wrong: ["Window", "Heavy"] },
+      { relation: "cause-effect", a: "Sunlight", b: "Sunburn", c: "Wind", correct: "Erosion", wrong: ["Pillow", "Fast"] },
 
       /* kind of: a is a b */
       { relation: "category", a: "Oak", b: "Tree", c: "Rose", correct: "Flower", wrong: ["Forest", "Green"] },
@@ -1357,7 +1443,11 @@
     var timeLimit = (opts.options && typeof opts.options.timeLimit === "number") ? opts.options.timeLimit : 0;
     /* Validated by drillOptions: which relation types appear, or all of them. */
     var relationSet = (opts.options && typeof opts.options.relationSet === "string") ? opts.options.relationSet : "all";
-    var limitTimer = 0;
+    var limitTimer = 0, limitDeadline = 0, pausedAt = 0;
+    /* One generation per rendered trial. A handler from a previous trial carries
+       a stale generation and is ignored, so a double click or a burst of clicks
+       in one tick answers exactly one trial. */
+    var trialGen = 0;
     var i = 0, correctCount = 0, stopped = false;
     /* The options currently on the bar, so a digit can reach the same button a
        click would. Named off opts on purpose: opts is the drill's parameter and
@@ -1388,18 +1478,37 @@
     }
 
     /* One clock per trial. Cleared on answer, on finish and on stop, so it can
-       never fire into a torn down drill. */
-    function armLimit() {
+       never fire into a torn down drill. Freezes with the tab and with the exit
+       confirm, so the limit does not run down behind the modal. */
+    function clearLimit() {
       if (limitTimer) { clearTimeout(limitTimer); limitTimer = 0; }
+      limitDeadline = 0; pausedAt = 0;
+    }
+    function limitFired() {
+      limitTimer = 0; limitDeadline = 0; pausedAt = 0;
+      if (stopped) return;
+      i++;
+      meta.textContent = metaText();
+      trial();
+    }
+    function armLimit() {
+      clearLimit();
       if (timeLimit > 0 && !stopped) {
-        limitTimer = setTimeout(function () {
-          limitTimer = 0;
-          if (stopped) return;
-          i++;
-          meta.textContent = metaText();
-          trial();
-        }, timeLimit * 1000);
+        limitDeadline = Date.now() + timeLimit * 1000;
+        limitTimer = setTimeout(limitFired, timeLimit * 1000);
       }
+    }
+    function pauseLimit() {
+      if (stopped || !limitTimer) return;
+      pausedAt = Date.now();
+      clearTimeout(limitTimer); limitTimer = 0;
+    }
+    function resumeLimit() {
+      if (stopped || !pausedAt) return;
+      var left = Math.max(0, limitDeadline - pausedAt);
+      pausedAt = 0;
+      limitDeadline = Date.now() + left;
+      limitTimer = setTimeout(limitFired, left);
     }
 
     function shuffled(a) {
@@ -1411,12 +1520,18 @@
       if (stopped) return;
       if (i >= TRIALS) return finish();
       var item = pick(rng, itemPool());
+      var gen = ++trialGen;
       stem.innerHTML = '<span class="rr-a">' + item.a + '</span> : <span class="rr-b">' + item.b + '</span> :: <span class="rr-c">' + item.c + '</span> : <span class="rr-q">?</span>';
       bar.innerHTML = "";
       optionList = shuffled([item.correct].concat(item.wrong));
       optionList.forEach(function (w, n) {
-        bar.appendChild(optionButton(w, n, function () {
-          if (limitTimer) { clearTimeout(limitTimer); limitTimer = 0; }
+        bar.appendChild(optionButton(w, n, function (ev) {
+          /* A double click's second press carries detail 2; a handler left over
+             from a previous trial carries a stale generation. Both are dropped,
+             so one activation answers exactly one trial. */
+          if (ev && ev.detail > 1) return;
+          if (gen !== trialGen) return;
+          clearLimit();
           if (w === item.correct) correctCount++;
           i++;
           meta.textContent = metaText();
@@ -1428,7 +1543,8 @@
     function finish() {
       if (stopped) return;
       stopped = true;
-      if (limitTimer) { clearTimeout(limitTimer); limitTimer = 0; }
+      clearLimit();
+      detachFreeze();
       unbindKey();
       var summary = el("div", "drill-summary");
       summary.appendChild(el("div", "drill-state", "Set complete"));
@@ -1449,8 +1565,9 @@
       e.preventDefault();
       btn.click();
     });
+    var detachFreeze = onFreeze(pauseLimit, resumeLimit);
     trial();
-    return { stop: function () { stopped = true; if (limitTimer) { clearTimeout(limitTimer); limitTimer = 0; } unbindKey(); } };
+    return { stop: function () { stopped = true; clearLimit(); detachFreeze(); unbindKey(); } };
   }
 
   /* ---------- 5. Spaced Retrieval ---------- */
@@ -1492,10 +1609,10 @@
       return cards.length + (cards.length === 1 ? " card" : " cards") + " · " + Math.round(retentionTarget * 100) + "% target · " + (order === "shuffled" ? "shuffled" : "due first") + " · " + newPerSession + " new";
     }
 
-    function addForm() {
-      screen = "add";
-      stage.innerHTML = "";
-      prompt.textContent = "Add cards to study. They come back at growing intervals.";
+    /* The add controls are built on their own so the "Nothing due" screen can
+       keep them too. That screen used to clear the bar and leave it empty, so
+       there was no way to add a card and Enter reached bar.children[2] undefined. */
+    function buildAddBar() {
       bar.innerHTML = "";
       var front = document.createElement("input"); front.className = "sp-input"; front.placeholder = "Front"; front.setAttribute("aria-label", "Front");
       var back = document.createElement("input"); back.className = "sp-input"; back.placeholder = "Back"; back.setAttribute("aria-label", "Back");
@@ -1515,6 +1632,13 @@
       var review = button("btn-ghost", "Review due");
       review.addEventListener("click", function () { runReview(); });
       bar.appendChild(front); bar.appendChild(back); bar.appendChild(add); bar.appendChild(review);
+    }
+
+    function addForm() {
+      screen = "add";
+      stage.innerHTML = "";
+      prompt.textContent = "Add cards to study. They come back at growing intervals.";
+      buildAddBar();
       meta.textContent = cardMeta();
     }
 
@@ -1522,10 +1646,21 @@
       var now = Date.now();
       var q = spacedQueue(cards, now, { reviewLimit: reviewLimit, newPerSession: newPerSession, order: order, rng: rng });
       if (!q.length) {
+        /* No cards at all is not the same screen as nothing due: a new user who
+           presses Review due has never had a card to study, so the copy points at
+           the add form instead of saying the schedule is quiet. */
+        if (!cards.length) {
+          addForm();
+          prompt.textContent = "No cards yet. Add one to start.";
+          return;
+        }
         screen = "add";
         stage.textContent = "Nothing due";
         prompt.textContent = "No cards are due right now. Add more or come back later.";
-        bar.innerHTML = "";
+        /* Keep the add controls up so the screen is not a dead end: there is
+           still a way to add a card, and Enter has an Add to reach. */
+        buildAddBar();
+        meta.textContent = cardMeta();
         return;
       }
       var idx = 0, got = 0;
@@ -1533,6 +1668,9 @@
         if (stopped) return;
         if (idx >= q.length) return finish(got, q.length);
         var card = q[idx];
+        /* One grade per card. A double activation of the same button used to
+           grade twice, double-counting the score and skipping the next card. */
+        var graded = pressGuard();
         screen = "question";
         stage.textContent = card.front;
         prompt.textContent = "Recall the answer, then check.";
@@ -1553,8 +1691,8 @@
           var no = button("btn-ghost nb-opt", "Missed");
           no.appendChild(el("span", "nb-key", "2"));
           no.setAttribute("aria-label", "Missed, key 2 or left arrow");
-          yes.addEventListener("click", function () { gradeCard(card, true); });
-          no.addEventListener("click", function () { gradeCard(card, false); });
+          yes.addEventListener("click", function () { if (!graded.fire()) return; gradeCard(card, true); });
+          no.addEventListener("click", function () { if (!graded.fire()) return; gradeCard(card, false); });
           bar.appendChild(yes); bar.appendChild(no);
         });
         bar.appendChild(reveal);
@@ -1620,7 +1758,9 @@
       if (screen === "add") {
         if (e.key !== "Enter") return;
         e.preventDefault();
-        /* The add form is two inputs then Add, so Add is the third control. */
+        /* The add form is two inputs then Add, so Add is the third control. A
+           screen that somehow left the bar empty must not throw on Enter. */
+        if (bar.children.length < 3) return;
         bar.children[2].click();
         return;
       }
@@ -1709,13 +1849,19 @@
       number = 1 + randInt(rng, 2);
       stim.className = "ts-stim " + (shape ? "s1" : "s0") + " " + (color ? "c1" : "c0");
       stim.textContent = DIMS.length === 3 ? String(number) : "";
-      /* The cue stays up every trial, or only when the rule just changed. */
+      /* The cue stays up every trial, or only when the rule just changed. With
+         the cue off the prompt must not name the live rule either, or the
+         setting says off while the answer is still printed every trial. The
+         switch trial keeps its reveal: cue and prompt both name the rule. */
       var isSwitch = lastRule === null || rule !== lastRule;
+      var showCue = cueVisible || isSwitch;
       ruleEl.textContent = "Rule: " + (rule === "color" ? "Color" : rule === "shape" ? "Shape" : "Number");
-      ruleEl.hidden = !cueVisible && !isSwitch;
-      prompt.textContent = rule === "color" ? "Pick the color." : rule === "shape" ? "Pick the shape." : "Pick the number.";
+      ruleEl.hidden = !showCue;
+      prompt.textContent = showCue
+        ? (rule === "color" ? "Pick the color." : rule === "shape" ? "Pick the shape." : "Pick the number.")
+        : "Pick the matching option.";
       bar.innerHTML = "";
-      var labels = rule === "color" ? ["Orange", "Blue"] : rule === "shape" ? ["Circle", "Square"] : ["1", "2"];
+      var labels = rule === "color" ? ["Blue", "Orange"] : rule === "shape" ? ["Circle", "Square"] : ["1", "2"];
       var correct = rule === "color" ? color : rule === "shape" ? shape : number - 1;
       optionList = labels;
       labels.forEach(function (lab, idx) {

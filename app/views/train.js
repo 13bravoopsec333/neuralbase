@@ -10,16 +10,28 @@ var MODE_KEY = 'cortex.train.mode';
 var SEED_KEY = 'cortex.train.seed';
 
 /* Drills whose trials come from a seedable stream, so a seed means something
-   for them. Spaced Retrieval is a due-card queue, Signal Alert and Simple
-   Reaction draw their own targets, and Mental Arithmetic steps its own level,
-   so the seed is not passed to those. */
-var SEEDED = { nback: 1, ufov: 1, palace: 1, reasoning: 1, switching: 1 };
+   for them. Spaced Retrieval is a due-card queue, Simple Reaction draws its own
+   targets, and Mental Arithmetic steps its own level, so the seed is not passed
+   to those. */
+var SEEDED = { nback: 1, ufov: 1, palace: 1, reasoning: 1, switching: 1, sart: 1 };
 
 function h(tag, cls, text) {
   var n = document.createElement(tag);
   if (cls) n.className = cls;
   if (text != null) n.textContent = text;
   return n;
+}
+/* The exit confirmation blocks key input but cannot stop a drill's own clock, so
+   trials behind the modal time out and score as no response. The drill side
+   listens for nb:pause on document while the confirm is up and nb:resume when the
+   player keeps training. Guarded: the view smoke test mounts a document stub with
+   no dispatchEvent. */
+function signalDrill(name) {
+  try {
+    if (typeof CustomEvent === 'function' && document && typeof document.dispatchEvent === 'function') {
+      document.dispatchEvent(new CustomEvent(name));
+    }
+  } catch (e) { /* degrade */ }
 }
 function drillById(id) {
   var D = (globalThis.Content && globalThis.Content.DRILLS) || [];
@@ -309,9 +321,13 @@ function enterFocus() {
   dialog.addEventListener('cancel', function (e) {
     e.preventDefault();
     dialog.close();
+    /* Escape dismisses the confirm, which is keeping training by another route.
+       Without this the drill stays frozen after the dialog is gone. */
+    signalDrill('nb:resume');
   });
   keep.addEventListener('click', function () {
     dialog.close();
+    signalDrill('nb:resume');
     /* A drill that completed while the dialog was up was held back so the queue
        could not advance behind the modal. Keeping resumes it now. */
     if (focus.deferred) {
@@ -350,6 +366,7 @@ function enterFocus() {
     if (dialog.open) return;
     returnFocus = document.activeElement;
     dialog.showModal();
+    signalDrill('nb:pause');
   }
 
   function endSession() {
@@ -644,7 +661,7 @@ function injectStyles() {
        column taking the height the shell has left. max-width:none cancels the
        view-mid-wide ceiling the container carries, because that is a measure width
        for running text, not a limit on the drill area. */
-    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0}',
+    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0}',
     /* The drill selector: one plain text row. Nine names, no boxes, no marks. The
        selected drill is the accent and a heavier weight, nothing more. */
     '.tr-picker{display:flex;flex-wrap:wrap;gap:2px 12px;justify-content:center;width:100%;max-width:100%}',
@@ -654,20 +671,21 @@ function injectStyles() {
     '.tr-drill-name{white-space:nowrap}',
     /* One short line: the selected drill's description, quiet under the picker. */
     '.tr-line{margin:0;text-align:center;color:var(--dim);font-size:13px;line-height:1.4;max-width:70ch;align-self:center}',
-    /* The drill area takes the rest of the viewport and is the largest thing on the
-       page. Idle it holds the settings panel; a run adopts its .drill node into the
-       focus stage. */
-    '.tr-view .drill-mount{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center}',
+    /* The idle mount holds the settings panel and sizes to it, so the column is
+       compact and Start stays above the fold. A run adopts its .drill node into
+       the focus stage, which takes the screen on its own, so the mount never has
+       to grow to fill the page. */
+    '.tr-view .drill-mount{flex:0 0 auto;min-height:0;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}',
     '.tr-view .drill{width:100%}',
-    /* Settings: plain text controls, matching the picker. One labelled row per
-       setting: the label, then the values as small text buttons with the current
-       one in the accent. The current value is also in the row for assistive tech,
-       but not shown twice. */
-    '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-5);width:fit-content;max-width:100%;margin-inline:auto}',
-    '.tr-set-rows{display:grid;grid-template-columns:1fr;gap:14px}',
-    '.tr-set-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;min-width:0}',
-    '.tr-set-head{display:flex;align-items:baseline;gap:8px;min-width:0}',
-    '.tr-set-label{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;min-width:104px}',
+    /* Settings: one row per setting, laid out as two tight columns so every label
+       sits beside its values instead of a label on the far left and values far
+       right. Each row subgrids into the shared tracks, so the values line up down
+       the panel while the label keeps its natural width. */
+    '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-4);width:fit-content;max-width:100%;margin-inline:auto}',
+    '.tr-set-rows{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 12px;align-items:baseline}',
+    '.tr-set-row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:baseline}',
+    '.tr-set-head{display:flex;align-items:baseline;gap:8px;min-width:0;justify-content:flex-end}',
+    '.tr-set-label{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;text-align:right;justify-self:end}',
     /* The value readout stays in the tree, but the pressed value button already
        shows it, so it is not drawn twice. */
     '.tr-set-val{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
@@ -680,14 +698,14 @@ function injectStyles() {
     '.tr-mode[aria-pressed="true"]{color:' + ACC + ';font-weight:700}',
     '.tr-mode:disabled{opacity:.5;cursor:not-allowed}',
     '.tr-mode[aria-pressed="true"]:disabled{opacity:.7}',
-    '.tr-modes{margin-top:0}',
-    '.tr-field{display:block;font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);margin-bottom:2px}',
-    '.tr-modeset{display:flex;gap:2px;flex-wrap:wrap}',
-    '.tr-blurb{font-size:12px;color:var(--dim);margin:6px 0 0;max-width:52ch}',
+    '.tr-modes{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 12px;align-items:baseline;width:100%}',
+    '.tr-field{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}',
+    '.tr-modeset{display:flex;gap:2px;flex-wrap:wrap;min-width:0}',
+    '.tr-blurb{grid-column:1 / -1;font-size:12px;color:var(--dim);margin:2px 0 0;max-width:52ch}',
     /* Every control is a real button, so every one carries a visible focus ring. */
     '.tr-drill:focus-visible,.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-start:focus-visible,.rs-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
     /* Start: centered under the panel, the one primary action on the page. */
-    '.tr-actions{justify-content:center}',
+    '.tr-actions{justify-content:center;margin-top:0}',
     '.tr-start{padding:12px 26px;font-size:15px;border-radius:10px;min-width:180px}',
     /* Results. The score leads, set large in the mono face; everything under it is
        quiet. Plain text actions, no boxes, same language as the picker. */
@@ -698,6 +716,13 @@ function injectStyles() {
     '.rs-unit{font-size:clamp(18px,3vw,26px);color:var(--muted)}',
     '.rs-acc{margin:0;font-size:14px;color:var(--muted)}',
     '.rs-acc .mono{color:var(--ink)}',
+    /* The outcome breakdown: plain label and value pairs on a hairline, so the
+       hits, misses and timing a drill reports actually reach the reader. No card,
+       no shadow. */
+    '.rs-break{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 18px;margin:0;padding-top:var(--gap-3);border-top:1px solid var(--line2);width:100%;max-width:460px}',
+    '.rs-break-item{display:inline-flex;align-items:baseline;gap:6px;font-size:12px;line-height:1.5}',
+    '.rs-break-k{color:var(--dim)}',
+    '.rs-break-v{color:var(--ink)}',
     '.rs-delta{margin:0;font-size:14px;color:var(--muted)}',
     '.rs-delta-v{color:var(--ink)}',
     '.rs-pr .rs-delta-v{color:' + ACC + '}',
@@ -1079,6 +1104,33 @@ function buildChart(drillId) {
   return wrap;
 }
 
+/* The outcome fields a drill may report, in the order they read best. Only the
+   ones present in the saved meta are drawn, so a drill that reports a subset
+   shows that subset and nothing else. rtMedian is milliseconds. */
+var BREAK_FIELDS = [
+  ['hits', 'hits', ''],
+  ['misses', 'misses', ''],
+  ['omissions', 'omissions', ''],
+  ['commissions', 'commissions', ''],
+  ['falseAlarms', 'false alarms', ''],
+  ['rtMedian', 'median press', ' ms']
+];
+function buildBreakdown(meta) {
+  var wrap = h('div', 'rs-break');
+  var shown = 0;
+  for (var i = 0; i < BREAK_FIELDS.length; i++) {
+    var key = BREAK_FIELDS[i][0];
+    var v = meta[key];
+    if (typeof v !== 'number' || !isFinite(v)) continue;
+    var item = h('span', 'rs-break-item');
+    item.appendChild(h('span', 'rs-break-k', BREAK_FIELDS[i][1]));
+    item.appendChild(h('span', 'rs-break-v mono', fmtNum(v) + BREAK_FIELDS[i][2]));
+    wrap.appendChild(item);
+    shown++;
+  }
+  return shown ? wrap : null;
+}
+
 /* The results view, in the drill area. The score leads, set large in the mono
    face with its unit; accuracy appears only where the drill reports one; the
    delta is against the best that stood before this run, and a first run says so.
@@ -1104,6 +1156,9 @@ function showResults(run) {
     acc.appendChild(h('span', 'mono', Math.round(meta.accuracy * 100) + '%'));
     view.appendChild(acc);
   }
+
+  var breakdown = buildBreakdown(meta);
+  if (breakdown) view.appendChild(breakdown);
 
   var delta = h('p', 'rs-delta');
   if (run.prevBest == null) {

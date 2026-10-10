@@ -30,9 +30,20 @@
     return arr[randInt(rng, arr.length)];
   }
 
+  /* A seeded stream for a passed seed. Train hands over an eight digit hex
+     label, so the seed can be a string; DrillsCore.mulberry32 already hashes a
+     string seed the same way every other drill's stream does. Falling back to
+     the local mulberry32 keeps the helper working if DrillsCore is not loaded. */
+  function seedRng(seed) {
+    var D = globalThis.Drills && globalThis.Drills.DrillsCore;
+    if (D && typeof D.mulberry32 === "function") return D.mulberry32(seed);
+    return mulberry32(seed);
+  }
+
   function rngFor(opts) {
     var o = opts || {};
     if (typeof o.rng === "function") return o.rng;
+    if (o.seed != null) return seedRng(o.seed);
     return mulberry32(Date.now());
   }
 
@@ -48,19 +59,21 @@
     return xs.length % 2 ? xs[m] : (xs[m - 1] + xs[m]) / 2;
   }
 
-  /* SART scoring. A trial is correct when the user held back on a non-target
-     digit. targetDigit must be withheld, every other digit must be passed. */
+  /* SART scoring. A trial is correct either when the target is pressed or a
+     non-target is held back. A missed target (omission) and a press on a
+     non-target (commission) are both errors, so a flawless run scores 100%. */
   var SART_TARGET = 3;
 
   function scoreSart(trials, targetDigit) {
     var target = targetDigit == null ? SART_TARGET : targetDigit;
     var t = trials || [];
-    var omissions = 0, commissions = 0, withheld = 0, rts = [];
+    var omissions = 0, commissions = 0, hits = 0, withheld = 0, rts = [];
     for (var i = 0; i < t.length; i++) {
       var tr = t[i] || {};
       var isTarget = Number(tr.digit) === target;
       if (isTarget) {
         if (tr.pressed) {
+          hits++;
           if (typeof tr.rt === "number" && isFinite(tr.rt)) rts.push(tr.rt);
         } else {
           omissions++;
@@ -71,13 +84,15 @@
         withheld++;
       }
     }
+    var correct = hits + withheld;
     var med = median(rts);
     return {
       trials: t.length,
+      hits: hits,
       omissions: omissions,
       commissions: commissions,
-      correct: withheld,
-      accuracy: t.length ? withheld / t.length : 0,
+      correct: correct,
+      accuracy: t.length ? correct / t.length : 0,
       rtMedian: med == null ? null : Math.round(med)
     };
   }
@@ -137,14 +152,18 @@
        they kept, rather than an empty draw. */
     if (!kinds.length) kinds = enabled.slice();
     var op = pick(rng, kinds);
+    /* Three digit operands have to reach three digits even at the default
+       level, otherwise the setting does nothing until level 2. Below that, the
+       level still holds addition inside 30 and subtraction inside 30. */
+    var wide = lvl >= 2 || digits >= 3;
     if (op === "+") {
-      var hi = lvl >= 2 ? cap : Math.min(cap, 29);
+      var hi = wide ? cap : Math.min(cap, 29);
       hi = Math.max(1, hi);
       var a = 1 + randInt(rng, hi), b = 1 + randInt(rng, hi + 1 - a);
       return problem(lvl, "+", a, b, a + b);
     }
     if (op === "-") {
-      var capMinus = lvl >= 2 ? cap : Math.min(cap, 30);
+      var capMinus = wide ? cap : Math.min(cap, 30);
       capMinus = Math.max(1, capMinus);
       var c = 1 + randInt(rng, capMinus), d = 1 + randInt(rng, capMinus);
       return problem(lvl, "-", c, d, c - d);
@@ -327,13 +346,28 @@
     };
   }
 
+  /* Freezes the clock while the tab is hidden and while the focus stage's exit
+     confirmation is up. The stage dispatches nb:pause on document when the
+     dialog opens and nb:resume on Keep Training, so a trial behind the modal
+     neither times out nor counts hidden milliseconds. Both signals share one
+     frozen state, so a resume with the tab still hidden stays frozen. */
   function bindVisibility(doc, clock) {
     if (!doc || typeof doc.addEventListener !== "function") return function () {};
-    function handler() {
-      if (doc.hidden) clock.hide(); else clock.show();
+    var visHidden = false, paused = false;
+    function apply() {
+      if (visHidden || paused) clock.hide(); else clock.show();
     }
-    doc.addEventListener("visibilitychange", handler);
-    return function () { doc.removeEventListener("visibilitychange", handler); };
+    function onVis() { visHidden = !!doc.hidden; apply(); }
+    function onPause() { paused = true; apply(); }
+    function onResume() { paused = false; apply(); }
+    doc.addEventListener("visibilitychange", onVis);
+    doc.addEventListener("nb:pause", onPause);
+    doc.addEventListener("nb:resume", onResume);
+    return function () {
+      doc.removeEventListener("visibilitychange", onVis);
+      doc.removeEventListener("nb:pause", onPause);
+      doc.removeEventListener("nb:resume", onResume);
+    };
   }
 
   /* Forwards every keydown; each drill filters and calls preventDefault itself.
@@ -407,7 +441,7 @@
     container.appendChild(wrap);
 
     function sartMeta() {
-      return i + " / " + total + " · " + Math.round(signalRate * 100) + "% signal · " + windowMs + " ms";
+      return i + " / " + total + " · " + Math.round(signalRate * 100) + "% signal · " + (responseWindow > 0 ? responseWindow + " ms" : "Off");
     }
 
     var unbindVis = bindVisibility(doc, clock);
@@ -473,6 +507,8 @@
       shownAt = Date.now();
       stage.className = "nx-digit mono";
       stage.textContent = String(curDigit);
+      /* Clear the last trial's outcome, so it does not sit under the new digit. */
+      cue.textContent = "";
       live.textContent = "Digit " + curDigit;
       meta.textContent = sartMeta();
       timerId = clock.set(withhold, windowMs);
@@ -489,8 +525,8 @@
       var sc = scoreSart(trials, targetDigit);
       container.appendChild(summaryEl(
         "Set complete",
-        sc.correct + " of " + sc.trials + " correctly withheld · " +
-        sc.omissions + " lapses · " + sc.commissions + " early presses" +
+        sc.correct + " of " + sc.trials + " correct · " +
+        sc.omissions + " lapses · " + sc.commissions + " false presses" +
         (sc.rtMedian == null ? "" : " · median press " + sc.rtMedian + " ms")
       ));
       if (opts.onComplete) {
@@ -501,6 +537,7 @@
           t: Date.now(),
           meta: {
             trials: sc.trials,
+            hits: sc.hits,
             omissions: sc.omissions,
             commissions: sc.commissions,
             accuracy: sc.accuracy,
@@ -708,6 +745,11 @@
       var med = median(rts);
       var fast = rts.length ? Math.min.apply(null, rts) : null;
       var value = med == null ? CRT_WINDOW : Math.round(med);
+      /* Every trial lands in exactly one bucket: a hit, a miss (including a
+         press on a catch trial), or a correctly held catch trial. Accuracy is
+         the correct share, so a run that errs on every catch cannot read the
+         same as a clean one. */
+      var accuracy = total > 0 ? (hits + catchHits) / total : 0;
       container.appendChild(summaryEl(
         "Set complete",
         value + " ms median · " + hits + " hits · " + misses + " missed" +
@@ -725,9 +767,10 @@
             hits: hits,
             misses: misses,
             catchHits: catchHits,
+            accuracy: accuracy,
             medianRt: med == null ? null : Math.round(med),
             fastestRt: fast == null ? null : Math.round(fast),
-            choice: choice,
+            choice: choices,
             foreperiod: foreperiod,
             catchTrials: catchTrials
           }
@@ -874,7 +917,9 @@
       resolved = false;
       shownAt = Date.now();
       prompt.textContent = cur.text + " =";
-      cue.textContent = "Type the answer, then press enter.";
+      /* The last outcome stays on the cue while the next problem is answered, so
+         right / wrong, it was N / time, it was N is readable instead of being
+         wiped 240 ms after it appears. */
       input.value = "";
       try { input.focus(); } catch (e) {}
       if (problemMs > 0) timerId = clock.set(timeout, problemMs);
