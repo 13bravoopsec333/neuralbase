@@ -187,7 +187,7 @@
   <section class="auth-card" aria-label="Account access">
 
     <div class="demo-banner" id="demoBanner" hidden>
-      <p>Demo mode. Progress stays in this browser only.<span class="cap">Add Supabase keys in app/config.js to sync.</span></p>
+      <p>Demo mode. Progress stays in this browser.<span class="cap">Add Supabase keys in app/config.js to sync.</span></p>
       <button class="btn-primary" type="button" id="demoContinue">Continue in demo</button>
     </div>
 
@@ -200,7 +200,7 @@
     <!-- ===== Sign in ===== -->
     <div id="panel-signin" role="tabpanel" aria-labelledby="tab-signin">
       <h2 class="auth-h2">Welcome back</h2>
-      <p class="auth-sub">Sign in to pick up where you left off.</p>
+      <p class="auth-sub">Sign in to get back to your drills.</p>
 
       <p class="alert" id="si-alert" role="alert" hidden></p>
 
@@ -230,11 +230,11 @@
     <!-- ===== Create account ===== -->
     <div id="panel-signup" role="tabpanel" aria-labelledby="tab-signup" hidden>
       <h2 class="auth-h2">Create your account</h2>
-      <p class="auth-sub">Takes under a minute. Your progress saves to the cloud.</p>
+      <p class="auth-sub">Takes under a minute, and your progress saves to the cloud.</p>
 
       <p class="age-note">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><path d="M12 16h.01"></path></svg>
-        <span>You must be 16 or older to create an account. Your date of birth is only used to check that.</span>
+        <span>You must be 16 or older to create an account. We only use your date of birth to check your age.</span>
       </p>
 
       <p class="alert" id="su-alert" role="alert" hidden></p>
@@ -252,7 +252,7 @@
         </div>
         <div class="field">
           <label for="su-username">Username</label>
-          <input class="input" id="su-username" name="username" type="text" autocomplete="username" placeholder="Letters, numbers, underscore" maxlength="24" aria-describedby="su-username-err">
+          <input class="input" id="su-username" name="username" type="text" autocomplete="username" placeholder="Letters, numbers, _" maxlength="24" aria-describedby="su-username-err">
           <p class="err" id="su-username-err" role="alert"></p>
         </div>
         <div class="field">
@@ -275,7 +275,7 @@
     <!-- ===== Verify email (confirmation link first, code as a fallback) ===== -->
     <div id="panel-verify" hidden>
       <h2 class="auth-h2" id="vf-title" tabindex="-1">Check your email</h2>
-      <p class="auth-sub">Open the confirmation link sent to <span class="mono" id="vf-email"></span> to finish signing up. The link expires, so use it soon.</p>
+      <p class="auth-sub">Open the link we sent to <span class="mono" id="vf-email"></span> to finish signing up. It expires, so use it soon.</p>
 
       <p class="alert" id="vf-alert" role="alert" hidden></p>
 
@@ -299,11 +299,11 @@
     <!-- ===== Complete profile (Google) ===== -->
     <div id="panel-complete" hidden>
       <h2 class="auth-h2">One more step</h2>
-      <p class="auth-sub">Google did not share a username or date of birth. Add them to finish setting up your account.</p>
+      <p class="auth-sub">Google did not send a username or date of birth. Add them to finish your account.</p>
 
       <p class="age-note">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><path d="M12 16h.01"></path></svg>
-        <span>You must be 16 or older. Your date of birth is only used to check that.</span>
+        <span>You must be 16 or older. We only use your date of birth to check your age.</span>
       </p>
 
       <p class="alert" id="co-alert" role="alert" hidden></p>
@@ -311,7 +311,7 @@
       <form id="completeForm" novalidate>
         <div class="field">
           <label for="co-username">Username</label>
-          <input class="input" id="co-username" name="username" type="text" autocomplete="username" placeholder="Letters, numbers, underscore" maxlength="24" aria-describedby="co-username-err">
+          <input class="input" id="co-username" name="username" type="text" autocomplete="username" placeholder="Letters, numbers, _" maxlength="24" aria-describedby="co-username-err">
           <p class="err" id="co-username-err" role="alert"></p>
         </div>
         <div class="field">

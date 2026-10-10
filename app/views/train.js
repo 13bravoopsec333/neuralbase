@@ -427,53 +427,139 @@ function paintIdle() {
   ui.mount.appendChild(wrap);
 }
 
-/* One segmented control per spec entry, and for n-back the mode picker folded in
-   above them. Every control is a real button, so Tab reaches it and Enter or Space
-   works; the current value is the pressed one. */
+/* The panel is one group of setting rows. Each row is a labelled control: a
+   number as a row of value buttons, a toggle as Off and On, a choice as a small
+   segmented control, a multi choice as a set of on or off buttons. Every control
+   is a real button, so Tab reaches it and Enter or Space works; the current value
+   is the pressed one. */
 function buildSetup(d) {
   var panel = h('div', 'tr-setup');
   if (d.id === 'nback') panel.appendChild(buildModeBlock());
   var spec = optionSpecFor(d.id);
   var opts = optionsFor(d.id);
+  var rows = h('div', 'tr-set-rows');
   for (var i = 0; i < spec.length; i++) {
-    panel.appendChild(buildOptionRow(d.id, spec[i], opts[spec[i].key]));
+    rows.appendChild(buildOptionRow(d.id, spec[i], opts[spec[i].key]));
   }
+  panel.appendChild(rows);
   return panel;
+}
+
+/* The value readout beside a setting's label. */
+function optionReadout(entry, current) {
+  var type = entry.type || 'number';
+  if (type === 'toggle') return current ? 'On' : 'Off';
+  if (type === 'choice') {
+    if (entry.multi) {
+      var on = entry.options.filter(function (o) { return current && current.indexOf(o.value) >= 0; });
+      return on.length ? on.map(function (o) { return o.label; }).join(', ') : 'None';
+    }
+    for (var i = 0; i < entry.options.length; i++) if (entry.options[i].value === current) return entry.options[i].label;
+    return String(current);
+  }
+  return String(current);
+}
+
+/* Store one value and repaint the panel. Changing a value never starts a drill. */
+function commitOption(id, entry, value) {
+  if (running) return;
+  var bag = setOption(id, entry.key, value);
+  paintIdle();
+  setIdle(true);
+  paintAll();
+  say(entry.label + ' set to ' + optionReadout(entry, bag[entry.key]) + '.');
 }
 
 function buildOptionRow(id, entry, current) {
   var row = h('div', 'tr-set-row');
   var head = h('div', 'tr-set-head');
   head.appendChild(h('span', 'tr-set-label', entry.label));
-  head.appendChild(h('span', 'tr-set-val mono', String(current)));
+  head.appendChild(h('span', 'tr-set-val mono', optionReadout(entry, current)));
   row.appendChild(head);
 
+  var type = entry.type || 'number';
+  if (type === 'toggle') row.appendChild(buildToggleRow(id, entry, current));
+  else if (type === 'choice') row.appendChild(entry.multi ? buildMultiRow(id, entry, current) : buildChoiceRow(id, entry, current));
+  else row.appendChild(buildNumberRow(id, entry, current));
+  return row;
+}
+
+/* One group of option buttons, named by the setting, so a screen reader hears
+   "Starting level, 2, pressed" rather than a bare number. */
+function segGroup(entry) {
   var seg = h('div', 'tr-seg');
   seg.setAttribute('role', 'group');
-  /* The label rides on the group, so a screen reader hears "Starting level, 2,
-     pressed" rather than a bare number. */
   seg.setAttribute('aria-label', entry.label);
-  for (var v = entry.min; v <= entry.max; v += entry.step) {
+  return seg;
+}
+
+function buildNumberRow(id, entry, current) {
+  var seg = segGroup(entry);
+  /* Built from an index count rather than an accumulating loop, so a fractional
+     step still lands on every value without float drift. */
+  var count = Math.round((entry.max - entry.min) / entry.step) + 1;
+  for (var k = 0; k < count; k++) {
     (function (value) {
       var b = h('button', 'tr-seg-btn', String(value));
       b.type = 'button';
       b.setAttribute('aria-pressed', value === current ? 'true' : 'false');
-      b.addEventListener('click', function () {
-        /* A running set already committed to its settings, and the panel is not on
-           screen while one runs; this is the backstop. Changing a value never
-           starts a drill. */
-        if (running) return;
-        setOption(id, entry.key, value);
-        paintIdle();
-        setIdle(true);
-        paintAll();
-        say(entry.label + ' set to ' + value + '.');
-      });
+      b.addEventListener('click', function () { commitOption(id, entry, value); });
       seg.appendChild(b);
-    })(v);
+    })(Math.round((entry.min + k * entry.step) * 1e10) / 1e10);
   }
-  row.appendChild(seg);
-  return row;
+  return seg;
+}
+
+function buildToggleRow(id, entry, current) {
+  var seg = segGroup(entry);
+  [[false, 'Off'], [true, 'On']].forEach(function (pair) {
+    var b = h('button', 'tr-seg-btn', pair[1]);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', current === pair[0] ? 'true' : 'false');
+    b.addEventListener('click', function () { commitOption(id, entry, pair[0]); });
+    seg.appendChild(b);
+  });
+  return seg;
+}
+
+function buildChoiceRow(id, entry, current) {
+  var seg = segGroup(entry);
+  entry.options.forEach(function (o) {
+    var b = h('button', 'tr-seg-btn', o.label);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', current === o.value ? 'true' : 'false');
+    b.addEventListener('click', function () { commitOption(id, entry, o.value); });
+    seg.appendChild(b);
+  });
+  return seg;
+}
+
+/* A multi choice keeps a set of values. Turning off the last one is refused, so
+   the drill always has at least one option to run. */
+function buildMultiRow(id, entry, current) {
+  var seg = segGroup(entry);
+  var on = Array.isArray(current) ? current.slice() : [];
+  entry.options.forEach(function (o) {
+    var b = h('button', 'tr-seg-btn', o.label);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', on.indexOf(o.value) >= 0 ? 'true' : 'false');
+    b.addEventListener('click', function () {
+      var next = on.slice();
+      var at = next.indexOf(o.value);
+      if (at >= 0) {
+        next.splice(at, 1);
+        if (!next.length) {
+          say(entry.key === 'ops' ? 'Keep at least one operation on.' : 'Keep at least one option on.');
+          return;
+        }
+      } else {
+        next.push(o.value);
+      }
+      commitOption(id, entry, next);
+    });
+    seg.appendChild(b);
+  });
+  return seg;
 }
 
 function buildModeBlock() {
@@ -573,10 +659,14 @@ function injectStyles() {
     /* The drill area takes the rest of the viewport. Idle it holds the settings
        panel; a run adopts its .drill node into the focus stage. */
     '.tr-view .drill-mount{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center}',
-    /* Settings panel: one labelled segmented control per setting, centered in the
-       mount. Compact and quiet, tokens only. */
-    '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:460px;margin-inline:auto}',
-    '.tr-set-row{display:flex;flex-direction:column;gap:7px}',
+    /* Settings panel: one labelled control per setting, centered in the mount.
+       Rows flow into columns when there is room, so a drill with four settings
+       still reads in a couple of rows. Compact and quiet, tokens only. */
+    '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:min(640px,100%);margin-inline:auto}',
+    '.tr-set-rows{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 20px}',
+    '.tr-set-row{display:flex;flex-direction:column;gap:7px;min-width:0}',
+    '.tr-set-row .tr-seg{flex-wrap:wrap}',
+    '.tr-set-val{overflow-wrap:anywhere}',
     '.tr-set-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}',
     '.tr-set-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}',
     '.tr-set-val{font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}',

@@ -75,9 +75,12 @@
   var NB_RULE = { visual: "position", letter: "letter", vowel: "vowel", arithmetic: "sum", spatial: "spatial" };
 
   /* Pure trial generator: the stimuli array for one block at one level. */
-  function nbackSequence(level, trials, seed, mode) {
+  function nbackSequence(level, trials, seed, mode, cueLength) {
     var m = NB_MODES.indexOf(mode) >= 0 ? mode : "dual";
     var rng = mulberry32(seed == null ? 0 : seed);
+    /* How many trials one rule stays live before the cue switches. Validated by
+       drillOptions, so it is a whole number in 4..10. */
+    var cueLen = (typeof cueLength === "number" && isFinite(cueLength)) ? Math.max(1, Math.round(cueLength)) : 6;
     var out = [];
     var posSeq = [], letSeq = [], sumSeq = [], shapeSeq = [];
     var rule = null, cueLeft = 0, cueCount = 0, cueChanged = false;
@@ -113,7 +116,7 @@
           var choices = set.filter(function (r) { return r !== rule; });
           if (!choices.length) choices = set;
           rule = pick(rng, choices);
-          cueLeft = 5 + randInt(rng, 4);
+          cueLeft = cueLen;
           cueCount = 0;
           cueChanged = true;
         }
@@ -319,6 +322,9 @@
       ".drill-nback .nb-cell{position:relative}",
       /* A pressed cell keeps the mark so the eye can see what was answered. */
       ".drill-nback .nb-cell.nb-pick{border-color:var(--lime-edge);box-shadow:inset 0 0 0 1px var(--lime-edge)}",
+      /* The number rule needs the digit readable on the shape, so the stimulus
+         centers its own text. */
+      ".drill-switching .ts-stim{display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:24px;font-weight:600;color:var(--bg)}",
       /* The palace study clock. A flat track that drains left to right over the
          study period, so the time is visible rather than implied. */
       ".drill-palace .pl-study{display:flex;flex-direction:column;align-items:center;gap:6px}",
@@ -356,16 +362,18 @@
     return Math.max(20, Math.min(500, Math.round(next)));
   }
 
-  function palaceScore(placed, recalled) {
-    var lead = 0, run = 0, best = 0;
+  function palaceScore(placed, recalled, order) {
+    var lead = 0, run = 0, best = 0, total = 0;
     for (var i = 0; i < placed.length; i++) {
-      if (recalled[i] === placed[i]) { run++; if (run > best) best = run; }
+      if (recalled[i] === placed[i]) { run++; if (run > best) best = run; total++; }
       else run = 0;
     }
     for (var j = 0; j < placed.length; j++) {
       if (recalled[j] === placed[j]) lead++; else break;
     }
-    return { recalled: lead, longest: best };
+    /* In order scores the leading run, because a stop out of place means the
+       route is lost. Any order scores every stop that landed right. */
+    return { recalled: order === "any-order" ? total : lead, longest: best };
   }
 
   function relationKey(a, b) {
@@ -374,6 +382,32 @@
 
   function reviewQueue(cards, now) {
     return cards.filter(function (c) { return c.due <= now; }).slice().sort(function (a, b) { return a.due - b.due; });
+  }
+
+  function shuffleWith(rng, arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) { var j = randInt(rng, i + 1); var t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+
+  /* The review queue for one pass. New cards (never reviewed) are capped by
+     newPerSession so a backlog of new cards cannot crowd out the reviews that
+     are already due; the whole pass is capped by reviewLimit. Order due-first
+     keeps the schedule order, shuffled draws a random one. */
+  function spacedQueue(cards, now, opts) {
+    var o = opts || {};
+    var limit = (typeof o.reviewLimit === "number" && isFinite(o.reviewLimit)) ? o.reviewLimit : 10;
+    var newCap = (typeof o.newPerSession === "number" && isFinite(o.newPerSession)) ? o.newPerSession : 3;
+    var due = reviewQueue(cards, now);
+    var fresh = [], old = [];
+    for (var i = 0; i < due.length; i++) {
+      if (Number(due[i] && due[i].reps) > 0) old.push(due[i]);
+      else fresh.push(due[i]);
+    }
+    var picked = fresh.slice(0, Math.max(0, newCap)).concat(old);
+    if (o.order === "shuffled" && typeof o.rng === "function") picked = shuffleWith(o.rng, picked);
+    else picked.sort(function (a, b) { return (Number(a && a.due) || 0) - (Number(b && b.due) || 0); });
+    return picked.slice(0, Math.max(0, limit));
   }
 
   function switchCost(repeatTimes, switchTimes) {
@@ -459,61 +493,110 @@
     return Math.max(0, Math.min(Math.max(b, l + 2), r));
   }
 
-  /* Per-drill starting settings, two or three real knobs each. Described here so
-     the Train view can render a panel from the same table the drill validates
-     against. min, max and step are all numbers, so a snapped value always sits on
-     the step grid and a drill never sees an off-grid setting. studySeconds uses a
-     half second step; the rest are whole numbers. */
+  /* Per-drill starting settings. Each entry carries a type: a number (min, max,
+     step), a toggle (boolean), or a choice (options, single or multi). The Train
+     view renders its panel from this same table and drillOptions validates
+     against it, so a hand-edited store can never put a drill out of range. */
   var DRILL_OPTION_SPEC = {
     nback: [
-      { key: "startLevel", label: "Starting level", min: 1, max: 4, step: 1, def: 2 },
-      { key: "trials", label: "Trials", min: 12, max: 24, step: 6, def: 18 }
+      { key: "startLevel", label: "Starting level", type: "number", min: 1, max: 4, step: 1, def: 2 },
+      { key: "trials", label: "Trials", type: "number", min: 12, max: 30, step: 6, def: 18 },
+      { key: "cueLength", label: "Cue length", type: "number", min: 4, max: 10, step: 1, def: 6 },
+      { key: "stimulusMs", label: "Stimulus time", type: "choice", options: [{ value: 1500, label: "1.5 s" }, { value: 2000, label: "2 s" }, { value: 3000, label: "3 s" }], def: 2000 }
     ],
     ufov: [
-      { key: "startExposure", label: "Start exposure", min: 100, max: 400, step: 50, def: 200 },
-      { key: "trials", label: "Trials", min: 6, max: 14, step: 2, def: 10 }
+      { key: "startExposure", label: "Start exposure", type: "number", min: 100, max: 400, step: 50, def: 200 },
+      { key: "trials", label: "Trials", type: "number", min: 6, max: 20, step: 2, def: 10 },
+      { key: "edgeTargets", label: "Edge targets", type: "number", min: 1, max: 2, step: 1, def: 1 },
+      { key: "centerShape", label: "Center shape", type: "toggle", def: true }
     ],
     palace: [
-      { key: "routeLength", label: "Route length", min: 5, max: 10, step: 1, def: 5 },
-      { key: "studySeconds", label: "Study seconds", min: 1.5, max: 4, step: 0.5, def: 2.5 }
+      { key: "routeLength", label: "Route length", type: "number", min: 5, max: 10, step: 1, def: 5 },
+      { key: "studySeconds", label: "Study seconds", type: "number", min: 1, max: 5, step: 0.5, def: 2.5 },
+      { key: "itemSet", label: "Items", type: "choice", options: [{ value: "words", label: "Words" }, { value: "numbers", label: "Numbers" }, { value: "mixed", label: "Mixed" }], def: "words" },
+      { key: "recallOrder", label: "Recall order", type: "choice", options: [{ value: "in-order", label: "In order" }, { value: "any-order", label: "Any order" }], def: "in-order" }
     ],
     reasoning: [
-      { key: "trials", label: "Trials", min: 8, max: 16, step: 4, def: 8 },
-      { key: "timeLimit", label: "Time limit (s)", min: 0, max: 20, step: 5, def: 0 }
+      { key: "trials", label: "Trials", type: "number", min: 8, max: 20, step: 4, def: 8 },
+      { key: "timeLimit", label: "Time limit", type: "choice", options: [{ value: 0, label: "Off" }, { value: 10, label: "10 s" }, { value: 20, label: "20 s" }], def: 0 },
+      { key: "relationSet", label: "Relations", type: "choice", options: [{ value: "all", label: "All" }, { value: "part-whole", label: "Part-whole" }, { value: "function", label: "Function" }, { value: "category", label: "Category" }, { value: "opposite", label: "Opposite" }, { value: "sequence", label: "Sequence" }], def: "all" }
     ],
     spaced: [
-      { key: "reviewLimit", label: "Review limit", min: 5, max: 30, step: 5, def: 10 },
-      { key: "retention", label: "Target retention %", min: 70, max: 95, step: 5, def: 90 }
+      { key: "reviewLimit", label: "Review limit", type: "number", min: 5, max: 30, step: 5, def: 10 },
+      { key: "newPerSession", label: "New per session", type: "number", min: 0, max: 10, step: 1, def: 3 },
+      { key: "retentionTarget", label: "Retention target", type: "number", min: 0.7, max: 0.95, step: 0.05, def: 0.9 },
+      { key: "order", label: "Order", type: "choice", options: [{ value: "due-first", label: "Due first" }, { value: "shuffled", label: "Shuffled" }], def: "due-first" }
     ],
     switching: [
-      { key: "trials", label: "Trials", min: 12, max: 24, step: 6, def: 12 },
-      { key: "switchRate", label: "Switch rate %", min: 0, max: 100, step: 25, def: 50 }
+      { key: "trials", label: "Trials", type: "number", min: 12, max: 30, step: 6, def: 12 },
+      { key: "switchRate", label: "Switch rate", type: "number", min: 0.2, max: 0.5, step: 0.1, def: 0.3 },
+      { key: "dimensions", label: "Rules", type: "choice", options: [{ value: "two", label: "Two" }, { value: "three", label: "Three" }], def: "two" },
+      { key: "cueVisible", label: "Show cue", type: "toggle", def: true }
     ],
     sart: [
-      { key: "trials", label: "Trials", min: 20, max: 40, step: 10, def: 30 },
-      { key: "targetDigit", label: "Target digit", min: 1, max: 9, step: 1, def: 3 }
+      { key: "trials", label: "Trials", type: "number", min: 20, max: 60, step: 10, def: 30 },
+      { key: "targetDigit", label: "Target digit", type: "number", min: 1, max: 9, step: 1, def: 3 },
+      { key: "signalRate", label: "Signal rate", type: "number", min: 0.1, max: 0.3, step: 0.05, def: 0.2 },
+      { key: "responseWindow", label: "Response window", type: "choice", options: [{ value: 0, label: "Off" }, { value: 800, label: "800 ms" }, { value: 1200, label: "1200 ms" }], def: 0 }
     ],
     crt: [
-      { key: "trials", label: "Trials", min: 10, max: 30, step: 10, def: 20 },
-      { key: "choices", label: "Starting lights", min: 2, max: 3, step: 1, def: 2 }
+      { key: "trials", label: "Trials", type: "number", min: 10, max: 40, step: 10, def: 20 },
+      { key: "choices", label: "Lights", type: "number", min: 2, max: 4, step: 1, def: 2 },
+      { key: "foreperiod", label: "Foreperiod", type: "choice", options: [{ value: "fixed", label: "Fixed" }, { value: "random", label: "Random" }], def: "random" },
+      { key: "catchTrials", label: "Catch trials", type: "toggle", def: false }
     ],
     math: [
-      { key: "startLevel", label: "Starting level", min: 1, max: 3, step: 1, def: 1 },
-      { key: "secondsPerProblem", label: "Seconds per problem", min: 3, max: 8, step: 1, def: 4 }
+      { key: "ops", label: "Operations", type: "choice", multi: true, options: [{ value: "+", label: "Add" }, { value: "-", label: "Sub" }, { value: "*", label: "Mul" }, { value: "/", label: "Div" }], def: ["+", "-", "*", "/"] },
+      { key: "digits", label: "Operand digits", type: "number", min: 1, max: 3, step: 1, def: 2 },
+      { key: "timePerProblem", label: "Time per problem", type: "choice", options: [{ value: 0, label: "Off" }, { value: 5, label: "5 s" }, { value: 10, label: "10 s" }, { value: 15, label: "15 s" }], def: 0 },
+      { key: "startLevel", label: "Starting level", type: "number", min: 1, max: 3, step: 1, def: 1 }
     ]
   };
 
   function drillOptionSpec() { return DRILL_OPTION_SPEC; }
 
-  /* One value through the spec: a finite number is used, anything else falls back
-     to the default, then the result is clamped into range and snapped to the
-     step grid. Clamping again after the snap catches the case where rounding
+  /* One number through the spec: a finite number is used, anything else falls
+     back to the default, then the result is clamped into range and snapped to
+     the step grid. Clamping again after the snap catches the case where rounding
      pushes a value back past the top of the range. */
-  function snapDrillOption(value, spec) {
+  function snapDrillNumber(value, spec) {
     var v = (typeof value === "number" && isFinite(value)) ? value : spec.def;
     v = Math.max(spec.min, Math.min(spec.max, v));
     v = spec.min + Math.round((v - spec.min) / spec.step) * spec.step;
-    return Math.max(spec.min, Math.min(spec.max, v));
+    v = Math.max(spec.min, Math.min(spec.max, v));
+    /* Step arithmetic on a fractional step (0.05) leaves float noise such as
+       0.8999999999999999. Round it away so a snapped value is the value. */
+    return Math.round(v * 1e10) / 1e10;
+  }
+
+  function choiceValues(spec) {
+    var out = [];
+    for (var i = 0; i < spec.options.length; i++) out.push(spec.options[i].value);
+    return out;
+  }
+
+  /* One value through the spec, by type. A number is clamped and snapped, a
+     toggle takes only a real boolean, a single choice takes only one of its
+     values, and a multi choice keeps the valid values it was given. Anything
+     else falls back to the default, so a drill never sees NaN, an unknown value
+     or an empty set. */
+  function coerceDrillOption(value, spec) {
+    var type = spec.type || "number";
+    if (type === "toggle") return typeof value === "boolean" ? value : spec.def;
+    if (type === "choice") {
+      var vals = choiceValues(spec);
+      if (spec.multi) {
+        if (!Array.isArray(value)) return spec.def.slice();
+        var picked = [];
+        for (var i = 0; i < value.length; i++) {
+          if (vals.indexOf(value[i]) >= 0 && picked.indexOf(value[i]) < 0) picked.push(value[i]);
+        }
+        return picked.length ? picked : spec.def.slice();
+      }
+      for (var j = 0; j < vals.length; j++) if (value === vals[j]) return value;
+      return spec.def;
+    }
+    return snapDrillNumber(value, spec);
   }
 
   /* Every key for one drill, validated. An unknown id has nothing to validate,
@@ -524,7 +607,7 @@
     var o = overrides || {};
     var out = {};
     for (var i = 0; i < list.length; i++) {
-      out[list[i].key] = snapDrillOption(o[list[i].key], list[i]);
+      out[list[i].key] = coerceDrillOption(o[list[i].key], list[i]);
     }
     return out;
   }
@@ -532,7 +615,7 @@
   var DrillsCore = { isMatch: isMatch, nbackChunkSize: nbackChunkSize, pressGuard: pressGuard, nextLevel: nextLevel, adaptExposure: adaptExposure, palaceScore: palaceScore, relationKey: relationKey,
     drillOptionSpec: drillOptionSpec, drillOptions: drillOptions,
     PALACE_STUDY_SECONDS: PALACE_STUDY_SECONDS, PALACE_STUDY_MS: PALACE_STUDY_MS,
-    PALACE_ROUTE: 5, bindKey: bindKey, digitIndex: digitIndex, silenceAudio: silenceAudio, reviewQueue: reviewQueue, switchCost: switchCost, nbackTrialCorrect: nbackTrialCorrect, nbackOutcome: nbackOutcome, nbackVoiceMode: nbackVoiceMode, isVowel: isVowel, dPrime: dPrime, ruleShiftAccuracy: ruleShiftAccuracy, mulberry32: mulberry32, seedFrom: seedFrom, randInt: randInt, pick: pick, nbackSequence: nbackSequence, NB_MODES: NB_MODES };
+    PALACE_ROUTE: 5, bindKey: bindKey, digitIndex: digitIndex, silenceAudio: silenceAudio, reviewQueue: reviewQueue, spacedQueue: spacedQueue, switchCost: switchCost, nbackTrialCorrect: nbackTrialCorrect, nbackOutcome: nbackOutcome, nbackVoiceMode: nbackVoiceMode, isVowel: isVowel, dPrime: dPrime, ruleShiftAccuracy: ruleShiftAccuracy, mulberry32: mulberry32, seedFrom: seedFrom, randInt: randInt, pick: pick, nbackSequence: nbackSequence, NB_MODES: NB_MODES, coerceDrillOption: coerceDrillOption };
 
   /* ---------- registry ---------- */
   var factories = {};
@@ -598,6 +681,13 @@
     /* The starting n and the level the set can climb to. Validated by
        drillOptions, so it is always a whole number in 1..4. */
     var startLevel = (opts.options && typeof opts.options.startLevel === "number") ? opts.options.startLevel : 2;
+    /* Validated by drillOptions: 4 to 10 trials a rule stays live before the cue
+       switches. Default 6. */
+    var cueLength = (opts.options && typeof opts.options.cueLength === "number") ? opts.options.cueLength : 6;
+    /* Validated by drillOptions: 1500, 2000 or 3000 ms. How long the stimulus
+       stays on screen before it blanks. The response window after it stays at
+       2500 ms, so a longer stimulus simply stays visible to the end of the trial. */
+    var stimMs = (opts.options && typeof opts.options.stimulusMs === "number") ? opts.options.stimulusMs : 2000;
     var level = startLevel, maxLevel = startLevel;
     var rng = rngFrom(opts);
     var correctTrials = 0;
@@ -612,6 +702,9 @@
     var queue = [];
     var timers = makeTimers();
     var timer = 0;
+    /* The stimulus blank runs on its own clock so the trial window can stay one
+       makeTimers slot. Cleared on stop and at the start of every trial. */
+    var blankTimer = 0;
 
     /* Audio is optional and global. Every cue checks `stopped` first, so a cue
        queued before a stop cannot fire afterwards, and a mode with no matching
@@ -630,6 +723,7 @@
     function halt(silent) {
       stopped = true;
       clearTimeout(timer);
+      clearTimeout(blankTimer);
       timers.destroy();
       unbindKey();
       if (silent) silenceAudio();
@@ -666,7 +760,7 @@
     var oneBtn = button("btn-primary", "Match");
     if (dual) { bar.appendChild(posBtn); bar.appendChild(letBtn); }
     else bar.appendChild(oneBtn);
-    var meta = el("div", "nb-meta mono", "n = " + level + " · 0 / " + TRIALS);
+    var meta = el("div", "nb-meta mono", "n = " + level + " · 0 / " + TRIALS + " · " + stimMs + " ms");
 
     wrap.appendChild(cueEl);
     /* Arithmetic has no grid (the sum is the stimulus) and spatial has no letter
@@ -744,7 +838,18 @@
         if (!spatial) stim.textContent = "?";
       }
       cueEl.textContent = cueText();
-      meta.textContent = "n = " + level + " · " + i + " / " + TRIALS;
+      meta.textContent = "n = " + level + " · " + i + " / " + TRIALS + " · " + stimMs + " ms";
+    }
+
+    /* Blank the stimulus without touching the printed digits or the response
+       marks, so a short stimulus time reads as the item disappearing. */
+    function clearStimulus() {
+      for (var k = 0; k < 9; k++) {
+        cells[k].classList.remove("on");
+        cells[k].classList.remove("nb-mark");
+      }
+      if (arith) { sumA.textContent = ""; sumB.textContent = ""; }
+      else if (!spatial) stim.textContent = "?";
     }
 
     /* Blocks are drawn in chunks so a level change can restart the chunk. The
@@ -756,7 +861,7 @@
       if (!queue.length) {
         var batch = nbackChunkSize(BLOCK, level, TRIALS - i);
         if (batch <= 0) return null;
-        queue = nbackSequence(level, batch, randInt(rng, 4294967296), mode);
+        queue = nbackSequence(level, batch, randInt(rng, 4294967296), mode, cueLength);
       }
       var st = queue.shift();
       if (st.cueChanged) playSfx("tap");
@@ -775,6 +880,10 @@
       i++;
       paint();
       playLetter(cur.letter);
+      clearTimeout(blankTimer);
+      if (stimMs < 2500) {
+        blankTimer = setTimeout(function () { if (!stopped) clearStimulus(); }, stimMs);
+      }
       timer = timers.set(endTrial, 2500);
     }
 
@@ -807,6 +916,7 @@
       stopped = true;
       finished = true;
       timers.destroy();
+      clearTimeout(blankTimer);
       unbindKey();
       /* Accuracy and d-prime are over the trials that carried a comparison. Counting
          the warm-up trials, which auto-pass because the right answer is to do
@@ -841,26 +951,42 @@
   function ufov(container, opts) {
     var SHAPES = ["Circle", "Triangle", "Square"];
     var POS = ["Top", "Right", "Bottom", "Left"];
-    /* Validated by drillOptions: 6, 8, 10, 12 or 14. The default keeps the ten
-       trial set. */
+    /* Validated by drillOptions: 6 to 20 on a two step grid. */
     var TRIALS = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 10;
+    /* Validated by drillOptions: one or two edge targets to locate. */
+    var EDGE = (opts.options && typeof opts.options.edgeTargets === "number") ? opts.options.edgeTargets : 1;
+    /* Validated by drillOptions: whether a center shape has to be identified. */
+    var CENTER = !(opts.options && opts.options.centerShape === false);
     var rng = rngFrom(opts);
     var timers = makeTimers();
     /* Validated by drillOptions: a whole number of ms in 100..400. */
     var exposure = (opts.options && typeof opts.options.startExposure === "number") ? opts.options.startExposure : 200;
     var i = 0, correctCount = 0, stopped = false, timer = 0, resolved = false;
-    var answer = { shape: null, pos: null, pickShape: null, pickPos: null };
+    var answer = { shape: null, positions: [], pickShape: null, picks: [] };
 
     var wrap = el("div", "drill drill-ufov");
     var stage = el("div", "uf-stage");
-    var shape = el("div", "uf-shape");
-    var dot = el("div", "uf-dot");
-    stage.appendChild(shape); stage.appendChild(dot);
-    var prompt = el("div", "drill-note", "Watch the center shape and the edge dot.");
+    var shape = CENTER ? el("div", "uf-shape") : null;
+    if (shape) stage.appendChild(shape);
+    var dots = [];
+    for (var d = 0; d < EDGE; d++) {
+      var dot = el("div", "uf-dot");
+      dots.push(dot);
+      stage.appendChild(dot);
+    }
+    var prompt = el("div", "drill-note", watchText());
     var bar = el("div", "drill-bar");
-    var meta = el("div", "nb-meta mono", "exposure " + exposure + " ms · 0 / " + TRIALS);
+    var meta = el("div", "nb-meta mono", ufovMeta());
     wrap.appendChild(stage); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
+
+    function watchText() {
+      var edge = EDGE > 1 ? "the edge dots" : "the edge dot";
+      return CENTER ? "Watch the center shape and " + edge + "." : "Watch " + edge + ".";
+    }
+    function ufovMeta() {
+      return "exposure " + exposure + " ms · " + EDGE + (EDGE === 1 ? " dot" : " dots") + " · " + i + " / " + TRIALS;
+    }
 
     function clearBar() { bar.innerHTML = ""; }
     /* A pick holds for a beat before the next step so the choice is visible.
@@ -883,44 +1009,58 @@
       SHAPES.forEach(function (s, idx) {
         bar.appendChild(optionButton(s, idx, function () {
           answer.pickShape = idx;
-          picked(idx, showPosOptions);
+          picked(idx, function () { showPosOptions(0); });
         }));
       });
     }
-    function showPosOptions() {
-      clearBar(); prompt.textContent = "Where was the dot?";
+    function showPosOptions(step) {
+      clearBar();
+      prompt.textContent = EDGE > 1 ? "Where was dot " + (step + 1) + " of " + EDGE + "?" : "Where was the dot?";
       taken = false;
       POS.forEach(function (p, idx) {
         bar.appendChild(optionButton(p, idx, function () {
-          answer.pickPos = idx;
-          picked(idx, resolve);
+          answer.picks[step] = idx;
+          picked(idx, function () {
+            if (step + 1 < EDGE) showPosOptions(step + 1);
+            else resolve();
+          });
         }));
       });
+    }
+    /* One or two edge targets, so the answer is a set, not a single position. */
+    function sameSet(a, b) {
+      if (a.length !== b.length) return false;
+      var x = a.slice().sort(function (p, q) { return p - q; });
+      var y = b.slice().sort(function (p, q) { return p - q; });
+      for (var k = 0; k < x.length; k++) if (x[k] !== y[k]) return false;
+      return true;
     }
     function trial() {
       if (stopped) return;
       if (i >= TRIALS) return finish();
       clearBar();
-      prompt.textContent = "Watch the center shape and the edge dot.";
-      answer = { shape: randInt(rng, 3), pos: randInt(rng, 4), pickShape: null, pickPos: null };
+      prompt.textContent = watchText();
+      var pool = [0, 1, 2, 3];
+      for (var s = pool.length - 1; s > 0; s--) { var j = randInt(rng, s + 1); var t = pool[s]; pool[s] = pool[j]; pool[j] = t; }
+      answer = { shape: randInt(rng, 3), positions: pool.slice(0, EDGE), pickShape: null, picks: [] };
       resolved = false;
       taken = false;
-      shape.className = "uf-shape s" + answer.shape;
-      dot.className = "uf-dot p" + answer.pos;
+      if (shape) shape.className = "uf-shape s" + answer.shape;
+      dots.forEach(function (el, k) { el.className = "uf-dot p" + answer.positions[k]; });
       stage.classList.add("show");
       timer = timers.set(function () {
         stage.classList.remove("show");
-        showShapeOptions();
+        if (CENTER) showShapeOptions(); else showPosOptions(0);
       }, exposure);
     }
     function resolve() {
       if (resolved) return;
       resolved = true;
-      var ok = answer.pickShape === answer.shape && answer.pickPos === answer.pos;
+      var ok = (!CENTER || answer.pickShape === answer.shape) && sameSet(answer.picks, answer.positions);
       if (ok) correctCount++;
       exposure = adaptExposure(exposure, ok);
       i++;
-      meta.textContent = "exposure " + exposure + " ms · " + i + " / " + TRIALS;
+      meta.textContent = ufovMeta();
       timer = timers.set(trial, 500);
     }
     function finish() {
@@ -932,7 +1072,7 @@
       summary.appendChild(el("div", "drill-state", "Set complete"));
       summary.appendChild(el("div", "drill-note", "Threshold exposure " + exposure + " ms · accuracy " + Math.round(acc * 100) + "%"));
       container.appendChild(summary);
-      if (opts.onComplete) opts.onComplete({ drillId: "ufov", value: exposure, unit: "ms", t: Date.now(), meta: { accuracy: acc } });
+      if (opts.onComplete) opts.onComplete({ drillId: "ufov", value: exposure, unit: "ms", t: Date.now(), meta: { accuracy: acc, edgeTargets: EDGE, centerShape: CENTER } });
     }
     /* Digits take the visible options in order, so the printed key and the button
        position cannot drift apart. Both questions use this one path. Guarded on
@@ -971,6 +1111,12 @@
       "Meadow", "Postcard", "Satchel", "Windmill", "Hammock", "Waterfall", "Pinecone",
       "Sundial", "Kite", "Buoy", "Campfire", "Treasure", "Shovel", "Footbridge", "Bucket"
     ];
+    /* Two digit numbers for the numbers set, distinct and short enough to place. */
+    var NUMBERS = [
+      "17", "42", "63", "28", "75", "34", "59", "81", "26", "47",
+      "93", "15", "68", "52", "37", "84", "19", "71", "46", "95",
+      "23", "58", "72", "39", "64", "87", "31", "56", "79", "12"
+    ];
     /* Validated by drillOptions: a whole number of stops in 5..10. The literal
        default stays on one line so the content check can read the shipped value. */
     var ROUTE = 5;
@@ -980,7 +1126,11 @@
        purpose: the study clock and the shipped default are the same idea, and the
        source check reads the name. */
     var PALACE_STUDY_MS = Math.round(((opts.options && typeof opts.options.studySeconds === "number") ? opts.options.studySeconds : PALACE_STUDY_SECONDS) * 1000);
-    var placed = [], recalled = [], idx = 0, stopped = false;
+    /* Validated by drillOptions: words, numbers or mixed. */
+    var ITEM_SET = (opts.options && opts.options.itemSet) || "words";
+    /* Validated by drillOptions: in-order or any-order. */
+    var RECALL_ORDER = (opts.options && opts.options.recallOrder) || "in-order";
+    var placed = [], recalled = [], idx = 0, stopped = false, order = [];
     /* The study clock needs two timers at once, the advance and the repaint,
        which makeTimers holds one of. So these two keep their own ids and stop()
        clears both by hand. */
@@ -998,9 +1148,20 @@
     study.appendChild(track); study.appendChild(cue);
     var prompt = el("div", "drill-note", "Place each item at the next stop on the route.");
     var bar = el("div", "drill-bar");
-    var meta = el("div", "nb-meta mono", "route " + ROUTE + " stops · " + (PALACE_STUDY_MS / 1000) + " s each");
+    var meta = el("div", "nb-meta mono", palaceMeta());
     wrap.appendChild(stage); wrap.appendChild(study); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
+
+    function pool() {
+      if (ITEM_SET === "numbers") return NUMBERS;
+      if (ITEM_SET === "mixed") return WORDS.concat(NUMBERS);
+      return WORDS;
+    }
+    function palaceMeta() {
+      var set = ITEM_SET === "numbers" ? "numbers" : ITEM_SET === "mixed" ? "mixed" : "words";
+      var orderTxt = RECALL_ORDER === "any-order" ? "any order" : "in order";
+      return "route " + ROUTE + " stops · " + (PALACE_STUDY_MS / 1000) + " s each · " + set + " · " + orderTxt;
+    }
 
     function shuffled(arr) {
       var a = arr.slice();
@@ -1009,8 +1170,11 @@
     }
 
     function start() {
-      placed = shuffled(WORDS).slice(0, ROUTE);
+      placed = shuffled(pool()).slice(0, ROUTE);
       recalled = []; idx = 0;
+      var indices = [];
+      for (var k = 0; k < placed.length; k++) indices.push(k);
+      order = RECALL_ORDER === "any-order" ? shuffled(indices) : indices;
       place();
     }
     /* One item on screen for the study period. The bar drains over it so the time
@@ -1052,23 +1216,27 @@
     }
     function recall() {
       /* Recall keeps no timer. Thinking is the task here and a clock would only
-         punish it, so the phase waits on the player and nothing else. */
+         punish it, so the phase waits on the player and nothing else. Any order
+         asks the stops in a shuffled order and scores the placements, not the
+         run. */
       phase = "recall";
       study.hidden = true;
-      idx = 0;
-      function step() {
+      var step = 0;
+      function ask() {
         if (stopped) return;
-        if (idx >= placed.length) return finish();
-        var correct = placed[idx];
-        var opts3 = shuffled([correct].concat(shuffled(WORDS.filter(function (w) { return w !== correct; })).slice(0, 2)));
-        stage.textContent = "Stop " + (idx + 1);
+        if (step >= placed.length) return finish();
+        var stopIndex = order[step];
+        var correct = placed[stopIndex];
+        var wrongs = shuffled(pool().filter(function (w) { return w !== correct; })).slice(0, 2);
+        var opts3 = shuffled([correct].concat(wrongs));
+        stage.textContent = "Stop " + (stopIndex + 1);
         prompt.textContent = "What was here?";
         bar.innerHTML = "";
         opts3.forEach(function (w, n) {
-          bar.appendChild(optionButton(w, n, function () { recalled[idx] = w; idx++; step(); }));
+          bar.appendChild(optionButton(w, n, function () { recalled[stopIndex] = w; step++; ask(); }));
         });
       }
-      step();
+      ask();
     }
     function finish() {
       if (stopped) return;
@@ -1076,12 +1244,12 @@
       clearTimeout(studyTimer);
       clearInterval(tickTimer);
       unbindKey();
-      var sc = palaceScore(placed, recalled);
+      var sc = palaceScore(placed, recalled, RECALL_ORDER);
       var summary = el("div", "drill-summary");
       summary.appendChild(el("div", "drill-state", "Set complete"));
-      summary.appendChild(el("div", "drill-note", sc.recalled + " of " + placed.length + " recalled in order"));
+      summary.appendChild(el("div", "drill-note", sc.recalled + " of " + placed.length + " recalled" + (RECALL_ORDER === "any-order" ? " in any order" : " in order")));
       container.appendChild(summary);
-      if (opts.onComplete) opts.onComplete({ drillId: "palace", value: sc.recalled, unit: "items", t: Date.now(), meta: { longest: sc.longest, route: placed.length } });
+      if (opts.onComplete) opts.onComplete({ drillId: "palace", value: sc.recalled, unit: "items", t: Date.now(), meta: { longest: sc.longest, route: placed.length, itemSet: ITEM_SET, recallOrder: RECALL_ORDER } });
     }
     /* Enter places the current item and moves on. Digits answer the recall. */
     var unbindKey = bindKey(doc, function (e) {
@@ -1181,12 +1349,14 @@
       { relation: "sequence", a: "Waking", b: "Sleeping", c: "Sprout", correct: "Flower", wrong: ["Pencil", "Loud"] }
     ];
     var rng = rngFrom(opts);
-    /* Validated by drillOptions: 8, 12 or 16. */
+    /* Validated by drillOptions: 8 to 20 on a four step grid. */
     var TRIALS = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 8;
-    /* Validated by drillOptions: 0 (untimed) or 5 to 20 seconds. A nonzero limit
+    /* Validated by drillOptions: 0 (untimed), 10 or 20 seconds. A nonzero limit
        auto-advances a trial when the time is up, so an unanswered item counts as
        wrong instead of waiting forever. */
     var timeLimit = (opts.options && typeof opts.options.timeLimit === "number") ? opts.options.timeLimit : 0;
+    /* Validated by drillOptions: which relation types appear, or all of them. */
+    var relationSet = (opts.options && typeof opts.options.relationSet === "string") ? opts.options.relationSet : "all";
     var limitTimer = 0;
     var i = 0, correctCount = 0, stopped = false;
     /* The options currently on the bar, so a digit can reach the same button a
@@ -1203,10 +1373,18 @@
     wrap.appendChild(stem); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
 
-    /* The trial count and the limit, on screen, so the chosen settings are
-       visible while the set runs. */
+    /* The trial count, the limit and the relation set, on screen, so the chosen
+       settings are visible while the set runs. */
     function metaText() {
-      return i + " / " + TRIALS + (timeLimit > 0 ? " · " + timeLimit + " s limit" : " · untimed");
+      return i + " / " + TRIALS + (timeLimit > 0 ? " · " + timeLimit + " s limit" : " · untimed") + " · " + (relationSet === "all" ? "all relations" : relationSet);
+    }
+
+    /* The pool the trial draws from. A single relation narrows it; all of them
+       keeps the full set. */
+    function itemPool() {
+      if (relationSet === "all") return ITEMS;
+      var p = ITEMS.filter(function (it) { return it.relation === relationSet; });
+      return p.length ? p : ITEMS;
     }
 
     /* One clock per trial. Cleared on answer, on finish and on stop, so it can
@@ -1232,7 +1410,7 @@
     function trial() {
       if (stopped) return;
       if (i >= TRIALS) return finish();
-      var item = pick(rng, ITEMS);
+      var item = pick(rng, itemPool());
       stem.innerHTML = '<span class="rr-a">' + item.a + '</span> : <span class="rr-b">' + item.b + '</span> :: <span class="rr-c">' + item.c + '</span> : <span class="rr-q">?</span>';
       bar.innerHTML = "";
       optionList = shuffled([item.correct].concat(item.wrong));
@@ -1256,7 +1434,7 @@
       summary.appendChild(el("div", "drill-state", "Set complete"));
       summary.appendChild(el("div", "drill-note", correctCount + " of " + TRIALS + " correct"));
       container.appendChild(summary);
-      if (opts.onComplete) opts.onComplete({ drillId: "reasoning", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: TRIALS } });
+      if (opts.onComplete) opts.onComplete({ drillId: "reasoning", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: TRIALS, timeLimit: timeLimit, relationSet: relationSet } });
     }
     /* Digits pick the option in the order the buttons are shown, so the printed
        key and the visual order can never drift apart. */
@@ -1279,14 +1457,20 @@
   function spaced(container, opts) {
     var cards = (opts.cards || []).slice();
     var Spacing = globalThis.Spacing;
+    var rng = rngFrom(opts);
     var stopped = false;
-    /* Validated by drillOptions: at most this many due cards are reviewed in one
+    /* Validated by drillOptions: at most this many cards are reviewed in one
        pass. Fewer due means fewer reviewed. */
     var reviewLimit = (opts.options && typeof opts.options.reviewLimit === "number") ? opts.options.reviewLimit : 10;
-    /* Validated by drillOptions: 70 to 95 percent. Passed to the scheduler as the
+    /* Validated by drillOptions: at most this many never-reviewed cards join one
+       pass, so a backlog of new cards cannot crowd out the due reviews. */
+    var newPerSession = (opts.options && typeof opts.options.newPerSession === "number") ? opts.options.newPerSession : 3;
+    /* Validated by drillOptions: 0.7 to 0.95. Passed to the scheduler as the
        retention target, so a higher target pulls the next due date closer and a
-       lower one pushes it out. Default 90 matches the scheduler's own default. */
-    var retention = (opts.options && typeof opts.options.retention === "number") ? opts.options.retention : 90;
+       lower one pushes it out. Default 0.9 matches the scheduler's own default. */
+    var retentionTarget = (opts.options && typeof opts.options.retentionTarget === "number") ? opts.options.retentionTarget : 0.9;
+    /* Validated by drillOptions: due-first or shuffled. */
+    var order = (opts.options && typeof opts.options.order === "string") ? opts.options.order : "due-first";
     /* What the keyboard is looking at: the add form, the question, the grade, or
        a finished summary. One flag, so one handler covers every screen the drill
        puts up instead of a handler per screen. */
@@ -1303,9 +1487,9 @@
 
     function persist() { if (opts.onCards) opts.onCards(cards); }
 
-    /* The card count and the chosen retention target, on screen in every phase. */
+    /* The card count and the chosen settings, on screen in every phase. */
     function cardMeta() {
-      return cards.length + (cards.length === 1 ? " card" : " cards") + " · " + retention + "% target";
+      return cards.length + (cards.length === 1 ? " card" : " cards") + " · " + Math.round(retentionTarget * 100) + "% target · " + (order === "shuffled" ? "shuffled" : "due first") + " · " + newPerSession + " new";
     }
 
     function addForm() {
@@ -1336,8 +1520,7 @@
 
     function runReview() {
       var now = Date.now();
-      var q = reviewQueue(cards, now);
-      if (q.length > reviewLimit) q = q.slice(0, reviewLimit);
+      var q = spacedQueue(cards, now, { reviewLimit: reviewLimit, newPerSession: newPerSession, order: order, rng: rng });
       if (!q.length) {
         screen = "add";
         stage.textContent = "Nothing due";
@@ -1378,7 +1561,7 @@
       }
       function gradeCard(card, correct) {
         if (correct) got++;
-        var updated = Spacing.grade(card, correct, Date.now(), { retention: retention / 100 });
+        var updated = Spacing.grade(card, correct, Date.now(), { retention: retentionTarget });
         /* Spacing.grade returns the schedule fields only. clientId, the hint, the
            deck and the suspended flag have to ride along from the card being
            graded, or the next save mints a new client_id and the store keeps a
@@ -1469,16 +1652,20 @@
   /* ---------- 6. Task Switching ---------- */
   function switching(container, opts) {
     var rng = rngFrom(opts);
-    /* Validated by drillOptions: 12, 18 or 24. */
+    /* Validated by drillOptions: 12 to 30 on a six step grid. */
     var TRIALS = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 12;
-    /* Validated by drillOptions: 0, 25, 50, 75 or 100 percent. The share of trials
-       whose rule differs from the one before it. Default 50 keeps the old even
-       split between repeats and switches. */
-    var switchRate = (opts.options && typeof opts.options.switchRate === "number") ? opts.options.switchRate : 50;
+    /* Validated by drillOptions: 0.2 to 0.5. The share of trials whose rule
+       differs from the one before it. */
+    var switchRate = (opts.options && typeof opts.options.switchRate === "number") ? opts.options.switchRate : 0.3;
+    /* Validated by drillOptions: two rules (color, shape) or three (add number). */
+    var DIMS = (opts.options && opts.options.dimensions === "three") ? ["color", "shape", "number"] : ["color", "shape"];
+    /* Validated by drillOptions: show the rule cue every trial, or only on a
+       switch. */
+    var cueVisible = !(opts.options && opts.options.cueVisible === false);
     var i = 0, correctCount = 0, stopped = false;
     var lastRule = null;
     var repeatTimes = [], switchTimes = [];
-    var shownAt = 0, rule = "color", shape = 0, color = 0;
+    var shownAt = 0, rule = "color", shape = 0, color = 0, number = 1;
     /* The labels currently on the bar, so a digit can reach the same button a
        click would. Off the opts name on purpose: that is the parameter holding
        onComplete. */
@@ -1496,17 +1683,20 @@
     wrap.appendChild(ruleEl); wrap.appendChild(stage); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
 
-    /* Trial count and the chosen switch rate, on screen while the set runs. */
+    /* Trial count, switch rate and how many rules are live, on screen. */
     function metaText() {
-      return i + " / " + TRIALS + " · " + switchRate + "% switch";
+      return i + " / " + TRIALS + " · " + Math.round(switchRate * 100) + "% switch · " + DIMS.length + " rules";
     }
 
-    /* The rule the next trial shows. With no previous rule it is a fair coin; after
-       that the switch rate decides whether the rule changes, so 0 holds one rule
-       and 100 alternates. */
+    /* The rule the next trial shows. With no previous rule it is a fair draw;
+       after that the switch rate decides whether the rule changes, so a low rate
+       holds one rule and a high rate switches more often. */
     function nextRule() {
-      if (lastRule === null) return rng() < 0.5 ? "color" : "shape";
-      if (rng() * 100 < switchRate) return lastRule === "color" ? "shape" : "color";
+      if (lastRule === null) return pick(rng, DIMS);
+      if (rng() < switchRate) {
+        var others = DIMS.filter(function (d) { return d !== lastRule; });
+        return pick(rng, others);
+      }
       return lastRule;
     }
 
@@ -1516,12 +1706,17 @@
       rule = nextRule();
       shape = randInt(rng, 2);
       color = randInt(rng, 2);
+      number = 1 + randInt(rng, 2);
       stim.className = "ts-stim " + (shape ? "s1" : "s0") + " " + (color ? "c1" : "c0");
-      ruleEl.textContent = "Rule: " + (rule === "color" ? "Color" : "Shape");
-      prompt.textContent = rule === "color" ? "Pick the color." : "Pick the shape.";
+      stim.textContent = DIMS.length === 3 ? String(number) : "";
+      /* The cue stays up every trial, or only when the rule just changed. */
+      var isSwitch = lastRule === null || rule !== lastRule;
+      ruleEl.textContent = "Rule: " + (rule === "color" ? "Color" : rule === "shape" ? "Shape" : "Number");
+      ruleEl.hidden = !cueVisible && !isSwitch;
+      prompt.textContent = rule === "color" ? "Pick the color." : rule === "shape" ? "Pick the shape." : "Pick the number.";
       bar.innerHTML = "";
-      var labels = rule === "color" ? ["Orange", "Blue"] : ["Circle", "Square"];
-      var correct = rule === "color" ? color : shape;
+      var labels = rule === "color" ? ["Orange", "Blue"] : rule === "shape" ? ["Circle", "Square"] : ["1", "2"];
+      var correct = rule === "color" ? color : rule === "shape" ? shape : number - 1;
       optionList = labels;
       labels.forEach(function (lab, idx) {
         bar.appendChild(optionButton(lab, idx, function () { answer(idx === correct); }));
@@ -1548,7 +1743,7 @@
       summary.appendChild(el("div", "drill-state", "Set complete"));
       summary.appendChild(el("div", "drill-note", correctCount + " of " + TRIALS + " correct" + (cost != null ? " · switch cost " + cost + " ms" : "")));
       container.appendChild(summary);
-      if (opts.onComplete) opts.onComplete({ drillId: "switching", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: TRIALS, accuracy: correctCount / TRIALS, switchCost: cost } });
+      if (opts.onComplete) opts.onComplete({ drillId: "switching", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: TRIALS, accuracy: correctCount / TRIALS, switchCost: cost, dimensions: DIMS.length, cueVisible: cueVisible } });
     }
     /* Two options, one digit each, in the order they are drawn. The rule changes
        between trials but the count does not, so the handler reads the current

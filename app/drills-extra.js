@@ -82,8 +82,32 @@
     };
   }
 
-  function pickChoice(medianRt) {
-    return (typeof medianRt === "number" && isFinite(medianRt) && medianRt > 0 && medianRt < 350) ? 3 : 2;
+  function pickChoice(medianRt, maxLights) {
+    var cap = (typeof maxLights === "number" && maxLights >= 2) ? Math.floor(maxLights) : 3;
+    if (typeof medianRt !== "number" || !isFinite(medianRt) || medianRt <= 0) return Math.min(2, cap);
+    if (medianRt < 250 && cap >= 4) return 4;
+    if (medianRt < 350) return Math.min(3, cap);
+    return 2;
+  }
+
+  /* The wait before a light, in ms. Fixed is one steady beat; random spreads it,
+     which stops a fast player from predicting the light. */
+  function crtForeperiod(kind, rng) {
+    if (kind === "fixed") return 800;
+    return 400 + randInt(rng, 1200);
+  }
+
+  /* The labels for n lights. Two are the outer lanes, three add the center, four
+     split the center. */
+  function laneLabels(n) {
+    if (n <= 2) return ["Left", "Right"];
+    if (n === 3) return ["Left", "Center", "Right"];
+    return ["Left", "Center left", "Center right", "Right"];
+  }
+
+  /* Whether a trial shows no light at all. Only when catch trials are on. */
+  function crtIsCatch(catchOn, rng) {
+    return !!catchOn && rng() < 0.2;
   }
 
   function problem(level, op, a, b, expected) {
@@ -94,24 +118,38 @@
      level 1: adds times tables and exact division by 2 to 9.
      level 2: addition and subtraction inside 100, and times tables and exact
      division using factors 2 to 12. Every operation tier 1 has stays available,
-     with larger operands. */
-  function makeProblem(level, rng) {
+     with larger operands.
+     opts.ops is the set of enabled operations; opts.digits caps the operand
+     width (1, 2 or 3 digits). Both default to the shipped behaviour. */
+  function makeProblem(level, rng, opts) {
+    var o = opts || {};
     var lvl = Math.floor(Number(level) || 0);
     if (lvl < 0) lvl = 0;
     if (lvl > 2) lvl = 2;
-    var kinds = lvl === 0 ? ["+", "-"] : ["+", "-", "*", "/"];
+    var digits = Math.floor(Number(o.digits) || 2);
+    if (digits < 1) digits = 1;
+    if (digits > 3) digits = 3;
+    var cap = Math.pow(10, digits) - 1;
+    var enabled = (Array.isArray(o.ops) && o.ops.length) ? o.ops : ["+", "-", "*", "/"];
+    var allowed = lvl === 0 ? ["+", "-"] : ["+", "-", "*", "/"];
+    var kinds = enabled.filter(function (x) { return allowed.indexOf(x) >= 0; });
+    /* A user who turns off every operation the level allows still gets the ones
+       they kept, rather than an empty draw. */
+    if (!kinds.length) kinds = enabled.slice();
     var op = pick(rng, kinds);
     if (op === "+") {
-      var hi = lvl >= 2 ? 99 : 29;
+      var hi = lvl >= 2 ? cap : Math.min(cap, 29);
+      hi = Math.max(1, hi);
       var a = 1 + randInt(rng, hi), b = 1 + randInt(rng, hi + 1 - a);
       return problem(lvl, "+", a, b, a + b);
     }
     if (op === "-") {
-      var cap = lvl >= 2 ? 100 : 30;
-      var c = 1 + randInt(rng, cap), d = 1 + randInt(rng, cap);
+      var capMinus = lvl >= 2 ? cap : Math.min(cap, 30);
+      capMinus = Math.max(1, capMinus);
+      var c = 1 + randInt(rng, capMinus), d = 1 + randInt(rng, capMinus);
       return problem(lvl, "-", c, d, c - d);
     }
-    var hiF = lvl >= 2 ? 12 : 9;
+    var hiF = Math.max(2, Math.min(lvl >= 2 ? 12 : 9, cap));
     if (op === "*") {
       var f = 2 + randInt(rng, hiF - 1), g = 2 + randInt(rng, hiF - 1);
       return problem(lvl, "*", f, g, f * g);
@@ -144,7 +182,11 @@
     median: median,
     medianRt: median,
     scoreSart: scoreSart,
+    sartDigit: sartDigit,
     pickChoice: pickChoice,
+    crtForeperiod: crtForeperiod,
+    laneLabels: laneLabels,
+    crtIsCatch: crtIsCatch,
     makeProblem: makeProblem,
     checkAnswer: checkAnswer,
     SART_TARGET: SART_TARGET
@@ -319,9 +361,10 @@
   var SART_BEAT = 1000;
   var SART_FILLERS = [1, 2, 4, 5, 6, 7, 8, 9];
 
-  function sartDigit(rng, target) {
+  function sartDigit(rng, target, rate) {
     var t = target == null ? SART_TARGET : target;
-    return randInt(rng, 10) === t ? t : pick(rng, SART_FILLERS);
+    var r = (typeof rate === "number" && isFinite(rate)) ? rate : 0.2;
+    return rng() < r ? t : pick(rng, SART_FILLERS);
   }
 
   function sart(container, opts) {
@@ -330,11 +373,17 @@
     var clock = makeClock();
     var stopped = false, done = false;
     var i = 0, trials = [], timerId = 0;
-    /* Validated by drillOptions: 20, 30 or 40. Default keeps the 30-trial set. */
+    /* Validated by drillOptions: 20 to 60 on a ten step grid. Default 30. */
     var total = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : SART_TRIALS;
     /* Validated by drillOptions: 1 to 9. The digit the player must withhold on.
        Default 3 is the classic SART target. */
     var targetDigit = (opts.options && typeof opts.options.targetDigit === "number") ? opts.options.targetDigit : SART_TARGET;
+    /* Validated by drillOptions: 0.1 to 0.3. How often the target appears. */
+    var signalRate = (opts.options && typeof opts.options.signalRate === "number") ? opts.options.signalRate : 0.2;
+    /* Validated by drillOptions: off, 800 or 1200 ms. Off keeps the one second
+       beat the drill has always used. */
+    var responseWindow = (opts.options && typeof opts.options.responseWindow === "number") ? opts.options.responseWindow : 0;
+    var windowMs = responseWindow > 0 ? responseWindow : SART_BEAT;
     var curDigit = 0, shownAt = 0, resolved = true;
 
     var wrap = el("div", "drill drill-sart");
@@ -345,10 +394,10 @@
     var cue = el("div", "nx-cue", "Press only on the digit " + targetDigit + ".");
     cue.setAttribute("aria-live", "polite");
     var bar = el("div", "drill-bar");
-    var pressBtn = button("btn-primary nx-press", "Press on 3");
+    var pressBtn = button("btn-primary nx-press", "Press on " + targetDigit);
     bar.appendChild(pressBtn);
-    var meta = el("div", "nb-meta mono", "0 / " + total);
-    var note = el("div", "drill-note", "A steady stream of digits, one at a time. Press on 3 and hold back on everything else. Trains sustained attention.");
+    var meta = el("div", "nb-meta mono", sartMeta());
+    var note = el("div", "drill-note", "A steady stream of digits, one at a time. Press on " + targetDigit + " and hold back on everything else. Trains sustained attention.");
     wrap.appendChild(stage);
     wrap.appendChild(live);
     wrap.appendChild(cue);
@@ -356,6 +405,10 @@
     wrap.appendChild(bar);
     wrap.appendChild(meta);
     container.appendChild(wrap);
+
+    function sartMeta() {
+      return i + " / " + total + " · " + Math.round(signalRate * 100) + "% signal · " + windowMs + " ms";
+    }
 
     var unbindVis = bindVisibility(doc, clock);
     var unbindKey = bindKey(doc, function (e) {
@@ -381,7 +434,7 @@
         playSfx("correct");
       } else {
         stage.className = "nx-digit mono warn";
-        cue.textContent = "pressed, and that was not a 3";
+        cue.textContent = "pressed, and that was not a " + targetDigit;
         playSfx("incorrect");
       }
       live.textContent = cue.textContent;
@@ -395,7 +448,7 @@
       trials.push({ digit: curDigit, pressed: false, rt: null });
       if (target) {
         stage.className = "nx-digit mono warn";
-        cue.textContent = "the 3 went by";
+        cue.textContent = "the " + targetDigit + " went by";
         playSfx("tap");
       } else {
         stage.className = "nx-digit mono ok";
@@ -415,14 +468,14 @@
       if (stopped) return;
       if (i >= total) return finish();
       i++;
-      curDigit = sartDigit(rng, targetDigit);
+      curDigit = sartDigit(rng, targetDigit, signalRate);
       resolved = false;
       shownAt = Date.now();
       stage.className = "nx-digit mono";
       stage.textContent = String(curDigit);
       live.textContent = "Digit " + curDigit;
-      meta.textContent = i + " / " + total;
-      timerId = clock.set(withhold, SART_BEAT);
+      meta.textContent = sartMeta();
+      timerId = clock.set(withhold, windowMs);
     }
 
     function finish() {
@@ -472,38 +525,50 @@
 
   var CRT_TRIALS = 20;
   var CRT_WINDOW = 1200;
-  var CRT_LANES = ["Left", "Center", "Right"];
-  var CRT_KEYS = ["1", "2", "3"];
-
-  function laneSet(n) { return n >= 3 ? [0, 1, 2] : [0, 2]; }
+  var CRT_KEYS = ["1", "2", "3", "4"];
 
   function crt(container, opts) {
     injectStyles();
     var rng = rngFor(opts);
     var clock = makeClock();
     var stopped = false, done = false;
-    var i = 0, choice = 2, hits = 0, misses = 0, rts = [];
-    /* Validated by drillOptions: 10, 20 or 30. Default keeps the 20-trial set. */
+    var i = 0, choice = 2, hits = 0, misses = 0, catchHits = 0, rts = [];
+    /* Validated by drillOptions: 10 to 40 on a ten step grid. */
     var total = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : CRT_TRIALS;
-    /* Validated by drillOptions: 2 or 3. The number of lights the set starts on.
-       The adaptive rule still widens or narrows it after a hit, so this is a
-       starting point, not a fixed count. Default 2 keeps the old start. */
+    /* Validated by drillOptions: 2 to 4. The number of lights the set starts on.
+       The adaptive rule widens it as reactions speed up, up to the chosen count. */
     var choices = (opts.options && typeof opts.options.choices === "number") ? opts.options.choices : 2;
+    var maxLights = Math.max(3, choices);
     choice = choices;
+    /* Validated by drillOptions: fixed or random. The wait before a light. */
+    var foreperiod = (opts.options && opts.options.foreperiod === "fixed") ? "fixed" : "random";
+    /* Validated by drillOptions: whether some trials show no light and require no
+       press. */
+    var catchTrials = !!(opts.options && opts.options.catchTrials);
     var shownAt = 0, litIdx = -1, targetLane = 0, resolved = true, timerId = 0;
+    var isCatch = false;
     var lanes = [], laneEls = [];
 
     var wrap = el("div", "drill drill-crt");
     var stage = el("div", "nx-lanes");
     var cue = el("div", "nx-cue", "Wait for a light, then press it.");
     cue.setAttribute("aria-live", "polite");
-    var note = el("div", "drill-note", "Two lights, then three once you are quick. Trains simple reaction speed.");
-    var meta = el("div", "nb-meta mono", "0 / " + total + " · " + choice + " lights");
+    var note = el("div", "drill-note", crtNote());
+    var meta = el("div", "nb-meta mono", crtMeta());
     wrap.appendChild(stage);
     wrap.appendChild(cue);
     wrap.appendChild(note);
     wrap.appendChild(meta);
     container.appendChild(wrap);
+
+    function crtMeta() {
+      return i + " / " + total + " · " + choice + " lights · " + foreperiod + (catchTrials ? " · catch" : "");
+    }
+    function crtNote() {
+      if (choice >= 4) return "Four lights. Trains simple reaction speed.";
+      if (choice === 3) return "Three lights. Trains simple reaction speed.";
+      return "Two lights now. Move to three once your median reaction time drops under 350 ms.";
+    }
 
     var unbindVis = bindVisibility(doc, clock);
     var unbindKey = bindKey(doc, function (e) {
@@ -513,14 +578,14 @@
     var teardown = makeTeardown(clock, unbindVis, unbindKey);
 
     function layout() {
-      var set = laneSet(choice);
-      if (set.length === lanes.length) return;
-      lanes = set;
+      var labels = laneLabels(choice);
+      if (labels.length === lanes.length) return;
+      lanes = labels;
       while (stage.firstChild) stage.removeChild(stage.firstChild);
       laneEls = [];
-      lanes.forEach(function (idx, pos) {
-        var b = button("nx-lane", CRT_LANES[idx]);
-        b.setAttribute("aria-label", CRT_LANES[idx] + ", key " + (pos + 1));
+      lanes.forEach(function (label, pos) {
+        var b = button("nx-lane", label);
+        b.setAttribute("aria-label", label + ", key " + (pos + 1));
         var k = el("span", "k", "key " + (pos + 1));
         b.appendChild(k);
         b.addEventListener("click", function () { press(pos); });
@@ -528,9 +593,7 @@
         laneEls.push(b);
       });
       stage.style.gridTemplateColumns = "repeat(" + lanes.length + ",1fr)";
-      note.textContent = choice === 3
-        ? "Three lights. Trains simple reaction speed."
-        : "Two lights now. Move to three once your median reaction time drops under 350 ms.";
+      note.textContent = crtNote();
     }
 
     function reset() {
@@ -545,9 +608,28 @@
       if (litIdx >= 0) laneEls[litIdx].className = "nx-lane lit";
     }
 
+    /* A short gap after feedback, then the foreperiod, then the light. The two
+       timers run in sequence, never at once. */
+    function afterAnswer() { timerId = clock.set(schedule, 260); }
+    function schedule() {
+      if (stopped || done) return;
+      timerId = clock.set(light, crtForeperiod(foreperiod, rng));
+    }
+
     function press(pos) {
-      if (stopped || done || resolved || litIdx < 0) return;
-      if (pos < 0 || pos >= lanes.length) return;
+      if (stopped || done || resolved) return;
+      /* On a catch trial there is no light, so any press is an error. */
+      if (isCatch) {
+        resolved = true;
+        clock.clear(timerId);
+        misses++;
+        cue.textContent = "no light there";
+        playSfx("incorrect");
+        meta.textContent = crtMeta();
+        afterAnswer();
+        return;
+      }
+      if (litIdx < 0 || pos < 0 || pos >= lanes.length) return;
       resolved = true;
       clock.clear(timerId);
       var rt = Math.max(1, Date.now() - shownAt - clock.hiddenMs());
@@ -558,7 +640,7 @@
         paintLit();
         cue.textContent = "hit";
         playSfx("correct");
-        choice = pickChoice(median(rts));
+        choice = pickChoice(median(rts), maxLights);
         layout();
       } else {
         misses++;
@@ -568,8 +650,8 @@
         cue.textContent = "wrong button";
         playSfx("incorrect");
       }
-      meta.textContent = i + " / " + total + " · " + choice + " lights";
-      clock.set(next, 260);
+      meta.textContent = crtMeta();
+      afterAnswer();
     }
 
     function timeout() {
@@ -580,24 +662,42 @@
       paintLit();
       cue.textContent = "too slow";
       playSfx("incorrect");
-      meta.textContent = i + " / " + total + " · " + choice + " lights";
-      clock.set(next, 260);
+      meta.textContent = crtMeta();
+      afterAnswer();
     }
 
-    function next() {
+    function catchTimeout() {
+      if (stopped || done || resolved) return;
+      resolved = true;
+      catchHits++;
+      cue.textContent = "held";
+      playSfx("tap");
+      meta.textContent = crtMeta();
+      afterAnswer();
+    }
+
+    function light() {
       if (stopped) return;
       if (i >= total) return finish();
       i++;
       layout();
       resolved = false;
       reset();
+      isCatch = crtIsCatch(catchTrials, rng);
       shownAt = Date.now();
-      targetLane = randInt(rng, lanes.length);
-      litIdx = targetLane;
-      paintLit();
-      cue.textContent = "go";
-      meta.textContent = i + " / " + total + " · " + choice + " lights";
-      timerId = clock.set(timeout, CRT_WINDOW);
+      if (isCatch) {
+        litIdx = -1;
+        cue.textContent = "hold";
+        meta.textContent = crtMeta();
+        timerId = clock.set(catchTimeout, CRT_WINDOW);
+      } else {
+        targetLane = randInt(rng, lanes.length);
+        litIdx = targetLane;
+        paintLit();
+        cue.textContent = "go";
+        meta.textContent = crtMeta();
+        timerId = clock.set(timeout, CRT_WINDOW);
+      }
     }
 
     function finish() {
@@ -611,6 +711,7 @@
       container.appendChild(summaryEl(
         "Set complete",
         value + " ms median · " + hits + " hits · " + misses + " missed" +
+        (catchTrials ? " · " + catchHits + " held" : "") +
         (fast == null ? "" : " · fastest " + Math.round(fast) + " ms")
       ));
       if (opts.onComplete) {
@@ -623,16 +724,19 @@
             trials: total,
             hits: hits,
             misses: misses,
+            catchHits: catchHits,
             medianRt: med == null ? null : Math.round(med),
             fastestRt: fast == null ? null : Math.round(fast),
-            choice: choice
+            choice: choice,
+            foreperiod: foreperiod,
+            catchTrials: catchTrials
           }
         });
       }
     }
 
     layout();
-    timerId = clock.set(next, 900);
+    timerId = clock.set(schedule, 900);
     return {
       stop: function () {
         if (stopped) return;
@@ -645,7 +749,6 @@
   /* ---------- 3. Mental math sprint ---------- */
 
   var MATH_TRIALS = 20;
-  var MATH_MS = 4000;
   var MATH_PROBE = 8;
   var MATH_KEYS = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "-", "0", "C"];
 
@@ -662,16 +765,20 @@
     var startLevel = (opts.options && typeof opts.options.startLevel === "number") ? opts.options.startLevel : 1;
     level = startLevel - 1;
     levelSet = startLevel > 1;
-    /* Validated by drillOptions: 3 to 8 seconds. The per-problem clock. Default 4
-       keeps the four second window the drill has always used. */
-    var secondsPerProblem = (opts.options && typeof opts.options.secondsPerProblem === "number") ? opts.options.secondsPerProblem : 4;
-    var problemMs = secondsPerProblem * 1000;
+    /* Validated by drillOptions: the enabled operations, at least one. */
+    var ops = (opts.options && Array.isArray(opts.options.ops) && opts.options.ops.length) ? opts.options.ops : ["+", "-", "*", "/"];
+    /* Validated by drillOptions: operand width, 1 to 3 digits. Default 2. */
+    var digits = (opts.options && typeof opts.options.digits === "number") ? opts.options.digits : 2;
+    /* Validated by drillOptions: off, 5, 10 or 15 seconds per problem. Off means
+       the problem waits for an answer. */
+    var timePerProblem = (opts.options && typeof opts.options.timePerProblem === "number") ? opts.options.timePerProblem : 0;
+    var problemMs = timePerProblem > 0 ? timePerProblem * 1000 : 0;
     var cur = null, shownAt = 0, resolved = true, timerId = 0;
     var times = [];
 
-    /* Trial count, running score and the per-problem clock, on screen. */
+    /* Trial count, running score, the clock and the live operations, on screen. */
     function metaText() {
-      return i + " / " + MATH_TRIALS + " · " + correct + " correct · " + secondsPerProblem + " s";
+      return i + " / " + MATH_TRIALS + " · " + correct + " correct · " + (problemMs > 0 ? timePerProblem + " s" : "untimed") + " · " + ops.join("");
     }
 
     var wrap = el("div", "drill drill-math");
@@ -763,14 +870,14 @@
           note.textContent = "Times tables and division now. Trains mental arithmetic fluency.";
         }
       }
-      cur = makeProblem(level, rng);
+      cur = makeProblem(level, rng, { ops: ops, digits: digits });
       resolved = false;
       shownAt = Date.now();
       prompt.textContent = cur.text + " =";
       cue.textContent = "Type the answer, then press enter.";
       input.value = "";
       try { input.focus(); } catch (e) {}
-      timerId = clock.set(timeout, problemMs);
+      if (problemMs > 0) timerId = clock.set(timeout, problemMs);
     }
 
     function finish() {
@@ -795,7 +902,10 @@
             correct: correct,
             accuracy: correct / MATH_TRIALS,
             medianMs: med == null ? null : Math.round(med),
-            level: level
+            level: level,
+            ops: ops.slice(),
+            digits: digits,
+            timePerProblem: timePerProblem
           }
         });
       }

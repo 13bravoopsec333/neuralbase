@@ -146,7 +146,7 @@ function verifyFriendly(error) {
   return 'That code did not work. Check the email and try again.';
 }
 
-/* ---------------- navigation ---------------- */
+/* ---------------- screen changes ---------------- */
 
 function go() {
   location.assign('index.html');
@@ -239,7 +239,7 @@ function paintResend() {
   btn.disabled = left > 0;
   if (note) {
     note.hidden = left <= 0;
-    note.textContent = left > 0 ? 'You can send another email in ' + left + 's.' : '';
+    note.textContent = left > 0 ? 'You can resend in ' + left + 's.' : '';
   }
 }
 
@@ -303,7 +303,7 @@ async function onSignin(event) {
        step rather than a wall of text on the sign-in form. */
     if (isUnconfirmed(res.error)) {
       showVerify(email);
-      setAlert('vf-alert', 'That email is not confirmed yet. Open the confirmation link we sent, or resend it.');
+      setAlert('vf-alert', 'That email is not confirmed yet. Open the link we sent, or resend it.');
       announce('Email not confirmed. Open the confirmation link.');
       return;
     }
@@ -333,7 +333,7 @@ async function onSignup(event) {
     bad = true;
   }
   if (!usernameOk(username)) {
-    setErr('su-username', 'Use 3 to 24 letters, numbers, or underscores.');
+    setErr('su-username', 'Use 3 to 24 letters, numbers, or _.');
     bad = true;
   }
   if (!dob) {
@@ -418,7 +418,7 @@ async function onComplete(event) {
 
   let bad = false;
   if (!usernameOk(username)) {
-    setErr('co-username', 'Use 3 to 24 letters, numbers, or underscores.');
+    setErr('co-username', 'Use 3 to 24 letters, numbers, or _.');
     bad = true;
   }
   if (!dob) {
@@ -453,7 +453,7 @@ async function onGoogle() {
     go();
     return;
   }
-  /* Real OAuth: the browser navigates to Google, then back to the app. */
+  /* Real OAuth: the browser goes to Google, then back to the app. */
   if (res.user && needsCompletion(res.user)) showComplete(res.user);
   else if (res.user) go();
 }
@@ -561,7 +561,7 @@ function readUrlAuth() {
 function linkMessage(link) {
   const s = String((link && link.text) || '');
   if (/expired|invalid|already|otp_expired/i.test(s)) {
-    return 'That confirmation link has expired or was already used. Sign in with your email and password to get a new one.';
+    return 'That confirmation link has expired or was already used. Sign in to get a new one.';
   }
   return 'That confirmation link did not work. Sign in with your email and password to try again.';
 }
