@@ -5,12 +5,12 @@
 
   var KEY = "cortex.theme";
 
+  /* Two themes: a dark default and a light variant. The old carbon, midnight and
+     ember sets were removed with the rest of the decoration, so listing them here
+     would offer names that resolve to nothing. */
   var THEMES = [
-    { name: "graphite",  label: "Graphite",  mode: "dark" },
-    { name: "carbon",    label: "Carbon",    mode: "dark" },
-    { name: "porcelain", label: "Porcelain", mode: "light" },
-    { name: "midnight",  label: "Midnight",  mode: "dark" },
-    { name: "ember",     label: "Ember",     mode: "dark" }
+    { name: "graphite",  label: "Dark",  mode: "dark" },
+    { name: "porcelain", label: "Light", mode: "light" }
   ];
   var NAMES = THEMES.map(function (t) { return t.name; });
 

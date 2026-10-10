@@ -1,18 +1,20 @@
 /* Neuralbase router: one document, one visible view.
-   The app is drills-only now, so there is a single route. navigate() shows the
-   drills section and renders app/views/train.js via its render(container, ctx).
+   Two routes, Drills and Stats, with Drills as the default. navigate() shows the
+   matching section and renders app/views/<name>.js via its render(container, ctx).
    Only modules registered in globalThis.CORTEX_VIEWS (see index.html) are
-   imported, so an unbuilt view shows a placeholder instead of firing a request
-   that would 404. */
+   imported, so a route whose module is not there yet shows a placeholder instead
+   of firing a request that would 404. */
 
-const VIEWS = ['train'];
+const VIEWS = ['train', 'stats'];
 
 const LABELS = {
   train: 'Drills',
+  stats: 'Stats',
 };
 
 const NOTES = {
   train: 'The drill host and set controls land here.',
+  stats: 'Your per-drill history and trend land here.',
 };
 
 const REGISTERED = Array.isArray(globalThis.CORTEX_VIEWS) ? globalThis.CORTEX_VIEWS.slice() : [];

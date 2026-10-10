@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Neuralbase</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="focus.css">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -14,30 +13,30 @@
 </head>
 <body>
 
-<main>
-  <div class="demo-banner" id="demoBanner" hidden>
-    <b>Demo mode.</b> No backend keys, so progress stays on this device.
+<header class="topbar">
+  <a class="mark" href="index.html" aria-label="Neuralbase home">
+    <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
+      <rect x="8" y="8" width="8" height="8"/><rect x="8" y="18" width="8" height="8"/><rect x="8" y="28" width="8" height="8"/><rect x="8" y="38" width="8" height="8"/><rect x="8" y="48" width="8" height="8"/>
+      <rect x="48" y="8" width="8" height="8"/><rect x="48" y="18" width="8" height="8"/><rect x="48" y="28" width="8" height="8"/><rect x="48" y="38" width="8" height="8"/><rect x="48" y="48" width="8" height="8"/>
+      <rect x="18" y="18" width="8" height="8"/><rect x="28" y="28" width="8" height="8"/><rect x="38" y="38" width="8" height="8"/>
+    </svg>
+  </a>
+  <nav class="topnav" aria-label="Views">
+    <a href="#train" data-view="train" aria-current="page">Drills</a>
+    <a href="#stats" data-view="stats">Stats</a>
+  </nav>
+  <div class="topbar-right">
+    <span class="account" id="accountName">Account</span>
+    <button class="signout" id="signOutBtn" type="button">Sign out</button>
   </div>
+</header>
 
-  <header class="app-header">
-    <div class="app-header-left">
-      <span class="app-mark" aria-hidden="true">
-        <svg viewBox="0 0 64 64" fill="currentColor">
-          <rect x="8" y="8" width="8" height="8"/><rect x="8" y="18" width="8" height="8"/><rect x="8" y="28" width="8" height="8"/><rect x="8" y="38" width="8" height="8"/><rect x="8" y="48" width="8" height="8"/>
-          <rect x="48" y="8" width="8" height="8"/><rect x="48" y="18" width="8" height="8"/><rect x="48" y="28" width="8" height="8"/><rect x="48" y="38" width="8" height="8"/><rect x="48" y="48" width="8" height="8"/>
-          <rect x="18" y="18" width="8" height="8"/><rect x="28" y="28" width="8" height="8"/><rect x="38" y="38" width="8" height="8"/>
-        </svg>
-      </span>
-      <h1 class="app-title">Neuralbase</h1>
-    </div>
-    <div class="app-header-right">
-      <span class="app-account" id="accountName">Account</span>
-      <button class="btn-ghost" id="signOutBtn" type="button">Sign out</button>
-    </div>
-  </header>
+<main>
+  <div class="demo-banner" id="demoBanner" hidden>Demo mode. Progress stays on this device.</div>
 
   <div class="content" id="view-root">
     <section class="view" id="view-train" tabindex="-1" aria-label="Drills" hidden></section>
+    <section class="view" id="view-stats" tabindex="-1" aria-label="Stats" hidden></section>
   </div>
 </main>
 
@@ -71,7 +70,7 @@
 
 <script>
   /* View modules that exist in app/views/. The router imports only names listed here. */
-  window.CORTEX_VIEWS = ["train"];
+  window.CORTEX_VIEWS = ["train", "stats"];
 </script>
 <script src="content.js"></script>
 <script src="store.js"></script>

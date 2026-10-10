@@ -26,13 +26,6 @@ function drillById(id) {
   for (var i = 0; i < D.length; i++) if (D[i].id === id) return D[i];
   return { id: id, name: 'Legacy run', icon: '', desc: '', trains: '', works: '', evidence: '', pro: false, direction: 'lower', unit: '' };
 }
-/* The drill's mark, drawn in currentColor. Markup is our own static SVG string. */
-function iconEl(d) {
-  var s = h('span', 'drill-ic');
-  s.setAttribute('aria-hidden', 'true');
-  if (d && d.icon) s.innerHTML = d.icon;
-  return s;
-}
 function clientId() {
   try { if (globalThis.crypto && globalThis.crypto.randomUUID) return globalThis.crypto.randomUUID(); } catch (e) { /* fall through */ }
   return 'run-' + Date.now() + '-' + Math.random().toString(16).slice(2);
@@ -219,6 +212,9 @@ var seed = null;
    trial stream a running drill already committed to, so it is locked for the
    life of the set and unlocked at the finish. */
 var running = false;
+/* The run that was just recorded, kept so the results view can show it and the
+   delta against the best that stood before it. Cleared when a set is abandoned. */
+var lastRun = null;
 
 /* ---------- focus mode ----------
    A running drill gets the whole screen. app/focus.css was written for this and
@@ -402,6 +398,7 @@ function stopSet() {
   running = false;
   pending = [];
   sessionDrills = [];
+  lastRun = null;
   if (ui.startBtn) { ui.startBtn.disabled = false; ui.startBtn.textContent = 'Start'; }
   paintIdle();
   setIdle(true);
@@ -639,55 +636,83 @@ function injectStyles() {
   if (typeof document === 'undefined' || document.getElementById('nb-train-styles')) return;
   var s = document.createElement('style');
   s.id = 'nb-train-styles';
+  /* One accent alias with a fallback, so the view still reads if the shell lane
+     has not landed --accent yet. Everything else is an existing token. */
+  var ACC = 'var(--accent,var(--lime))';
   s.textContent = [
     /* The root is one column that keeps the frame .view gives every page: a flex
        column taking the height the shell has left. max-width:none cancels the
        view-mid-wide ceiling the container carries, because that is a measure width
        for running text, not a limit on the drill area. */
     '.tr-view{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0}',
-    /* The drill selector. The old nine-card programs band is gone: it was a second,
-       larger copy of the drill list. This row of small buttons is the one place a
-       drill is chosen, kept small so the drill area keeps the screen. */
-    '.tr-picker{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-self:center;max-width:100%}',
-    '.tr-drill{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:8px;background:transparent;border:1px solid var(--line2);color:var(--muted);font-size:12px;font-weight:600;max-width:100%;transition:border-color .15s ease,color .15s ease,background .15s ease}',
-    '.tr-drill .drill-ic{width:15px;height:15px}',
-    '.tr-drill:hover{border-color:var(--lime-edge);color:var(--ink)}',
-    '.tr-drill[aria-pressed="true"]{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
-    '.tr-drill-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    /* One short line: the selected drill's name and its one description line. */
-    '.tr-line{margin:0;text-align:center;color:var(--muted);font-size:13px;line-height:1.4;max-width:70ch;align-self:center}',
-    /* The drill area takes the rest of the viewport. Idle it holds the settings
-       panel; a run adopts its .drill node into the focus stage. */
+    /* The drill selector: one plain text row. Nine names, no boxes, no marks. The
+       selected drill is the accent and a heavier weight, nothing more. */
+    '.tr-picker{display:flex;flex-wrap:wrap;gap:2px 12px;justify-content:center;width:100%;max-width:100%}',
+    '.tr-drill{display:inline-flex;align-items:center;background:none;border:0;padding:3px 0;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;line-height:1.5;max-width:100%;transition:color .15s ease}',
+    '.tr-drill:hover{color:var(--ink)}',
+    '.tr-drill[aria-pressed="true"]{color:' + ACC + ';font-weight:700}',
+    '.tr-drill-name{white-space:nowrap}',
+    /* One short line: the selected drill's description, quiet under the picker. */
+    '.tr-line{margin:0;text-align:center;color:var(--dim);font-size:13px;line-height:1.4;max-width:70ch;align-self:center}',
+    /* The drill area takes the rest of the viewport and is the largest thing on the
+       page. Idle it holds the settings panel; a run adopts its .drill node into the
+       focus stage. */
     '.tr-view .drill-mount{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center}',
-    /* Settings panel: one labelled control per setting, centered in the mount.
-       Rows flow into columns when there is room, so a drill with four settings
-       still reads in a couple of rows. Compact and quiet, tokens only. */
-    '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:min(640px,100%);margin-inline:auto}',
-    '.tr-set-rows{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 20px}',
-    '.tr-set-row{display:flex;flex-direction:column;gap:7px;min-width:0}',
-    '.tr-set-row .tr-seg{flex-wrap:wrap}',
-    '.tr-set-val{overflow-wrap:anywhere}',
-    '.tr-set-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}',
-    '.tr-set-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}',
-    '.tr-set-val{font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}',
-    '.tr-seg{display:flex;flex-wrap:wrap;gap:6px}',
-    '.tr-seg-btn{min-width:40px;min-height:34px;padding:6px 10px;border-radius:8px;background:transparent;border:1px solid var(--line2);color:var(--muted);font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;transition:border-color .15s ease,color .15s ease,background .15s ease}',
-    '.tr-seg-btn:not(:disabled):hover{border-color:var(--lime-edge);color:var(--ink)}',
-    '.tr-seg-btn[aria-pressed="true"]{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
-    '.tr-mode{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:6px 9px;border-radius:8px;background:transparent;border:1px solid var(--line2);color:var(--muted);display:inline-flex;align-items:center;gap:6px;transition:border-color .15s ease,color .15s ease}',
-    '.tr-mode:not(:disabled):hover{border-color:var(--lime-edge);color:var(--ink)}',
-    '.tr-mode[aria-pressed="true"]{color:var(--lime);border-color:var(--lime-edge);background:var(--lime-soft)}',
+    '.tr-view .drill{width:100%}',
+    /* Settings: plain text controls, matching the picker. One labelled row per
+       setting: the label, then the values as small text buttons with the current
+       one in the accent. The current value is also in the row for assistive tech,
+       but not shown twice. */
+    '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-5);width:fit-content;max-width:100%;margin-inline:auto}',
+    '.tr-set-rows{display:grid;grid-template-columns:1fr;gap:14px}',
+    '.tr-set-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;min-width:0}',
+    '.tr-set-head{display:flex;align-items:baseline;gap:8px;min-width:0}',
+    '.tr-set-label{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;min-width:104px}',
+    /* The value readout stays in the tree, but the pressed value button already
+       shows it, so it is not drawn twice. */
+    '.tr-set-val{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
+    '.tr-seg{display:flex;flex-wrap:wrap;gap:2px}',
+    '.tr-seg-btn{background:none;border:0;padding:3px 6px;border-radius:6px;min-height:26px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.4;transition:color .15s ease}',
+    '.tr-seg-btn:not(:disabled):hover{color:var(--ink)}',
+    '.tr-seg-btn[aria-pressed="true"]{color:' + ACC + ';font-weight:700}',
+    '.tr-mode{background:none;border:0;padding:3px 6px;border-radius:6px;min-height:26px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;line-height:1.4;display:inline-flex;align-items:center;transition:color .15s ease}',
+    '.tr-mode:not(:disabled):hover{color:var(--ink)}',
+    '.tr-mode[aria-pressed="true"]{color:' + ACC + ';font-weight:700}',
     '.tr-mode:disabled{opacity:.5;cursor:not-allowed}',
     '.tr-mode[aria-pressed="true"]:disabled{opacity:.7}',
-    '.tr-modes{margin-top:2px}',
-    '.tr-field{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}',
-    '.tr-modeset{display:flex;gap:6px;flex-wrap:wrap}',
-    '.tr-blurb{font-size:12px;color:var(--muted);margin:6px 0 0;max-width:52ch}',
+    '.tr-modes{margin-top:0}',
+    '.tr-field{display:block;font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);margin-bottom:2px}',
+    '.tr-modeset{display:flex;gap:2px;flex-wrap:wrap}',
+    '.tr-blurb{font-size:12px;color:var(--dim);margin:6px 0 0;max-width:52ch}',
     /* Every control is a real button, so every one carries a visible focus ring. */
-    '.tr-drill:focus-visible,.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-start:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
+    '.tr-drill:focus-visible,.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-start:focus-visible,.rs-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
     /* Start: centered under the panel, the one primary action on the page. */
     '.tr-actions{justify-content:center}',
     '.tr-start{padding:12px 26px;font-size:15px;border-radius:10px;min-width:180px}',
+    /* Results. The score leads, set large in the mono face; everything under it is
+       quiet. Plain text actions, no boxes, same language as the picker. */
+    '.rs-view{display:flex;flex-direction:column;align-items:center;gap:var(--gap-4);width:100%;max-width:min(680px,100%);margin-inline:auto;text-align:center;padding:var(--gap-2) 0}',
+    '.rs-name{margin:0;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}',
+    '.rs-score{display:flex;align-items:baseline;justify-content:center;gap:12px;line-height:1}',
+    '.rs-value{font-size:clamp(56px,15vw,120px);font-weight:600;letter-spacing:-.04em;color:var(--ink);font-variant-numeric:tabular-nums}',
+    '.rs-unit{font-size:clamp(18px,3vw,26px);color:var(--muted)}',
+    '.rs-acc{margin:0;font-size:14px;color:var(--muted)}',
+    '.rs-acc .mono{color:var(--ink)}',
+    '.rs-delta{margin:0;font-size:14px;color:var(--muted)}',
+    '.rs-delta-v{color:var(--ink)}',
+    '.rs-pr .rs-delta-v{color:' + ACC + '}',
+    '.rs-delta-tag{color:var(--dim)}',
+    '.rs-first{color:var(--muted)}',
+    '.rs-chart-wrap{width:100%;display:flex;flex-direction:column;align-items:center;gap:6px}',
+    '.rs-chart{display:flex;align-items:flex-end;justify-content:center;gap:6px;width:100%;max-width:360px;height:64px}',
+    '.rs-bar{flex:1 1 0;max-width:26px;min-width:6px;border-radius:3px 3px 0 0;background:var(--line2)}',
+    '.rs-bar-last{background:' + ACC + '}',
+    '.rs-chart-cap{margin:0;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}',
+    '.rs-actions{display:flex;gap:var(--gap-5);align-items:center;justify-content:center;flex-wrap:wrap;margin-top:var(--gap-2)}',
+    '.rs-act{background:none;border:0;padding:6px 2px;font-family:var(--sans);font-size:15px;font-weight:600;color:var(--muted);cursor:pointer;transition:color .15s ease,opacity .15s ease}',
+    '.rs-act:hover{color:var(--ink)}',
+    '.rs-again{color:' + ACC + '}',
+    '.rs-again:hover{color:' + ACC + ';opacity:.85}',
     /* The focus stage. focus.css sizes the stage; these rules lift its width cap
        and trim its gutter so a running drill is edge to edge. Later in the
        document than focus.css, so an equal-specificity rule here wins. */
@@ -708,12 +733,8 @@ function injectStyles() {
     '.nb-focus-stage dialog .nb-dialog-keep:hover{opacity:.9}',
     '.nb-focus-stage dialog .nb-dialog-end{background:transparent;border:1px solid var(--line2);color:var(--ink)}',
     '.nb-focus-stage dialog .nb-dialog-end:hover{border-color:var(--warn);color:var(--warn)}',
-    /* On a phone the names would wrap the selector to five rows. The icons stay,
-       the name rides on the button's label and on the line below, so the selector
-       stays a couple of rows and the drill area keeps the screen. */
-    '@media (max-width:560px){.tr-drill{padding:8px}.tr-drill-name{display:none}.tr-drill .drill-ic{width:20px;height:20px}}',
     /* Reduced motion: no transitions on any of the chrome. */
-    '@media (prefers-reduced-motion:reduce){.tr-drill,.tr-seg-btn,.tr-mode,.nb-focus-stage dialog button{transition:none}}'
+    '@media (prefers-reduced-motion:reduce){.tr-drill,.tr-seg-btn,.tr-mode,.rs-act,.nb-focus-stage dialog button{transition:none}}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -738,9 +759,7 @@ function buildDOM(container) {
       b.type = 'button';
       b.setAttribute('data-drill', p.id);
       b.setAttribute('aria-pressed', 'false');
-      b.setAttribute('aria-label', p.name);
       b.title = p.name;
-      b.appendChild(iconEl(p));
       b.appendChild(h('span', 'tr-drill-name', p.name));
       b.addEventListener('click', function () { pickDrill(p.id); });
       pickBtns[p.id] = b;
@@ -961,6 +980,17 @@ function recordRun(rec) {
     prevBest = agg.best;
   }
   Store.record(state, rec);
+  /* Held for the results view: the value, its unit, the accuracy the drill
+     reported, and the best that stood before this run. prevBest is null on a
+     first run, which is what makes the results say so instead of showing zero. */
+  lastRun = {
+    drillId: rec.drillId,
+    value: rec.value,
+    unit: rec.unit || (d && d.unit) || '',
+    meta: rec.meta || {},
+    isPR: isPR,
+    prevBest: prevBest
+  };
   if (isPR) {
     /* No banner any more: a run that beats the old best is announced to assistive
        tech instead of drawing a card over the screen. */
@@ -1007,6 +1037,120 @@ function finishSession() {
   }
   sessionDrills = [];
   paintAll();
+  /* The set is done. Show the result in the drill area, so the numbers get the
+     screen before the picker comes back. A set that recorded no run shows
+     nothing. */
+  if (lastRun) showResults(lastRun);
+}
+
+/* One decimal at most, so a mono readout stays short. */
+function fmtNum(v) {
+  if (typeof v !== 'number' || !isFinite(v)) return '';
+  return String(Math.round(v * 100) / 100);
+}
+
+/* A small bar chart of this drill's last few runs, drawn from the stored records
+   (the run just finished is already in state). The latest bar carries the accent.
+   No axis, no labels on the bars: the caption and the score carry the meaning. */
+function buildChart(drillId) {
+  var wrap = h('div', 'rs-chart-wrap');
+  var chart = h('div', 'rs-chart');
+  var runs = (state && state.records ? state.records : []).filter(function (r) {
+    return r && r.drillId === drillId;
+  });
+  var vals = runs.slice(-8).map(function (r) { return Number(r.value); }).filter(function (v) { return isFinite(v); });
+  if (vals.length) {
+    var max = 0;
+    for (var i = 0; i < vals.length; i++) if (Math.abs(vals[i]) > max) max = Math.abs(vals[i]);
+    if (!max) max = 1;
+    for (var j = 0; j < vals.length; j++) {
+      var bar = h('div', 'rs-bar' + (j === vals.length - 1 ? ' rs-bar-last' : ''));
+      bar.style.height = Math.max(6, Math.round((Math.abs(vals[j]) / max) * 100)) + '%';
+      chart.appendChild(bar);
+    }
+    chart.setAttribute('role', 'img');
+    chart.setAttribute('aria-label', 'Last ' + vals.length + ' runs: ' + vals.map(fmtNum).join(', '));
+  } else {
+    chart.setAttribute('role', 'img');
+    chart.setAttribute('aria-label', 'No runs recorded yet.');
+  }
+  wrap.appendChild(chart);
+  wrap.appendChild(h('p', 'rs-chart-cap', vals.length > 1 ? 'Last ' + vals.length + ' runs' : 'Your runs'));
+  return wrap;
+}
+
+/* The results view, in the drill area. The score leads, set large in the mono
+   face with its unit; accuracy appears only where the drill reports one; the
+   delta is against the best that stood before this run, and a first run says so.
+   Two plain text actions: run the same drill again, or pick another. */
+function showResults(run) {
+  if (!ui.mount || !run) return;
+  var d = drillById(run.drillId);
+  var unit = run.unit || d.unit || '';
+  var meta = run.meta || {};
+
+  var view = h('div', 'rs-view');
+  view.setAttribute('aria-label', d.name + ' result');
+  view.appendChild(h('p', 'rs-name', d.name));
+
+  var score = h('div', 'rs-score');
+  score.appendChild(h('span', 'rs-value mono', fmtNum(run.value)));
+  if (unit) score.appendChild(h('span', 'rs-unit mono', unit));
+  view.appendChild(score);
+
+  if (typeof meta.accuracy === 'number' && isFinite(meta.accuracy)) {
+    var acc = h('p', 'rs-acc');
+    acc.appendChild(document.createTextNode('Accuracy '));
+    acc.appendChild(h('span', 'mono', Math.round(meta.accuracy * 100) + '%'));
+    view.appendChild(acc);
+  }
+
+  var delta = h('p', 'rs-delta');
+  if (run.prevBest == null) {
+    delta.className = 'rs-delta rs-first';
+    delta.textContent = 'First run. This sets your baseline.';
+  } else {
+    var diff = run.value - run.prevBest;
+    delta.appendChild(document.createTextNode('vs your best '));
+    delta.appendChild(h('span', 'rs-delta-v mono', (diff > 0 ? '+' : '') + fmtNum(diff) + (unit ? ' ' + unit : '')));
+    delta.appendChild(h('span', 'rs-delta-tag', ' ' + (run.isPR ? 'new best' : (diff === 0 ? 'matched your best' : 'off your best'))));
+    if (run.isPR) delta.classList.add('rs-pr');
+  }
+  view.appendChild(delta);
+
+  view.appendChild(buildChart(run.drillId));
+
+  var actions = h('div', 'rs-actions');
+  var again = h('button', 'rs-act rs-again', 'Run again');
+  again.type = 'button';
+  var another = h('button', 'rs-act rs-another', 'Pick another');
+  another.type = 'button';
+  actions.appendChild(again);
+  actions.appendChild(another);
+  view.appendChild(actions);
+
+  again.addEventListener('click', function () {
+    if (ctxRef && ctxRef.audio && ctxRef.audio.resume) { try { ctxRef.audio.resume(); } catch (e) { /* degrade */ } }
+    lastRun = null;
+    startDrill();
+  });
+  another.addEventListener('click', returnToPicker);
+
+  ui.mount.replaceChildren(view);
+  setIdle(false);
+  try { again.focus(); } catch (e) { /* degrade */ }
+  say(d.name + ' finished. ' + fmtNum(run.value) + (unit ? ' ' + unit : '') + '.');
+}
+
+/* Back to the setup panel for the current drill. */
+function returnToPicker() {
+  lastRun = null;
+  paintIdle();
+  setIdle(true);
+  paintAll();
+  var b = ui.pickBtns && ui.pickBtns[currentDrill];
+  if (b && b.focus) { try { b.focus(); } catch (e) { /* degrade */ } }
+  say(drillById(currentDrill).name + ' selected. Press Start when ready.');
 }
 
 /* The router calls this when leaving Train. A drill owns timers, bound keys and
@@ -1019,6 +1163,7 @@ export function teardown() {
   pending = [];
   sessionDrills = [];
   running = false;
+  lastRun = null;
   leaveFocus();
   if (ctxRef && ctxRef.audio && ctxRef.audio.silence) {
     try { ctxRef.audio.silence(); } catch (e) { /* degrade */ }
@@ -1031,6 +1176,7 @@ export function render(container, ctx) {
   pending = [];
   sessionDrills = [];
   running = false;
+  lastRun = null;
   ctxRef = ctx;
   mode = readMode();
   seed = readSeed();

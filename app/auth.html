@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Neuralbase, sign in or create an account</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="styles.css">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <script type="importmap">
@@ -14,185 +13,28 @@
   }
 }
 </script>
-<style>
-/* ---------- Auth page ---------- */
-.auth-body{min-height:100dvh;display:flex;flex-direction:column}
-.auth-top{
-  width:100%;max-width:1180px;margin:0 auto;
-  display:flex;align-items:center;gap:16px;
-  padding:16px 22px;
-}
-.auth-brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;letter-spacing:-.01em}
-.auth-mark{
-  width:26px;height:26px;flex:none;display:grid;place-items:center;
-  color:var(--lime);
-}
-.auth-mark svg{width:26px;height:26px;display:block}
-
-.auth-main{
-  flex:1;width:100%;max-width:1180px;margin:0 auto;
-  padding:6px 22px 34px;
-  display:flex;justify-content:center;align-items:flex-start;
-}
-
-.auth-card{
-  width:100%;max-width:440px;min-width:0;
-  background:var(--panel);border:1px solid var(--line);border-radius:16px;
-  padding:24px;box-shadow:0 30px 70px rgba(0,0,0,.42);
-}
-
-.demo-banner{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-  border:1px dashed var(--lime-edge);background:var(--lime-soft);
-  border-radius:11px;padding:12px 14px;margin-bottom:18px;
-}
-.demo-banner p{margin:0;font-size:12.5px;line-height:1.5;color:var(--ink);max-width:30ch}
-.demo-banner .cap{display:block;color:var(--muted);margin-top:2px}
-
-.auth-tabs{
-  position:relative;display:grid;grid-template-columns:1fr 1fr;gap:4px;
-  background:var(--panel2);border:1px solid var(--line);border-radius:11px;
-  padding:4px;margin-bottom:20px;
-}
-.auth-tab{
-  position:relative;z-index:1;background:transparent;border:0;
-  padding:9px 8px;border-radius:8px;font-weight:600;font-size:13.5px;color:var(--muted);
-  transition:color .16s ease;
-}
-.auth-tab:hover{color:var(--ink)}
-.auth-tab[aria-selected="true"]{color:var(--ink)}
-.auth-tab-ind{
-  position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 6px);
-  background:var(--panel);border:1px solid var(--line2);border-radius:8px;
-  box-shadow:0 2px 10px rgba(0,0,0,.25);
-  transition:transform .22s cubic-bezier(.3,.9,.3,1);
-}
-.auth-tabs[data-mode="signup"] .auth-tab-ind{transform:translateX(calc(100% + 4px))}
-
-.alert{
-  border:1px solid rgba(217,130,95,.45);background:rgba(217,130,95,.08);
-  color:var(--ink);border-radius:9px;padding:10px 12px;font-size:12.5px;line-height:1.5;
-  margin:0 0 14px;
-}
-.alert.ok{border-color:var(--lime-edge);background:var(--lime-soft)}
-
-.age-note{
-  display:flex;gap:10px;align-items:flex-start;
-  background:var(--panel2);border:1px solid var(--line);border-radius:9px;
-  padding:10px 12px;margin-bottom:16px;font-size:12.5px;line-height:1.5;color:var(--muted);
-}
-.age-note svg{width:16px;height:16px;flex:none;margin-top:1px;color:var(--lime)}
-
-.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
-.field label{font-size:12.5px;font-weight:600;color:var(--ink)}
-.field .hint{font-size:11.5px;color:var(--dim)}
-.input{
-  width:100%;background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
-  border-radius:9px;padding:11px 12px;font:inherit;font-size:14px;
-  transition:border-color .15s ease,box-shadow .15s ease;
-}
-.input::placeholder{color:var(--dim)}
-.input:focus{outline:none;border-color:var(--lime-edge);box-shadow:0 0 0 3px var(--accent-glow)}
-.input[aria-invalid="true"]{border-color:rgba(217,130,95,.62)}
-.input[type="date"]{min-height:42px}
-.err{margin:0;font-size:12px;line-height:1.4;color:var(--warn)}
-.err:empty{display:none}
-
-.btn-google{
-  width:100%;display:flex;align-items:center;justify-content:center;gap:10px;
-  background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
-  border-radius:9px;padding:11px 14px;font-weight:600;font-size:13.5px;
-  transition:border-color .15s ease,transform .12s ease;
-}
-.btn-google:hover{border-color:var(--lime-edge)}
-.btn-google:active{transform:translateY(1px)}
-.btn-google svg{width:17px;height:17px;flex:none}
-.btn-block{width:100%;padding:12px;font-size:14px;border-radius:9px}
-
-.or{
-  display:flex;align-items:center;gap:12px;margin:18px 0;
-  color:var(--dim);font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
-}
-.or::before,.or::after{content:"";height:1px;flex:1;background:var(--line)}
-
-.panel-foot{margin:14px 0 0;font-size:12.5px;color:var(--muted);text-align:center}
-.panel-foot button{
-  background:none;border:0;padding:0;color:var(--lime);font-weight:600;font-size:12.5px;
-  text-decoration:underline;text-underline-offset:2px;
-}
-.panel-foot button[disabled]{color:var(--dim);text-decoration:none;cursor:not-allowed}
-
-/* The code path is the fallback, so it stays folded away until it is asked for. */
-.vf-code{margin:0 0 4px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)}
-.vf-code>summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:12.5px;font-weight:600;color:var(--muted)}
-.vf-code>summary::-webkit-details-marker{display:none}
-.vf-code>summary:hover{color:var(--ink)}
-.vf-code[open]>summary{color:var(--ink);border-bottom:1px solid var(--line)}
-.vf-code form{padding:12px}
-.vf-code .field{margin-bottom:10px}
-.auth-h2{margin:0 0 4px;font-size:19px;font-weight:600;letter-spacing:-.02em}
-.auth-sub{margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.5}
-
-@media (max-width:900px){
-  .auth-main{padding-top:0}
-  .auth-card{max-width:none}
-}
-@media (max-width:520px){
-  .auth-top{padding:14px 16px}
-  .auth-main{padding:4px 16px 34px}
-  .auth-card{padding:18px;border-radius:14px}
-  .auth-brand span{display:none}
-}
-
-/* Fit one screen: compact the card, two-column signup fields */
-.auth-card{padding:20px}
-.auth-tabs{margin-bottom:16px}
-.auth-sub{margin:0 0 14px}
-.age-note{padding:8px 11px;margin-bottom:12px}
-.field{margin-bottom:10px}
-.input{padding:9px 11px}
-.or{margin:14px 0}
-#signupForm{display:grid;grid-template-columns:1fr 1fr;column-gap:12px}
-#signupForm .btn-block{grid-column:1 / -1}
-@media (max-width:560px){
-  #signupForm{grid-template-columns:1fr}
-}
-@media (max-height:680px){
-  .auth-card{padding:16px}
-  .age-note{margin-bottom:9px}
-  .field{margin-bottom:8px}
-  .auth-h2{font-size:17px}
-  .auth-sub{margin-bottom:11px}
-  .or{margin:11px 0}
-}
-</style>
 </head>
 <body class="auth-body">
 
-<header class="auth-top">
-  <span class="auth-brand">
-    <span class="auth-mark" aria-hidden="true">
-      <svg viewBox="0 0 64 64" width="19" height="19" fill="currentColor">
-        <rect x="8" y="8" width="8" height="8"/><rect x="8" y="18" width="8" height="8"/><rect x="8" y="28" width="8" height="8"/><rect x="8" y="38" width="8" height="8"/><rect x="8" y="48" width="8" height="8"/>
-        <rect x="48" y="8" width="8" height="8"/><rect x="48" y="18" width="8" height="8"/><rect x="48" y="28" width="8" height="8"/><rect x="48" y="38" width="8" height="8"/><rect x="48" y="48" width="8" height="8"/>
-        <rect x="18" y="18" width="8" height="8"/><rect x="28" y="28" width="8" height="8"/><rect x="38" y="38" width="8" height="8"/>
-      </svg>
-    </span>
-    <span>Neuralbase</span>
-  </span>
-</header>
-
 <main class="auth-main">
-
   <section class="auth-card" aria-label="Account access">
 
-    <div class="demo-banner" id="demoBanner" hidden>
-      <p>Demo mode. Progress stays in this browser.<span class="cap">Add Supabase keys in app/config.js to sync.</span></p>
-      <button class="btn-primary" type="button" id="demoContinue">Continue in demo</button>
+    <div class="auth-brand">
+      <span class="auth-mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" fill="currentColor">
+          <rect x="8" y="8" width="8" height="8"/><rect x="8" y="18" width="8" height="8"/><rect x="8" y="28" width="8" height="8"/><rect x="8" y="38" width="8" height="8"/><rect x="8" y="48" width="8" height="8"/>
+          <rect x="48" y="8" width="8" height="8"/><rect x="48" y="18" width="8" height="8"/><rect x="48" y="28" width="8" height="8"/><rect x="48" y="38" width="8" height="8"/><rect x="48" y="48" width="8" height="8"/>
+          <rect x="18" y="18" width="8" height="8"/><rect x="28" y="28" width="8" height="8"/><rect x="38" y="38" width="8" height="8"/>
+        </svg>
+      </span>
+      <span>Neuralbase</span>
+    </div>
+
+    <div class="auth-demo" id="demoBanner" hidden>
+      Demo mode. Progress stays in this browser. <button class="btn-ghost" type="button" id="demoContinue">Continue in demo</button>
     </div>
 
     <div class="auth-tabs" role="tablist" aria-label="Sign in or create account" id="tabs" data-mode="signin">
-      <span class="auth-tab-ind" aria-hidden="true"></span>
       <button class="auth-tab" type="button" role="tab" id="tab-signin" aria-selected="true" aria-controls="panel-signin">Sign in</button>
       <button class="auth-tab" type="button" role="tab" id="tab-signup" aria-selected="false" aria-controls="panel-signup" tabindex="-1">Create account</button>
     </div>

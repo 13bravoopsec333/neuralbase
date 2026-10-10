@@ -1,156 +1,82 @@
-/* ---------- Theme tokens ---------- */
-/* Graphite is the default and matches the original file. Accent aliases
-   (--accent*) point at the --lime* slots so either name works. */
-:root,[data-theme="graphite"]{
+/* Neuralbase design system.
+   Dark by default, one light variant. One background, one text colour, one
+   muted grey, one accent used only for the active element and the live state.
+   Hairline borders only where they separate real regions. Small consistent
+   radius. No shadows, no gradients, no glow, no texture.
+   Token names are kept stable so every view can rely on them. */
+
+:root{
   color-scheme:dark;
-  --bg:#14161A;
-  --panel:#1C1F26;
-  --panel2:#22262E;
-  --line:#2A2F38;
-  --line2:#343A45;
-  --ink:#E7EAEF;
-  --muted:#8B93A1;
-  --dim:#5E6673;
-  --lime:#B6E24A;
-  --lime-soft:rgba(182,226,74,.12);
-  --lime-edge:rgba(182,226,74,.28);
-  --warn:#D9825F;
+  --bg:#0f1113;
+  --panel:#16191c;
+  --panel2:#1c2024;
+  --line:#262b30;
+  --line2:#343a41;
+  --ink:#e9ebe7;
+  --muted:#9ba1a8;
+  --dim:#838a92;
+  --lime:#b8e04a;
+  --lime-soft:rgba(184,224,74,.12);
+  --lime-edge:rgba(184,224,74,.30);
+  --warn:#e0895f;
+  /* Accent aliases point at the lime slots, so either name works. */
   --accent:var(--lime);
   --accent-soft:var(--lime-soft);
   --accent-edge:var(--lime-edge);
-  --accent-glow:rgba(182,226,74,.16);
-  --grid:rgba(255,255,255,.017);
+  --accent-glow:transparent;
+  --grid:transparent;
   --hover:rgba(255,255,255,.04);
-  --header-bg:rgba(20,22,26,.86);
-  --bar:rgba(231,234,239,.15);
-  --bar-strong:rgba(231,234,239,.3);
-  --scrim:rgba(10,11,13,.72);
-  --r:10px;
-  --rail:64px;
-  --rail-open:208px;
-  /* Spacing scale. Views must use these instead of arbitrary pixel values, so the
-     vertical rhythm is the same everywhere. 4px base: gap-1 is the tight gap inside
-     a control, gap-2 sits between related blocks, gap-3 between groups, gap-4
-     between page sections, gap-5 and gap-6 are the section-level steps. */
+  --header-bg:rgba(15,17,19,.86);
+  --bar:rgba(233,235,231,.16);
+  --bar-strong:rgba(233,235,231,.32);
+  --scrim:rgba(8,9,10,.72);
+  --r:8px;
+  --rail:0px;
+  --rail-open:0px;
+  /* Spacing scale. 4px base. gap-1 is the tight gap inside a control, gap-2
+     sits between related blocks, gap-3 between groups, gap-4 between page
+     sections, gap-5 and gap-6 are the section-level steps. */
   --gap-1:4px;
   --gap-2:8px;
   --gap-3:12px;
   --gap-4:16px;
   --gap-5:24px;
   --gap-6:32px;
-  --sans:'Familjen Grotesk',system-ui,-apple-system,sans-serif;
-  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
-  /* The select chevron. An SVG background cannot read a token, and a bare
-     currentColor inside one resolves to black on every engine, so the light
-     stroke is baked into the URI here and porcelain overrides it below. */
-  --select-caret:url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1.5 2.25 6 6.25l4.5-4' stroke='%23E7EAEF' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  /* The select chevron. An SVG background cannot read a token, so the stroke is
+     baked into the URI here and the light variant overrides it below. */
+  --select-caret:url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1.5 2.25 6 6.25l4.5-4' stroke='%23E9EBE7' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
-/* Carbon: OLED dark, high contrast. */
-[data-theme="carbon"]{
-  color-scheme:dark;
-  --bg:#000000;
-  --panel:#0C0D0F;
-  --panel2:#141517;
-  --line:#1F2124;
-  --line2:#2C2F33;
-  --ink:#F2F4F7;
-  --muted:#9AA1AC;
-  --dim:#6A717B;
-  --lime:#C6F24E;
-  --lime-soft:rgba(198,242,78,.12);
-  --lime-edge:rgba(198,242,78,.28);
-  --warn:#E08A63;
-  --accent-glow:rgba(198,242,78,.16);
-  --grid:rgba(255,255,255,.02);
-  --hover:rgba(255,255,255,.05);
-  --header-bg:rgba(0,0,0,.86);
-  --bar:rgba(242,244,247,.15);
-  --bar-strong:rgba(242,244,247,.3);
-  --scrim:rgba(0,0,0,.74);
-}
-
-/* Porcelain: light. dim bumped from #8A9187 (3.0:1) to #767D73 (3.9:1). */
+/* The light variant. Any other theme name falls through to the dark default. */
 [data-theme="porcelain"]{
   color-scheme:light;
-  --bg:#F4F5F2;
-  --panel:#FFFFFF;
-  --panel2:#EDEFEA;
-  --line:#DCE0D8;
-  --line2:#C4C9BE;
-  --ink:#1A1D19;
-  --muted:#5A6157;
-  --dim:#767D73;
-  --lime:#3F6B00;
-  --lime-soft:rgba(63,107,0,.12);
+  --bg:#f7f7f4;
+  --panel:#ffffff;
+  --panel2:#eef0ec;
+  --line:#dfe2dc;
+  --line2:#c6ccc3;
+  --ink:#181b18;
+  --muted:#555b56;
+  --dim:#686e67;
+  --lime:#3f6b00;
+  --lime-soft:rgba(63,107,0,.10);
   --lime-edge:rgba(63,107,0,.28);
-  --warn:#A8451F;
-  --accent-glow:rgba(63,107,0,.18);
-  --grid:rgba(26,29,25,.03);
-  --hover:rgba(26,29,25,.05);
-  --header-bg:rgba(244,245,242,.88);
-  --bar:rgba(26,29,25,.14);
-  --bar-strong:rgba(26,29,25,.26);
+  --warn:#a8451f;
+  --grid:transparent;
+  --hover:rgba(24,27,24,.05);
+  --header-bg:rgba(247,247,244,.88);
+  --bar:rgba(24,27,24,.16);
+  --bar-strong:rgba(24,27,24,.32);
   --scrim:rgba(20,24,18,.45);
-  /* Light theme: the same chevron drawn in ink, so it does not vanish on white. */
-  --select-caret:url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1.5 2.25 6 6.25l4.5-4' stroke='%231A1D19' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --select-caret:url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1.5 2.25 6 6.25l4.5-4' stroke='%23181B18' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
-/* Midnight: deep blue. */
-[data-theme="midnight"]{
-  color-scheme:dark;
-  --bg:#0E1524;
-  --panel:#151E31;
-  --panel2:#1B2740;
-  --line:#24314C;
-  --line2:#33415F;
-  --ink:#E6ECF7;
-  --muted:#8A98B4;
-  --dim:#5D6B87;
-  --lime:#8AB4FF;
-  --lime-soft:rgba(138,180,255,.12);
-  --lime-edge:rgba(138,180,255,.28);
-  --warn:#F0A868;
-  --accent-glow:rgba(138,180,255,.16);
-  --grid:rgba(255,255,255,.02);
-  --hover:rgba(255,255,255,.05);
-  --header-bg:rgba(14,21,36,.86);
-  --bar:rgba(230,236,247,.15);
-  --bar-strong:rgba(230,236,247,.3);
-  --scrim:rgba(6,10,20,.72);
-}
-
-/* Ember: warm dark. dim bumped from #6E5C4C (2.9:1) to #8A7561 (4.2:1). */
-[data-theme="ember"]{
-  color-scheme:dark;
-  --bg:#17120F;
-  --panel:#201915;
-  --panel2:#291F19;
-  --line:#35271F;
-  --line2:#46352A;
-  --ink:#F1E8E1;
-  --muted:#A3907F;
-  --dim:#8A7561;
-  --lime:#FF9E4F;
-  --lime-soft:rgba(255,158,79,.12);
-  --lime-edge:rgba(255,158,79,.28);
-  --warn:#E4573D;
-  --accent-glow:rgba(255,158,79,.16);
-  --grid:rgba(255,255,255,.02);
-  --hover:rgba(255,255,255,.05);
-  --header-bg:rgba(23,18,15,.86);
-  --bar:rgba(241,232,225,.15);
-  --bar-strong:rgba(241,232,225,.3);
-  --scrim:rgba(10,7,5,.72);
-}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
   background:var(--bg);
-  background-image:
-    linear-gradient(var(--grid) 1px,transparent 1px),
-    linear-gradient(90deg,var(--grid) 1px,transparent 1px);
-  background-size:52px 52px;
   color:var(--ink);
   font:400 14px/1.45 var(--sans);
   -webkit-font-smoothing:antialiased;
@@ -158,89 +84,89 @@ body{
 [hidden]{display:none!important}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 button{font:inherit;color:inherit;cursor:pointer}
-a{color:inherit}
+a{color:inherit;text-decoration:none}
 :focus-visible{outline:2px solid var(--lime);outline-offset:2px;border-radius:4px}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
 /* ---------- Shell ---------- */
 main{min-height:100vh;display:flex;flex-direction:column}
-/* Minimal header: the account name and a sign out action, nothing else. */
-.app-header{
+/* Thin top bar: mark on the left, plain text links, account and sign out on the
+   right. No rail, no sidebar, no cards. */
+.topbar{
   position:sticky;top:0;z-index:20;
-  display:flex;align-items:center;justify-content:space-between;gap:var(--gap-3);flex-wrap:wrap;
-  padding:var(--gap-3) var(--gap-5);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:var(--gap-5);
+  min-height:52px;padding:0 var(--gap-5);
+  border-bottom:1px solid var(--line);
   background:var(--header-bg);backdrop-filter:blur(7px);
 }
-.app-header-left{display:flex;align-items:center;gap:var(--gap-3);min-width:0}
-.app-mark{width:26px;height:26px;flex:none;color:var(--lime);display:flex;align-items:center;justify-content:center}
-.app-mark svg{width:100%;height:100%;display:block}
-.app-title{font-size:16px;font-weight:600;letter-spacing:-.01em;margin:0}
-.app-header-right{display:flex;align-items:center;gap:var(--gap-3);min-width:0}
-.app-account{font-size:13px;font-weight:600;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.btn-primary{
-  background:var(--lime);color:var(--bg);border:1px solid var(--lime);
-  padding:8px 14px;border-radius:8px;font-weight:600;font-size:13px;white-space:nowrap;
-  transition:transform .12s ease,opacity .15s ease;
+.topbar .mark{
+  width:22px;height:22px;flex:none;color:var(--lime);
+  display:flex;align-items:center;justify-content:center;
 }
-.btn-primary:hover{opacity:.9}
-.btn-primary:active{transform:translateY(1px)}
-.btn-primary[disabled]{opacity:.4;cursor:not-allowed}
-.btn-ghost{
-  background:transparent;border:1px solid var(--line2);color:var(--ink);
-  padding:8px 14px;border-radius:8px;font-weight:600;font-size:13px;
-  transition:transform .12s ease,border-color .15s ease,color .15s ease;
+.topbar .mark svg{width:100%;height:100%;display:block}
+.topnav{display:flex;gap:var(--gap-5);flex:none}
+.topnav a{font-size:13px;font-weight:600;color:var(--muted);transition:color .15s ease}
+.topnav a:hover{color:var(--ink)}
+.topnav a[aria-current="page"]{color:var(--lime)}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:var(--gap-4);min-width:0}
+.account{font-size:13px;font-weight:600;color:var(--ink);min-width:0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.signout{background:none;border:0;padding:0;font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap;transition:color .15s ease}
+.signout:hover{color:var(--ink)}
+
+.demo-banner{
+  padding:var(--gap-2) var(--gap-5);text-align:center;
+  font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--line);
 }
-.btn-ghost:hover{border-color:var(--lime-edge);color:var(--lime)}
-.btn-ghost:active{transform:translateY(1px)}
-/* The content column is centered within main. margin-inline:auto keeps the block
-   from hugging main's left edge, so a centered view reads as centered. */
-.content{flex:1;width:100%;max-width:1180px;margin-inline:auto;padding:var(--gap-4) var(--gap-5) var(--gap-6);display:flex;flex-direction:column}
-/* One page frame for every view.
 
-   A view is a flex column that takes the height the shell has left over and puts
-   its blocks in the middle of it, so a short page is a deliberate full-height
-   layout instead of content clinging to the top with dead background under it.
-   The measure stays capped, so the frame changes where a page sits, never how
-   wide its text runs.
-
-   `safe center`, not `center`: a page taller than the frame (Settings)
-   would have its own top pushed out of reach, and the reader could not scroll
-   back to it. safe falls back to start alignment exactly when centering would
-   overflow, so a tall page still begins at the top. */
+/* The content column is centered within main, so a centered view reads as
+   centered. */
+.content{flex:1;width:100%;max-width:1100px;margin-inline:auto;padding:var(--gap-4) var(--gap-5) var(--gap-6);display:flex;flex-direction:column}
+/* One page frame for every view. A view is a flex column that takes the height
+   the shell has left and puts its blocks in the middle of it. `safe center` so a
+   page taller than the frame still begins at the top instead of pushing its own
+   top out of reach. */
 .view{flex:1 1 auto;display:flex;flex-direction:column;justify-content:safe center}
 .view:focus{outline:none}
 .view-title:focus{outline:none}
-/* Views that lay their own blocks out as siblings of the section rather than
-   inside a wrapper keep their own gap; the frame only owns the vertical
-   placement. Nothing here sets a width, so the narrow and wide centered columns
-   in the views still decide the measure. */
 
-.view-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.view-head{display:flex;align-items:baseline;gap:var(--gap-3);flex-wrap:wrap;margin-bottom:var(--gap-4)}
 .view-title{margin:0;font-size:20px;font-weight:600;letter-spacing:-.015em}
-
-/* Heading size steps. A heading tag is chosen for document structure; one of
-   these classes decides how loud it reads. That is what keeps a section label
-   and a drill name from reading at the same weight by accident. */
+.view-note{color:var(--muted);font-size:13px;margin:0}
 .h-sub{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
 
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:var(--gap-4)}
 .card h3{margin:0;font-size:13px;font-weight:600;letter-spacing:.01em}
-.card-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px}
+.card-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3);margin-bottom:var(--gap-3)}
 .cap{font-size:12px;color:var(--dim)}
 
+/* ---------- Buttons ---------- */
+.btn-primary{
+  background:var(--lime);color:var(--bg);border:1px solid var(--lime);
+  padding:9px 14px;border-radius:8px;font-weight:600;font-size:13px;white-space:nowrap;
+  transition:opacity .15s ease,transform .12s ease;
+}
+.btn-primary:hover{opacity:.9}
+.btn-primary:active{transform:translateY(1px)}
+.btn-primary[disabled]{opacity:.45;cursor:not-allowed}
+.btn-ghost{
+  background:transparent;border:1px solid var(--line2);color:var(--ink);
+  padding:9px 14px;border-radius:8px;font-weight:600;font-size:13px;
+  transition:border-color .15s ease,color .15s ease,transform .12s ease;
+}
+.btn-ghost:hover{border-color:var(--lime-edge);color:var(--lime)}
+.btn-ghost:active{transform:translateY(1px)}
+.btn-block{width:100%}
+
 /* ---------- Stats ---------- */
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
-.stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap-3);margin-top:var(--gap-3)}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:var(--gap-2) var(--gap-3);display:flex;flex-direction:column;gap:var(--gap-1);min-width:0}
 .stat-l{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
 .stat-v{font-family:var(--mono);font-size:20px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.row-actions{margin-top:12px;display:flex;gap:10px}
+.row-actions{margin-top:var(--gap-3);display:flex;gap:var(--gap-3);flex-wrap:wrap}
+.prog-top{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-2);flex-wrap:wrap}
 
-/* .prog-top survives the Programs view: Train's programs band uses it. */
-.prog-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-
-/* ---------- Focus mode ---------- */
-body.focus main{margin-left:0}
-body.focus .content{max-width:620px;margin:0 auto;padding-top:52px}
+/* ---------- Centered columns ---------- */
+.view-mid-wide{max-width:1080px;margin-inline:auto}
 
 /* ---------- Drill feedback ---------- */
 /* Color-only state cue. motion.js adds the class and animates the shake or
@@ -250,30 +176,35 @@ body.focus .content{max-width:620px;margin:0 auto;padding-top:52px}
 
 /* ---------- Reduced motion ---------- */
 body.reduce *{transition:none!important;animation:none!important}
-
-@media (max-width:560px){
-  .content{padding:var(--gap-4) var(--gap-4) var(--gap-6)}
-  .app-header{padding:var(--gap-3) var(--gap-4)}
-  .stats{grid-template-columns:1fr 1fr}
-}
 @media (prefers-reduced-motion:reduce){
   *{transition:none!important;animation:none!important}
 }
 
+/* ---------- Boot and view loader ---------- */
+.nb-loader{position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:var(--bg);pointer-events:none;opacity:1;transition:opacity .28s ease}
+.nb-loader.nb-loader-out{opacity:0}
+.nb-loader svg{width:54px;height:54px;color:var(--lime);display:block}
+.nb-loader .nb-c{opacity:.12;animation:nbCell 1.25s ease-in-out infinite;animation-delay:calc(var(--i,0) * .07s)}
+@keyframes nbCell{0%,70%,100%{opacity:.12}35%{opacity:1}}
+body.reduce .nb-loader .nb-c{animation:none;opacity:.5}
+@media (prefers-reduced-motion:reduce){
+  .nb-loader .nb-c{animation:none;opacity:.5}
+}
+
 /* ---------- Drills ---------- */
-.drill-mount{min-height:238px;display:flex;flex-direction:column;gap:12px}
-.drill{display:flex;flex-direction:column;gap:12px}
+.drill-mount{min-height:238px;display:flex;flex-direction:column;gap:var(--gap-3)}
+.drill{display:flex;flex-direction:column;gap:var(--gap-3)}
 .drill-state{font-size:clamp(18px,3vw,24px);font-weight:600;letter-spacing:-.02em}
 .drill-note{color:var(--muted);font-size:13px}
-.drill-bar{display:flex;gap:10px;flex-wrap:wrap}
-.drill-summary{padding:12px;border:1px solid var(--lime-edge);background:var(--lime-soft);border-radius:var(--r)}
-.nb-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:320px}
+.drill-bar{display:flex;gap:var(--gap-3);flex-wrap:wrap}
+.drill-summary{padding:var(--gap-3);border:1px solid var(--lime-edge);background:var(--lime-soft);border-radius:var(--r)}
+.nb-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap-2);max-width:320px}
 .nb-cell{aspect-ratio:1;border-radius:8px;background:var(--panel2);border:1px solid var(--line2);transition:background .12s ease,border-color .12s ease}
 .nb-cell.on{background:var(--lime);border-color:var(--lime)}
 .nb-letter{font-size:40px;font-weight:600;letter-spacing:.02em}
 .nb-hint{color:var(--muted);font-size:13px;max-width:420px}
 .nb-meta{font-size:12px;color:var(--dim);letter-spacing:.05em;text-transform:uppercase}
-.uf-stage{position:relative;width:100%;max-width:420px;height:180px;border-radius:10px;background:var(--panel2);border:1px solid var(--line2);display:grid;place-items:center}
+.uf-stage{position:relative;width:100%;max-width:420px;height:180px;border-radius:8px;background:var(--panel2);border:1px solid var(--line2);display:grid;place-items:center}
 .uf-shape{width:46px;height:46px;background:var(--lime);opacity:0}
 .uf-shape.s0{border-radius:50%}
 .uf-shape.s1{clip-path:polygon(50% 0,100% 100%,0 100%)}
@@ -303,38 +234,106 @@ body.reduce *{transition:none!important;animation:none!important}
 .prog-name{display:flex;align-items:center;gap:9px;min-width:0}
 .card-title{display:flex;align-items:center;gap:9px;min-width:0}
 .card-title h3{margin:0}
-@media (max-width:560px){.drill-ic{width:18px;height:18px}}
 
-/* ---------- Boot and view loader ---------- */
-/* Non-blocking: pointer-events off, fades out once the view is ready. The mark is
-   the Grid N brand mark with its cells lighting in sequence. */
-.nb-loader{position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:var(--bg);pointer-events:none;opacity:1;transition:opacity .28s ease}
-.nb-loader.nb-loader-out{opacity:0}
-.nb-loader svg{width:54px;height:54px;color:var(--lime);display:block}
-.nb-loader .nb-c{opacity:.12;animation:nbCell 1.25s ease-in-out infinite;animation-delay:calc(var(--i,0) * .07s)}
-@keyframes nbCell{0%,70%,100%{opacity:.12}35%{opacity:1}}
-body.reduce .nb-loader .nb-c{animation:none;opacity:.5}
-@media (prefers-reduced-motion:reduce){
-  .nb-loader .nb-c{animation:none;opacity:.5}
+/* ---------- Auth page ---------- */
+.auth-body{min-height:100dvh;display:flex;flex-direction:column}
+.auth-main{flex:1;display:grid;place-items:center;padding:var(--gap-5) var(--gap-4)}
+.auth-card{
+  width:100%;max-width:420px;min-width:0;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  padding:var(--gap-5);
+}
+.auth-brand{display:flex;align-items:center;justify-content:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:-.01em;margin-bottom:var(--gap-5)}
+.auth-mark{width:24px;height:24px;flex:none;display:grid;place-items:center;color:var(--lime)}
+.auth-mark svg{width:24px;height:24px;display:block}
+.auth-h2{margin:0 0 var(--gap-1);font-size:19px;font-weight:600;letter-spacing:-.02em}
+.auth-sub{margin:0 0 var(--gap-4);color:var(--muted);font-size:13px;line-height:1.5}
+
+.auth-demo{
+  display:flex;flex-direction:column;align-items:center;gap:var(--gap-2);text-align:center;
+  border:1px solid var(--lime-edge);background:var(--lime-soft);border-radius:8px;
+  padding:10px 12px;margin-bottom:var(--gap-4);font-size:12.5px;line-height:1.5;color:var(--ink);
 }
 
-/* ---------- Centered columns ---------- */
-/* Wider centered column, for data-heavy views. */
-.view-mid-wide{max-width:1080px;margin-inline:auto}
+/* Plain text switch, not a segmented box. The hairline separates the switch
+   from the form, which is a real region boundary. */
+.auth-tabs{display:flex;gap:var(--gap-5);border-bottom:1px solid var(--line);margin-bottom:var(--gap-5)}
+.auth-tab{background:none;border:0;padding:0 0 10px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s ease}
+.auth-tab:hover{color:var(--ink)}
+.auth-tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--lime)}
+
+.alert{
+  border:1px solid var(--line2);background:var(--panel2);color:var(--ink);
+  border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.5;margin:0 0 var(--gap-3);
+}
+.alert.ok{border-color:var(--lime-edge);background:var(--lime-soft)}
+
+.age-note{
+  display:flex;gap:10px;align-items:flex-start;
+  background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  padding:10px 12px;margin-bottom:var(--gap-4);font-size:12.5px;line-height:1.5;color:var(--muted);
+}
+.age-note svg{width:16px;height:16px;flex:none;margin-top:1px;color:var(--muted)}
+
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:var(--gap-3)}
+.field label{font-size:12.5px;font-weight:600;color:var(--ink)}
+.field .hint{font-size:11.5px;color:var(--dim)}
+.input{
+  width:100%;background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
+  border-radius:8px;padding:10px 12px;font:inherit;font-size:14px;
+  transition:border-color .15s ease;
+}
+.input::placeholder{color:var(--dim)}
+.input:focus{border-color:var(--lime-edge)}
+.input[aria-invalid="true"]{border-color:var(--warn)}
+.input[type="date"]{min-height:42px}
+.err{margin:0;font-size:12px;line-height:1.4;color:var(--warn)}
+.err:empty{display:none}
+
+.btn-google{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
+  border-radius:8px;padding:10px 14px;font-weight:600;font-size:13.5px;
+  transition:border-color .15s ease,transform .12s ease;
+}
+.btn-google:hover{border-color:var(--lime-edge)}
+.btn-google:active{transform:translateY(1px)}
+.btn-google svg{width:17px;height:17px;flex:none}
+.btn-block{padding:11px;font-size:14px;border-radius:8px}
+
+.or{
+  display:flex;align-items:center;gap:var(--gap-3);margin:var(--gap-4) 0;
+  color:var(--dim);font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+}
+.or::before,.or::after{content:"";height:1px;flex:1;background:var(--line)}
+
+.panel-foot{margin:var(--gap-3) 0 0;font-size:12.5px;color:var(--muted);text-align:center}
+.panel-foot button{
+  background:none;border:0;padding:0;color:var(--lime);font-weight:600;font-size:12.5px;
+  text-decoration:underline;text-underline-offset:2px;
+}
+.panel-foot button[disabled]{color:var(--dim);text-decoration:none;cursor:not-allowed}
+
+/* The code path is the fallback, so it stays folded away until it is asked for. */
+.vf-code{margin:0 0 4px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+.vf-code>summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.vf-code>summary::-webkit-details-marker{display:none}
+.vf-code>summary:hover{color:var(--ink)}
+.vf-code[open]>summary{color:var(--ink);border-bottom:1px solid var(--line)}
+.vf-code form{padding:var(--gap-3)}
+.vf-code .field{margin-bottom:10px}
+
+#signupForm{display:grid;grid-template-columns:1fr 1fr;column-gap:var(--gap-3)}
+#signupForm .btn-block{grid-column:1 / -1}
 
 /* ---------- Native selects ----------
-   The closed control is a .btn-ghost in different clothes: same 13px/600 type,
-   same 8px vertical padding, same 1px border on --line2, same 8px radius. The
-   chevron is a data-URI SVG tinted by --select-caret, because a background image
-   cannot inherit currentColor and would otherwise paint black in every theme.
-   The element stays a native select, so the popup, the keyboard and the
-   accessibility tree survive. */
+   The closed control is a ghost button in different clothes. The element stays a
+   native select, so the popup, the keyboard and the accessibility tree survive. */
 select{
   -webkit-appearance:none;appearance:none;
   display:inline-block;align-self:center;
   width:auto;max-width:100%;
   margin:0;
-  font:600 13px/1.45 var(--sans);
   color:var(--ink);
   background-color:var(--panel2);
   border:1px solid var(--line2);
@@ -342,10 +341,6 @@ select{
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   cursor:pointer;
   transition:border-color .15s ease;
-}
-/* Views inline their own padding and font on these controls. The height and the
-   type are the contract here, so they take precedence over that inline text. */
-select{
   padding-top:8px !important;padding-bottom:8px !important;padding-left:.85em !important;
   padding-right:2em !important;
   font-family:var(--sans) !important;font-weight:600 !important;
@@ -359,20 +354,14 @@ select:hover{border-color:var(--lime-edge)}
 select:focus-visible{outline:2px solid var(--lime);outline-offset:2px;border-color:var(--lime-edge)}
 select:disabled,select[disabled],select[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
 select:disabled:hover,select[disabled]:hover{border-color:var(--line2)}
-/* A list box has no closed state to decorate, so it keeps the plain surface. */
 select[multiple],select[size]:not([size="1"]){
   min-height:120px;padding-right:.85em;
   background-image:none !important;font-weight:400 !important;
 }
-/* The open panel. These longhands are honored on every engine that paints a
-   themed list; where one is not, color-scheme on the theme keeps the frame from
-   flashing the wrong way round. */
 option{background-color:var(--panel2);color:var(--ink)}
 option:checked{background-color:color-mix(in srgb,var(--lime) 18%,var(--panel2));color:var(--ink)}
 optgroup{background-color:var(--panel);color:var(--muted);font-weight:600}
 optgroup option{background-color:var(--panel2);color:var(--ink)}
-/* Forced colors: the border and the chevron are painted by the system, so ask
-   for them by name instead of relying on tokens the theme just took away. */
 @media (forced-colors:active){
   select{background-color:Canvas;color:CanvasText;border-color:CanvasText;forced-color-adjust:auto}
   select:disabled{color:GrayText}
@@ -380,14 +369,7 @@ optgroup option{background-color:var(--panel2);color:var(--ink)}
   optgroup{background-color:Canvas;color:CanvasText}
 }
 
-/* ---------- Native checkboxes and radios ----------
-   The same panel, border and radius contract as the select and the ghost
-   button, drawn with appearance:none so the mark matches the site in every
-   theme instead of the engine's default square. :where() holds the specificity
-   at zero, so a view that scopes its own control (Circuit's .cx-cb) keeps
-   winning on its own boxes. The element stays a real input, so the label, the
-   keyboard and the accessibility tree all survive. The mark is a mask filled
-   with currentColor, so it takes the theme accent without a per-theme image. */
+/* ---------- Native checkboxes and radios ---------- */
 :where(input[type="checkbox"],input[type="radio"]){
   -webkit-appearance:none;appearance:none;
   width:18px;height:18px;flex:none;margin:0;
@@ -404,7 +386,6 @@ optgroup option{background-color:var(--panel2);color:var(--ink)}
 :where(input[type="checkbox"],input[type="radio"]):focus-visible{
   outline:2px solid var(--lime);outline-offset:2px;border-color:var(--lime-edge);
 }
-/* The global :focus-visible rule sets a 4px radius, so a radio is kept round here. */
 :where(input[type="checkbox"]):focus-visible{border-radius:5px}
 :where(input[type="radio"]):focus-visible{border-radius:50%}
 :where(input[type="checkbox"])::after,
@@ -421,7 +402,6 @@ optgroup option{background-color:var(--panel2);color:var(--ink)}
 :where(input[type="radio"]):checked{background-color:var(--lime-soft);border-color:var(--lime-edge)}
 :where(input[type="checkbox"]):checked::after,
 :where(input[type="radio"]):checked::after{opacity:1}
-/* A mixed box draws a bar in place of the check. */
 :where(input[type="checkbox"]):indeterminate{background-color:var(--lime-soft);border-color:var(--lime-edge)}
 :where(input[type="checkbox"]):indeterminate::after{
   opacity:1;width:10px;height:2px;border-radius:1px;
@@ -432,8 +412,6 @@ optgroup option{background-color:var(--panel2);color:var(--ink)}
   opacity:.45;cursor:not-allowed;
 }
 :where(input[type="checkbox"],input[type="radio"]):disabled:hover{border-color:var(--line2)}
-/* Forced colors: appearance:none takes the system mark away, so hand it back by
-   name. Plain selectors so the system colours win over any view-scoped rule. */
 @media (forced-colors:active){
   input[type="checkbox"],input[type="radio"]{
     forced-color-adjust:none;background-color:Canvas;border-color:CanvasText;color:CanvasText;
@@ -442,4 +420,15 @@ optgroup option{background-color:var(--panel2);color:var(--ink)}
     background-color:Highlight;border-color:Highlight;color:HighlightText;
   }
   input[type="checkbox"]:disabled,input[type="radio"]:disabled{color:GrayText;border-color:GrayText}
+}
+
+@media (max-width:560px){
+  .content{padding:var(--gap-4) var(--gap-4) var(--gap-6)}
+  .topbar{padding:0 var(--gap-4);gap:var(--gap-4)}
+  .topnav{gap:var(--gap-4)}
+  .stats{grid-template-columns:1fr 1fr}
+  .drill-ic{width:18px;height:18px}
+  .auth-body{padding:var(--gap-4)}
+  .auth-card{padding:var(--gap-4)}
+  #signupForm{grid-template-columns:1fr}
 }

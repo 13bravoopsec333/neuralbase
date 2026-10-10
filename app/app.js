@@ -124,10 +124,38 @@ async function boot() {
   const outBtn = document.getElementById('signOutBtn');
   if (outBtn) outBtn.addEventListener('click', signOut);
 
-  /* ---------- router: the single drills view ---------- */
+  /* ---------- router: Drills and Stats, Drills is the default ---------- */
   router.initRouter(ctx);
   ctx.navigate = router.navigate;
-  await router.navigate('train');
+
+  /* The top bar links are plain anchors. A click is handled here so the view
+     swaps without a page load; the hash is kept in step so a refresh or a back
+     gesture lands on the same view. The active link carries aria-current. */
+  const navLinks = Array.prototype.slice.call(document.querySelectorAll('[data-view]'));
+  function setCurrent(name) {
+    navLinks.forEach(function (a) {
+      if (a.getAttribute('data-view') === name) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    });
+  }
+  function go(name) {
+    setCurrent(name);
+    try { history.replaceState(null, '', '#' + name); } catch (e) { /* best effort */ }
+    return router.navigate(name);
+  }
+  navLinks.forEach(function (a) {
+    a.addEventListener('click', function (event) {
+      event.preventDefault();
+      go(a.getAttribute('data-view'));
+    });
+  });
+  window.addEventListener('hashchange', function () {
+    const name = String(location.hash || '').replace(/^#/, '');
+    if (name) go(name);
+  });
+
+  const initial = String(location.hash || '').replace(/^#/, '') || 'train';
+  await go(initial);
 
   /* ---------- react to later auth changes ---------- */
   auth.onAuthChange((event, s) => {
