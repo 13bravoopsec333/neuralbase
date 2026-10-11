@@ -12,14 +12,13 @@ const DEMO_USER_KEY = 'cortex.demo.user';
 
 const demoListeners = new Set();
 
-function demoUser({ email, username, dob } = {}) {
+function demoUser({ email, username } = {}) {
   return {
     id: 'demo-user',
     email: email || 'demo@local',
     user_metadata: {
       username: username || 'demo',
       display_name: username || 'demo',
-      dob: dob || '',
     },
   };
 }
@@ -52,37 +51,6 @@ function emit(event, session) {
   });
 }
 
-/* ---------------- pure age gate ---------------- */
-
-function parseDob(value) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value == null ? '' : value).trim());
-  if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  const dt = new Date(y, mo - 1, d);
-  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
-  return dt;
-}
-
-/* Minimum age to hold an account. One number on purpose: the auth page copy,
-   the field errors and the database trigger all have to agree, and three
-   separate copies of a threshold is how they quietly drift apart. */
-export const MIN_AGE = 16;
-
-/* dob is a date string (YYYY-MM-DD). true only when the person is MIN_AGE or older today. */
-export function ageOk(dob) {
-  const birth = parseDob(dob);
-  if (!birth) return false;
-  const now = new Date();
-  let age = now.getFullYear() - birth.getFullYear();
-  const beforeBirthday =
-    now.getMonth() < birth.getMonth() ||
-    (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
-  if (beforeBirthday) age -= 1;
-  return age >= MIN_AGE;
-}
-
 /* ---------------- actions ---------------- */
 
 function fail(error) {
@@ -110,11 +78,9 @@ function normalizeSignupError(error) {
   return error;
 }
 
-export async function signUp({ email, password, username, dob } = {}) {
-  if (!ageOk(dob)) return { ok: false, error: 'You must be ' + MIN_AGE + ' or older.' };
-
+export async function signUp({ email, password, username } = {}) {
   if (isDemo()) {
-    const user = demoUser({ email, username, dob });
+    const user = demoUser({ email, username });
     writeDemoUser(user);
     const session = { user };
     emit('SIGNED_IN', session);
@@ -130,7 +96,7 @@ export async function signUp({ email, password, username, dob } = {}) {
       password,
       options: {
         emailRedirectTo: new URL('/auth.html', location.origin).href,
-        data: { username, dob, display_name: username },
+        data: { username, display_name: username },
       },
     });
     if (error) {
@@ -313,17 +279,15 @@ export function onAuthChange(cb) {
   return () => sub.unsubscribe();
 }
 
-/* Upsert the signed-in user's profile. Used to finish Google signups (username + dob). */
+/* Upsert the signed-in user's profile. Used to finish Google signups (username). */
 export async function saveProfile(patch = {}) {
-  const { username, dob, display_name } = patch;
-  if (dob != null && dob !== '' && !ageOk(dob)) return { ok: false, error: 'You must be ' + MIN_AGE + ' or older.' };
+  const { username, display_name } = patch;
 
   if (isDemo()) {
     const user = readDemoUser() || demoUser({});
     const meta = Object.assign({}, user.user_metadata);
     if (username) { meta.username = username; if (!meta.display_name) meta.display_name = username; }
     if (display_name) meta.display_name = display_name;
-    if (dob) meta.dob = dob;
     user.user_metadata = meta;
     writeDemoUser(user);
     return { ok: true, user, demo: true };
@@ -340,7 +304,6 @@ export async function saveProfile(patch = {}) {
 
     const payload = { id: uid };
     if (username) payload.username = username;
-    if (dob) payload.dob = dob;
     if (display_name) payload.display_name = display_name;
 
     const { error } = await client
@@ -354,7 +317,6 @@ export async function saveProfile(patch = {}) {
 
     const metaPatch = {};
     if (username) metaPatch.username = username;
-    if (dob) metaPatch.dob = dob;
     if (Object.keys(metaPatch).length) {
       try { await client.auth.updateUser({ data: metaPatch }); } catch (e) { /* metadata is best-effort */ }
     }

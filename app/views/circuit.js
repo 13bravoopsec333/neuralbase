@@ -1,18 +1,27 @@
 /* Neuralbase view: Circuit, in the P2 preview-first layout.
 
    The shell is a narrow left rail and a big stage (see app/ui/p2.css for the
-   shared .p2-shell geometry). The rail is the ordered step list: each step picks
-   a drill, sets a wall-clock cap (Off, 30, 60, 90, 120 seconds), and carries its
-   own validated settings under a settings disclosure. The stage is the hero: it
-   draws the circuit as a duration-proportional timeline with the total run time,
-   and the primary Start circuit action floats over it. Along the bottom of the
-   stage a filmstrip of the nine drills appends one as a new step.
+   shared .p2-shell geometry). The rail holds both halves of building: the
+   add-a-drill palette that appends a step, and the ordered step list, where each
+   step picks a drill, sets a wall-clock cap (Off, 30, 60, 90, 120 seconds), and
+   carries its own validated settings under a settings disclosure. The stage is
+   the hero: it draws the circuit as a duration-proportional timeline with the
+   total run time, and the primary Start circuit action sits with it.
+
+   Add step is a chooser, never an appender: it opens the rail's drill list and
+   puts the cursor in it, and a step exists only once a drill has been picked.
+   appendStep refuses an id that is not a real drill, so nothing can be added from
+   a default or a random one.
 
    Start runs the steps in order in the full-screen focus stage, advancing on the
    drill's own completion or when the cap runs out. Runs and the session are saved
    through ctx.db the same way Train saves them, so Stats and the streak read a
    circuit exactly like a normal set. The model lives in app/lib/circuit.js under
    cortex.circuits, local only.
+
+   One trap worth naming: Circuit.save() normalizes, and normalize rebuilds every
+   step object. A row's captured step is therefore stale the moment anything is
+   committed, so every edit re-resolves the live step by index (see stepAt).
 
    Scoped styles, design tokens only, both themes, no gradients, no shadows.
    The .p2-* classes are the shared shell contract; this file defines only .ci-*. */
@@ -157,7 +166,7 @@ var ui = {};
 var run = {
   on: false, scrim: null, stage: null, holder: null, progEl: null,
   index: 0, steps: [], outcomes: [], handle: null, gen: 0,
-  cap: null, sessionDrills: [], keyHandler: null, finishing: false
+  cap: null, sessionDrills: [], keyHandler: null, finishing: false, stepStart: 0
 };
 
 /* ---------- styles ---------- */
@@ -171,11 +180,11 @@ function injectStyles() {
   var ACC_E = 'var(--accent-edge,var(--lime-edge))';
   s.textContent = [
     /* The view frame. The shell (app/ui/p2.css) owns .p2-shell, .p2-rail, .p2-stage,
-       .p2-stage-meta, .p2-start, .p2-filmstrip and .p2-chip; everything here is .ci-*. */
+       .p2-stage-meta, .p2-start and .p2-chip; everything here is .ci-*. */
     '.ci-view{width:100%;max-width:none;margin-inline:0;justify-content:flex-start;padding-top:var(--gap-4)}',
     '.ci-wrap{width:100%;max-width:none;margin-inline:0;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}',
 
-    /* ---------- rail: the ordered step list ---------- */
+    /* ---------- rail: the add-a-drill palette, then the ordered step list ---------- */
     '.ci-rail-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3)}',
     '.ci-rail-title{margin:0;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}',
     '.ci-rail-count{font-family:var(--mono);font-size:11.5px;color:var(--dim)}',
@@ -224,6 +233,16 @@ function injectStyles() {
        gradient is needed and the theme still holds. */
     '.ci-range-wrap{display:flex;align-items:center;width:100%;min-width:0}',
     '.ci-range{width:100%;height:24px;margin:0;background:transparent;accent-color:' + ACC + ';cursor:pointer}',
+
+    /* ---------- rail: the add-a-drill palette ---------- */
+    /* The nine drills live in the rail, so a step is appended without leaving the
+       workspace. Two columns keep it short; the rail scrolls if it runs long. */
+    '.ci-palette{display:flex;flex-direction:column;gap:9px}',
+    '.ci-palette-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}',
+    '.ci-palette-grid .p2-chip{max-width:none;min-width:0;padding:7px 9px;font-size:12px}',
+    '.ci-palette-grid .p2-chip-name{min-width:0;overflow:hidden;text-overflow:ellipsis}',
+    /* Add step opened the list: a brief accent edge says where to pick. */
+    '.ci-palette-ask .ci-palette-grid .p2-chip{border-color:' + ACC_E + '}',
     '.ci-add{width:100%}',
 
     /* ---------- stage: the duration-proportional timeline ---------- */
@@ -249,26 +268,30 @@ function injectStyles() {
     '.ci-tick i{display:block;width:1px;height:6px;background:var(--line2)}',
     '.ci-tick-major i{height:9px;background:var(--muted)}',
     '.ci-tick b{font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--dim);white-space:nowrap}',
-    '.ci-note{margin:0;font-size:11.5px;color:var(--dim)}',
-
-    /* ---------- the filmstrip: .p2-chip is the shell's tile, .p2-chip-art and
-       .p2-chip-name are its parts. Nothing circuit-specific is needed here. ---------- */
 
     '.ci-empty{margin:0;color:var(--dim);font-size:12.5px;line-height:1.5}',
 
     /* focus-visible rings on every real control this view owns */
     '.ci-drill:focus-visible,.ci-seg-btn:focus-visible,.ci-range:focus-visible,.ci-icon:focus-visible,.ci-set-sum:focus-visible,.ci-chip:focus-visible,.ci-add:focus-visible,.ci-res-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
 
-    /* Results: plain list, quiet, one action line. */
-    '.ci-res{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:640px;margin-inline:auto;padding-top:var(--gap-5)}',
+    /* Results: the circuit's own summary, rendered in the stage, then one line
+       per step, then the actions. Token-only, no shadows. */
+    '.ci-res-stage{display:block;overflow-y:auto;padding:var(--gap-5) var(--gap-5) var(--gap-4)}',
+    '.ci-res{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:640px;margin-inline:auto}',
     '.ci-res-title{margin:0;font-size:20px;font-weight:600;letter-spacing:-.015em}',
+    '.ci-res-totals{display:flex;align-items:baseline;gap:var(--gap-3);flex-wrap:wrap;padding-bottom:var(--gap-2);border-bottom:1px solid var(--line2)}',
+    '.ci-res-big{font-family:var(--mono);font-size:clamp(24px,3.4vw,32px);font-weight:650;letter-spacing:-.02em;color:' + ACC + ';line-height:1}',
+    '.ci-res-total-cap{font-size:12px;color:var(--muted)}',
+    '.ci-res-total-steps{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--dim)}',
+    '.ci-res-overall{margin:0;font-size:13px;color:var(--muted)}',
     '.ci-res-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}',
     '.ci-res-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;padding:10px 0;border-top:1px solid var(--line2);font-size:14px}',
     '.ci-res-item:first-child{border-top:0}',
+    '.ci-res-n{flex:none;width:18px;font-family:var(--mono);font-size:11px;color:var(--dim)}',
     '.ci-res-name{color:var(--ink)}',
-    '.ci-res-out{color:var(--muted);font-variant-numeric:tabular-nums}',
+    '.ci-res-dur{font-family:var(--mono);font-size:12px;color:var(--dim)}',
+    '.ci-res-out{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}',
     '.ci-res-out.mono{color:var(--ink)}',
-    '.ci-res-time{color:var(--dim);font-size:12px}',
     '.ci-res-actions{display:flex;gap:var(--gap-5);flex-wrap:wrap;margin-top:var(--gap-2)}',
     '.ci-res-act{background:none;border:0;padding:6px 0;font-family:var(--sans);font-size:15px;font-weight:600;color:var(--muted);cursor:pointer;transition:color .15s ease}',
     '.ci-res-act:hover{color:var(--ink)}',
@@ -280,14 +303,13 @@ function injectStyles() {
     '@media (max-width:560px){.ci-total-steps{display:none}.ci-seg-btn{font-size:11.5px;padding:6px 1px}.ci-stage-body{padding:34px var(--gap-4) var(--gap-3);gap:var(--gap-3)}.ci-track{height:58px}}',
     '@media (max-width:380px){.ci-sb-name{display:none}.ci-total-big{font-size:28px}}',
     /* On phones the shell stacks. The hero comes first here too, the same order
-       the drill screen uses: stage (with Start circuit), then the filmstrip to
-       add a step, then the step list to edit. Both rows are bounded so the
-       filmstrip stays visible and each pane scrolls inside its own row. The stage
-       floor keeps the timeline and its Start whole on a short viewport but yields
-       to 68% of the shell so a very short one still cannot push the filmstrip off.
-       Scoped to .ci-view, so the shared shell keeps its own order for anything
-       else. */
-    '@media (max-width:720px){.ci-view .p2-shell{grid-template-rows:minmax(min(282px,68%),1.4fr) auto minmax(0,0.6fr)}.ci-view .p2-stage{grid-row:1}.ci-view .p2-filmstrip{grid-row:2}.ci-view .p2-rail{grid-row:3;border-right:0;border-bottom:0;border-top:1px solid var(--line)}}',
+       the drill screen uses: stage (with Start circuit), then the rail, which now
+       holds both the add-a-drill palette and the step list and scrolls inside its
+       own row. The stage floor keeps the timeline and its Start whole on a short
+       viewport but yields to 62% of the shell so the rail always keeps a usable
+       row of its own. Scoped to .ci-view, so the shared shell keeps its own order
+       for anything else. */
+    '@media (max-width:720px){.ci-view .p2-shell{grid-template-rows:minmax(min(260px,62%),1.3fr) minmax(0,1fr)}.ci-view .p2-stage{grid-row:1}.ci-view .p2-rail{grid-row:2;border-right:0;border-top:1px solid var(--line)}}',
     '@media (prefers-reduced-motion:reduce){.ci-seg-btn,.ci-icon,.ci-set-sum,.ci-seg-block,.ci-res-act{transition:none}}'
   ].join('');
   document.head.appendChild(s);
@@ -310,9 +332,36 @@ function commitModel() {
   model = Circuit.save(model);
 }
 
-function firstDrillId() {
-  var D = (globalThis.Content && globalThis.Content.DRILLS) || [];
-  return (D[0] && D[0].id) || 'nback';
+/* Swap one node for another in place. removeChild + appendChild rather than
+   replaceChild, because the two fake DOMs the test suite mounts views against
+   implement the former and not the latter. The shell has exactly two children
+   (rail, stage) and the stage is always the last, so appending lands it in the
+   same slot. */
+function swapNode(oldNode, nextNode) {
+  var parent = oldNode && oldNode.parentNode;
+  if (!parent) return false;
+  parent.removeChild(oldNode);
+  parent.appendChild(nextNode);
+  return true;
+}
+
+/* The stage reads the model, so a commit that changes the timeline has to repaint
+   it. Swapping just the stage node keeps the rail, its scroll position and the
+   focused control exactly where they were. */
+function refreshStage() {
+  if (!ui.stage) return;
+  var next = buildStage();
+  if (!swapNode(ui.stage, next)) return;
+  ui.stage = next;
+}
+
+/* A row's identity is its index: it stays valid while the row is on screen,
+   because every add, remove and reorder rebuilds the whole rail. save() rebuilds
+   the step objects, so an edit must never trust the object it captured at build
+   time, or the second change on a row writes into a detached copy and is lost. */
+function stepAt(index) {
+  var c = activeCircuit();
+  return (c && c.steps && c.steps[index]) || null;
 }
 
 /* The chooser: a native grouped select. Same four families as the Drills picker,
@@ -346,15 +395,16 @@ function buildDrillChooser(step, index) {
     sel.appendChild(og);
   });
   sel.addEventListener('change', function () {
-    step.drillId = sel.value;
-    step.options = {};
+    var live = stepAt(index) || step;
+    live.drillId = sel.value;
+    live.options = {};
     commitModel();
     showBuilder();
   });
   return sel;
 }
 
-function buildDuration(step) {
+function buildDuration(step, index) {
   var seg = h('div', 'ci-seg');
   seg.setAttribute('role', 'group');
   seg.setAttribute('aria-label', 'Duration in seconds');
@@ -365,9 +415,12 @@ function buildDuration(step) {
     b.setAttribute('aria-pressed', step.seconds === sec ? 'true' : 'false');
     b.setAttribute('aria-label', sec === 0 ? 'No limit' : sec + ' seconds');
     b.addEventListener('click', function () {
-      step.seconds = sec;
-      markPressed(seg, step.seconds, false);
+      var live = stepAt(index);
+      if (!live) return;
+      live.seconds = sec;
+      markPressed(seg, live.seconds, false);
       commitModel();
+      refreshStage();
       say(sec === 0 ? 'Step runs to completion.' : 'Step capped at ' + sec + ' seconds.');
     });
     seg.appendChild(b);
@@ -407,7 +460,7 @@ function segGroup(entry, variant) {
 /* One setting: label and value on a line, the control under it, so the narrow
    rail stays readable. The control updates its own pressed state, so changing a
    value never rebuilds the list or moves focus. */
-function buildSettingRow(step, entry) {
+function buildSettingRow(step, entry, index) {
   var current = step.options ? step.options[entry.key] : undefined;
   var field = h('div', 'ci-field');
   var head = h('div', 'ci-field-head');
@@ -418,24 +471,25 @@ function buildSettingRow(step, entry) {
   field.appendChild(head);
 
   var type = entry.type || 'number';
-  if (type === 'toggle') field.appendChild(buildToggle(step, entry, current));
-  else if (type === 'choice') field.appendChild(entry.multi ? buildMulti(step, entry, current) : buildChoice(step, entry, current));
-  else field.appendChild(buildNumber(step, entry, current, readout));
+  if (type === 'toggle') field.appendChild(buildToggle(step, entry, current, index));
+  else if (type === 'choice') field.appendChild(entry.multi ? buildMulti(step, entry, current, index) : buildChoice(step, entry, current, index));
+  else field.appendChild(buildNumber(step, entry, current, readout, index));
   return field;
 }
 
 /* One setting committed in place: the control updates its own state, so changing
    a value never rebuilds the list or moves focus. Returns the stored value, which
    the store may have snapped. */
-function commitSetting(step, entry, value, seg, multi) {
-  step.options = step.options || {};
-  step.options[entry.key] = value;
-  var v = Circuit.validate(step);
-  step.options = v ? v.options : step.options;
-  if (seg) markPressed(seg, step.options[entry.key], multi);
+function commitSetting(step, entry, value, seg, multi, index) {
+  var live = stepAt(index) || step;
+  live.options = live.options || {};
+  live.options[entry.key] = value;
+  var v = Circuit.validate(live);
+  live.options = v ? v.options : live.options;
+  if (seg) markPressed(seg, live.options[entry.key], multi);
   commitModel();
-  say(entry.label + ' set to ' + optionReadout(entry, step.options[entry.key]) + '.');
-  return step.options[entry.key];
+  say(entry.label + ' set to ' + optionReadout(entry, live.options[entry.key]) + '.');
+  return live.options[entry.key];
 }
 
 /* A number on a segmented bar works while the whole set fits on one line. Past
@@ -459,16 +513,16 @@ function sliderValue(raw, entry) {
   return Math.round(snapped * 1e10) / 1e10;
 }
 
-function buildNumber(step, entry, current, readout) {
+function buildNumber(step, entry, current, readout, index) {
   var values = numberValues(entry);
-  if (values.length > SEG_MAX) return buildRange(step, entry, current, readout);
+  if (values.length > SEG_MAX) return buildRange(step, entry, current, readout, index);
   var seg = segGroup(entry, 'ci-seg-bar');
   values.forEach(function (value) {
     var b = h('button', 'ci-seg-btn', String(value));
     b.type = 'button';
     b._v = value;
     b.setAttribute('aria-pressed', value === current ? 'true' : 'false');
-    b.addEventListener('click', function () { commitSetting(step, entry, value, seg, false); });
+    b.addEventListener('click', function () { commitSetting(step, entry, value, seg, false, index); });
     seg.appendChild(b);
   });
   return seg;
@@ -477,7 +531,7 @@ function buildNumber(step, entry, current, readout) {
 /* A real range input. The readout follows the drag live and the value is
    committed on release without rebuilding the node, so neither the drag nor the
    focus is pulled out from under the pointer. */
-function buildRange(step, entry, current, readout) {
+function buildRange(step, entry, current, readout, index) {
   var wrap = h('div', 'ci-range-wrap');
   var input = document.createElement('input');
   input.type = 'range';
@@ -494,40 +548,40 @@ function buildRange(step, entry, current, readout) {
     input.setAttribute('aria-valuetext', text);
   });
   input.addEventListener('change', function () {
-    var stored = commitSetting(step, entry, sliderValue(input.value, entry), null, false);
+    var stored = commitSetting(step, entry, sliderValue(input.value, entry), null, false, index);
     if (readout) readout.textContent = optionReadout(entry, stored);
   });
   wrap.appendChild(input);
   return wrap;
 }
 
-function buildToggle(step, entry, current) {
+function buildToggle(step, entry, current, index) {
   var seg = segGroup(entry, 'ci-switch');
   [[false, 'Off'], [true, 'On']].forEach(function (pair) {
     var b = h('button', 'ci-seg-btn', pair[1]);
     b.type = 'button';
     b._v = pair[0];
     b.setAttribute('aria-pressed', current === pair[0] ? 'true' : 'false');
-    b.addEventListener('click', function () { commitSetting(step, entry, pair[0], seg, false); });
+    b.addEventListener('click', function () { commitSetting(step, entry, pair[0], seg, false, index); });
     seg.appendChild(b);
   });
   return seg;
 }
 
-function buildChoice(step, entry, current) {
+function buildChoice(step, entry, current, index) {
   var seg = segGroup(entry, 'ci-seg-bar');
   entry.options.forEach(function (o) {
     var b = h('button', 'ci-seg-btn', o.label);
     b.type = 'button';
     b._v = o.value;
     b.setAttribute('aria-pressed', current === o.value ? 'true' : 'false');
-    b.addEventListener('click', function () { commitSetting(step, entry, o.value, seg, false); });
+    b.addEventListener('click', function () { commitSetting(step, entry, o.value, seg, false, index); });
     seg.appendChild(b);
   });
   return seg;
 }
 
-function buildMulti(step, entry, current) {
+function buildMulti(step, entry, current, index) {
   var seg = segGroup(entry, 'ci-chips');
   var on = Array.isArray(current) ? current.slice() : [];
   entry.options.forEach(function (o) {
@@ -545,7 +599,7 @@ function buildMulti(step, entry, current) {
         next.push(o.value);
       }
       on = next;
-      commitSetting(step, entry, next, seg, true);
+      commitSetting(step, entry, next, seg, true, index);
     });
     seg.appendChild(b);
   });
@@ -562,7 +616,7 @@ function buildSettings(step, index) {
   if (!spec.length) {
     body.appendChild(h('p', 'ci-empty', 'This drill has no settings.'));
   } else {
-    for (var i = 0; i < spec.length; i++) body.appendChild(buildSettingRow(step, spec[i]));
+    for (var i = 0; i < spec.length; i++) body.appendChild(buildSettingRow(step, spec[i], index));
   }
   det.appendChild(body);
   return det;
@@ -584,16 +638,36 @@ function removeStep(index) {
   say('Step removed.');
 }
 
-/* Append one step for a drill, at the default cap. Shared by Add step and the
-   filmstrip, so the two entry points cannot drift apart. */
+/* Append one step for a drill, at the default cap. The only entry point is an
+   explicit pick in the rail's drill list, and the pick is put through the same
+   validate() the store uses, so a missing or unknown drill id is refused rather
+   than turned into a default. No step can appear without a drill the user chose. */
 function appendStep(drillId) {
-  activeCircuit().steps.push({ drillId: drillId, seconds: STEP_SECONDS, options: {} });
+  var step = Circuit.validate({ drillId: drillId, seconds: STEP_SECONDS, options: {} });
+  if (!step) { say('Pick a drill to add as a step.'); return; }
+  activeCircuit().steps.push(step);
   commitModel();
   showBuilder();
-  say(drillById(drillId).name + ' added as a step.');
+  say(drillById(step.drillId).name + ' added as a step.');
 }
 
-function addStep() { appendStep(firstDrillId()); }
+/* Add step is a chooser, not an appender. It opens the rail's drill list and puts
+   the cursor in it, so the step is only created once a drill has been picked. */
+function askForDrill() {
+  var picker = ui.palette;
+  if (!picker) return;
+  var first = picker.querySelector('.p2-chip');
+  if (!first) return;
+  picker.classList.add('ci-palette-ask');
+  window.setTimeout(function () {
+    if (ui.palette === picker) picker.classList.remove('ci-palette-ask');
+  }, 1800);
+  try {
+    if (first.scrollIntoView) first.scrollIntoView({ block: 'nearest' });
+    first.focus();
+  } catch (e) { /* degrade */ }
+  say('Pick a drill to add as a step.');
+}
 
 function iconBtn(kind, disabled, label, onClick, extra) {
   var b = h('button', 'ci-icon' + (extra ? ' ' + extra : ''));
@@ -628,7 +702,7 @@ function buildStepRow(step, index, count) {
 
   var dur = h('div', 'ci-dur');
   dur.appendChild(h('span', 'ci-dur-lbl', 'Run'));
-  dur.appendChild(buildDuration(step));
+  dur.appendChild(buildDuration(step, index));
   li.appendChild(dur);
 
   li.appendChild(buildSettings(step, index));
@@ -692,10 +766,6 @@ function buildTimeline(steps) {
   }
   tl.appendChild(ruler);
 
-  tl.appendChild(h('p', 'ci-note', open > 0
-    ? 'Each block is as wide as it runs. Open steps run to completion.'
-    : 'Each block is as wide as it runs. Seconds along the scale.'));
-
   return tl;
 }
 
@@ -711,7 +781,7 @@ function buildStage() {
     stage.appendChild(buildTimeline(steps));
   } else {
     var empty = h('div', 'ci-stage-body');
-    empty.appendChild(h('p', 'ci-empty', 'Add a step to see the timeline.'));
+    empty.appendChild(h('p', 'ci-empty', 'No steps yet.'));
     stage.appendChild(empty);
   }
 
@@ -726,11 +796,18 @@ function buildStage() {
   return stage;
 }
 
-/* ---------- the filmstrip: every drill, one click to append a step ---------- */
+/* ---------- the rail's add-a-drill palette: every drill, one click to append ---------- */
 
-function buildFilmstrip() {
-  var strip = h('div', 'p2-filmstrip');
-  strip.setAttribute('aria-label', 'Add a drill as a step');
+/* Grouped in the same four families as the step chooser, in two columns, so the
+   whole registry is reachable without leaving the rail. Every chip is a real
+   button, so tab and enter work with no custom key handling. */
+function buildPalette() {
+  var block = h('div', 'ci-palette');
+  block.setAttribute('role', 'group');
+  block.setAttribute('aria-label', 'Add a drill as a step');
+  block.appendChild(h('p', 'ci-rail-title', 'Add a drill'));
+
+  var grid = h('div', 'ci-palette-grid');
   var D = (globalThis.Content && globalThis.Content.DRILLS) || [];
   var byId = {};
   for (var b = 0; b < D.length; b++) byId[D[b].id] = D[b];
@@ -744,27 +821,26 @@ function buildFilmstrip() {
   var rest = D.map(function (p) { return p.id; }).filter(function (id) { return !seen[id]; });
   if (rest.length) groups.push(rest);
 
-  groups.forEach(function (ids, gi) {
-    if (gi > 0) {
-      var sep = h('span', 'p2-strip-sep');
-      sep.setAttribute('aria-hidden', 'true');
-      strip.appendChild(sep);
-    }
+  groups.forEach(function (ids) {
     ids.forEach(function (id) {
       var d = byId[id];
       var chip = h('button', 'p2-chip ci-chip');
       chip.type = 'button';
       chip.setAttribute('aria-label', 'Add ' + d.name + ' as a step');
+      chip.title = d.name;
       var art = h('span', 'p2-chip-art');
       art.setAttribute('aria-hidden', 'true');
+      /* The registry icon is a trusted, static SVG string from content.js, not
+         user text, so it is the one place innerHTML is used. */
       if (d.icon) art.innerHTML = d.icon;
       chip.appendChild(art);
       chip.appendChild(h('span', 'p2-chip-name', d.name));
       chip.addEventListener('click', function () { appendStep(id); });
-      strip.appendChild(chip);
+      grid.appendChild(chip);
     });
   });
-  return strip;
+  block.appendChild(grid);
+  return block;
 }
 
 function buildRail() {
@@ -777,18 +853,26 @@ function buildRail() {
   head.appendChild(h('span', 'ci-rail-count mono', String(steps.length)));
   rail.appendChild(head);
 
+  /* The drill list and the Add step control travel together and sit above the
+     step list, so both are in view at the top of the rail without scrolling it
+     however many steps the circuit has. */
+  ui.palette = buildPalette();
+  rail.appendChild(ui.palette);
+
+  /* Opens the drill list directly above. It never appends on its own: a step
+     exists only after a drill has been picked. */
+  var add = h('button', 'btn-ghost ci-add', 'Add step');
+  add.type = 'button';
+  add.addEventListener('click', askForDrill);
+  rail.appendChild(add);
+
   if (!steps.length) {
-    rail.appendChild(h('p', 'ci-empty', 'No steps yet. Add a step to start building your circuit.'));
+    rail.appendChild(h('p', 'ci-empty', 'No steps yet.'));
   } else {
     var list = h('ol', 'ci-steps');
     for (var i = 0; i < steps.length; i++) list.appendChild(buildStepRow(steps[i], i, steps.length));
     rail.appendChild(list);
   }
-
-  var add = h('button', 'btn-ghost ci-add', 'Add step');
-  add.type = 'button';
-  add.addEventListener('click', addStep);
-  rail.appendChild(add);
   return rail;
 }
 
@@ -798,8 +882,8 @@ function showBuilder() {
 
   var shell = h('div', 'p2-shell');
   shell.appendChild(buildRail());
-  shell.appendChild(buildStage());
-  shell.appendChild(buildFilmstrip());
+  ui.stage = buildStage();
+  shell.appendChild(ui.stage);
   ui.root.appendChild(shell);
 
   var live = h('div', 'sr');
@@ -908,7 +992,11 @@ function finishStep(kind, rec) {
   stopHandle();
   clearCap();
   var step = run.steps[run.index];
-  var outcome = { step: step, drillId: step.drillId, kind: kind, rec: rec || null };
+  var outcome = {
+    step: step, drillId: step.drillId, kind: kind, rec: rec || null,
+    seconds: step.seconds,
+    elapsed: run.stepStart ? Math.max(0, Date.now() - run.stepStart) : 0
+  };
   if (kind === 'done') {
     var summary = recordRun(rec);
     outcome.value = summary.value;
@@ -927,6 +1015,7 @@ function runStep() {
   clearCap();
   if (run.index >= run.steps.length) { finishRun(false); return; }
   var step = run.steps[run.index];
+  run.stepStart = Date.now();
   paintProgress();
 
   run.holder.replaceChildren();
@@ -1069,37 +1158,81 @@ function finishRun() {
   }
   saveSession(run.sessionDrills);
   var outcomes = run.outcomes.slice();
+  var planned = run.steps.length;
   run.sessionDrills = [];
-  showResults(outcomes);
+  showResults(outcomes, planned);
 }
 
 /* ---------- results ---------- */
 
-function showResults(outcomes) {
+/* Elapsed time, rounded to the nearest second: a 30 s cap ran for 30 s, not the
+   0:31 a countdown's ceiling would print. */
+function fmtElapsed(ms) {
+  var s = Math.max(0, Math.round((ms || 0) / 1000));
+  var m = Math.floor(s / 60);
+  var r = s % 60;
+  return m + ':' + (r < 10 ? '0' : '') + r;
+}
+
+/* The whole circuit, not just a list: circuit totals, then one honest line per
+   step. A step the cap cut short records no run (the drill registry reports no
+   partial), so it says so instead of printing a number nobody measured.
+
+   It renders in the stage, so the shell (and the page pin that keeps the screen
+   from scrolling) stays up and the rail is still there to run the circuit again
+   or edit it. Editing a duration from the rail repaints the timeline back over
+   the summary, which is the builder again. */
+function showResults(outcomes, planned) {
   if (!ui.root) return;
-  ui.root.replaceChildren();
+  /* The shell has to be up for the summary to land in the stage. */
+  if (!ui.root.querySelector('.p2-shell') || !ui.stage || !ui.stage.parentNode) showBuilder();
+
+  var done = 0, timedOut = 0, skipped = 0, totalMs = 0;
+  for (var c = 0; c < outcomes.length; c++) {
+    if (outcomes[c].kind === 'done') done++;
+    else if (outcomes[c].kind === 'timeout') timedOut++;
+    else skipped++;
+    totalMs += outcomes[c].elapsed || 0;
+  }
+  var plannedCount = (typeof planned === 'number' && planned > outcomes.length) ? planned : outcomes.length;
+
+  var stage = h('section', 'p2-stage ci-res-stage');
+  stage.setAttribute('aria-label', 'Circuit result');
+  stage.appendChild(h('div', 'p2-stage-meta', 'Results \u00b7 ' + outcomes.length + ' of ' + plannedCount + (plannedCount === 1 ? ' step' : ' steps')));
 
   var view = h('div', 'ci-res');
-  view.setAttribute('aria-label', 'Circuit result');
   view.appendChild(h('h2', 'ci-res-title', 'Circuit complete'));
+
+  var totals = h('div', 'ci-res-totals');
+  totals.appendChild(h('span', 'ci-res-big mono', fmtElapsed(totalMs)));
+  totals.appendChild(h('span', 'ci-res-total-cap', 'total time'));
+  totals.appendChild(h('span', 'ci-res-total-steps mono',
+    outcomes.length + ' of ' + plannedCount + (plannedCount === 1 ? ' step run' : ' steps run')));
+  view.appendChild(totals);
+
+  var parts = [];
+  if (done) parts.push(done + ' completed');
+  if (timedOut) parts.push(timedOut + ' timed out');
+  if (skipped) parts.push(skipped + ' skipped');
+  view.appendChild(h('p', 'ci-res-overall', parts.length ? parts.join(', ') : 'No steps ran'));
 
   var list = h('ul', 'ci-res-list');
   for (var i = 0; i < outcomes.length; i++) {
     var o = outcomes[i];
     var li = h('li', 'ci-res-item');
+    li.appendChild(h('span', 'ci-res-n mono', String(i + 1)));
     li.appendChild(h('span', 'ci-res-name', drillById(o.drillId).name));
+    li.appendChild(h('span', 'ci-res-dur mono', fmtElapsed(o.elapsed)));
     if (o.kind === 'done') {
       li.appendChild(h('span', 'ci-res-out mono', fmtNum(o.value) + (o.unit ? ' ' + o.unit : '')));
-      if (o.isPR) li.appendChild(h('span', 'ci-res-time', 'new best'));
+      if (o.isPR) li.appendChild(h('span', 'ci-res-dur', 'new best'));
     } else if (o.kind === 'timeout') {
-      li.appendChild(h('span', 'ci-res-out', 'timed out'));
-      li.appendChild(h('span', 'ci-res-time', 'no run recorded'));
+      li.appendChild(h('span', 'ci-res-out', 'timed out, no run recorded'));
     } else {
-      li.appendChild(h('span', 'ci-res-out', 'skipped'));
+      li.appendChild(h('span', 'ci-res-out', 'skipped, no run recorded'));
     }
     list.appendChild(li);
   }
-  if (!outcomes.length) list.appendChild(h('li', 'ci-res-item', 'No steps ran.'));
   view.appendChild(list);
 
   var actions = h('div', 'ci-res-actions');
@@ -1113,14 +1246,17 @@ function showResults(outcomes) {
   actions.appendChild(back);
   view.appendChild(actions);
 
-  ui.root.appendChild(view);
-  var live = h('div', 'sr');
-  live.setAttribute('aria-live', 'polite');
-  ui.root.appendChild(live);
-  ui.live = live;
+  stage.appendChild(view);
+  swapNode(ui.stage, stage);
+  ui.stage = stage;
 
-  var done = outcomes.filter(function (o) { return o.kind === 'done'; }).length;
-  say('Circuit finished. ' + done + ' of ' + outcomes.length + ' steps completed.');
+  if (!ui.live || !ui.live.parentNode) {
+    ui.live = h('div', 'sr');
+    ui.live.setAttribute('aria-live', 'polite');
+    ui.root.appendChild(ui.live);
+  }
+
+  say('Circuit finished. ' + done + ' of ' + plannedCount + ' steps completed.');
   try { again.focus(); } catch (e) { /* degrade */ }
 }
 

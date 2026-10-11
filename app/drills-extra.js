@@ -135,7 +135,7 @@
      division using factors 2 to 12. Every operation tier 1 has stays available,
      with larger operands.
      opts.ops is the set of enabled operations; opts.digits caps the operand
-     width (1, 2 or 3 digits). Both default to the shipped behaviour. */
+     width (1 to 5 digits). Both default to the shipped behaviour. */
   function makeProblem(level, rng, opts) {
     var o = opts || {};
     var lvl = Math.floor(Number(level) || 0);
@@ -143,7 +143,7 @@
     if (lvl > 2) lvl = 2;
     var digits = Math.floor(Number(o.digits) || 2);
     if (digits < 1) digits = 1;
-    if (digits > 3) digits = 3;
+    if (digits > 5) digits = 5;
     var cap = Math.pow(10, digits) - 1;
     var enabled = (Array.isArray(o.ops) && o.ops.length) ? o.ops : ["+", "-", "*", "/"];
     var allowed = lvl === 0 ? ["+", "-"] : ["+", "-", "*", "/"];
@@ -152,9 +152,9 @@
        they kept, rather than an empty draw. */
     if (!kinds.length) kinds = enabled.slice();
     var op = pick(rng, kinds);
-    /* Three digit operands have to reach three digits even at the default
-       level, otherwise the setting does nothing until level 2. Below that, the
-       level still holds addition inside 30 and subtraction inside 30. */
+    /* Wide operands (three digits and up) have to reach the chosen width even at
+       the default level, otherwise the setting does nothing until level 2. Below
+       that, the level still holds addition inside 30 and subtraction inside 30. */
     var wide = lvl >= 2 || digits >= 3;
     if (op === "+") {
       var hi = wide ? cap : Math.min(cap, 29);
@@ -166,6 +166,10 @@
       var capMinus = wide ? cap : Math.min(cap, 30);
       capMinus = Math.max(1, capMinus);
       var c = 1 + randInt(rng, capMinus), d = 1 + randInt(rng, capMinus);
+      /* Never negative. The answer is typed on a mobile keyboard whose numeric
+         layout has no minus key, so a negative result could not be entered.
+         Swapping the pair keeps the full operand range and the difficulty. */
+      if (d > c) { var swap = c; c = d; d = swap; }
       return problem(lvl, "-", c, d, c - d);
     }
     var hiF = Math.max(2, Math.min(lvl >= 2 ? 12 : 9, cap));
@@ -237,9 +241,6 @@
       ".nx-row{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}",
       ".nx-in{flex:1;min-width:110px;min-height:48px;padding:10px 12px;border-radius:8px;border:1px solid var(--line2);background:var(--panel2);color:var(--ink);font:inherit;font-family:var(--mono);font-size:19px;text-align:center}",
       ".nx-in:focus{outline:2px solid var(--lime-edge);outline-offset:1px}",
-      ".nx-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:320px}",
-      ".nx-key{min-height:48px;border-radius:8px;border:1px solid var(--line2);background:var(--panel2);color:var(--ink);font-family:var(--mono);font-size:18px;cursor:pointer}",
-      ".nx-key:focus-visible{outline:2px solid var(--lime-edge);outline-offset:1px}",
       ".nx-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}",
       "@media(max-width:420px){.nx-lane{font-size:15px;min-height:58px}.nx-press{max-width:none}}",
       "@media(prefers-reduced-motion:reduce){.nx-digit,.nx-lane{transition:opacity .12s linear}}"
@@ -808,7 +809,6 @@
 
   var MATH_TRIALS = 20;
   var MATH_PROBE = 8;
-  var MATH_KEYS = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "-", "0", "C"];
 
   function math(container, opts) {
     injectStyles();
@@ -830,7 +830,8 @@
     levelSet = startLevel > 1;
     /* Validated by drillOptions: the enabled operations, at least one. */
     var ops = (opts.options && Array.isArray(opts.options.ops) && opts.options.ops.length) ? opts.options.ops : ["+", "-", "*", "/"];
-    /* Validated by drillOptions: operand width, 1 to 3 digits. Default 2. */
+    /* Operand width, 1 to 5 digits. Default 2. The panel's option spec caps the
+       selectable values; the drill honors up to five. */
     var digits = (opts.options && typeof opts.options.digits === "number") ? opts.options.digits : 2;
     /* Validated by drillOptions: off, 5, 10 or 15 seconds per problem. Off means
        the problem waits for an answer. */
@@ -856,35 +857,13 @@
     input.setAttribute("autocapitalize", "off");
     input.setAttribute("spellcheck", "false");
     row.appendChild(input);
-    /* The keypad stays. inputmode="numeric" hides the minus key on most mobile
-       keyboards, and subtraction problems do produce negative answers, so the
-       on-screen minus is the only way to enter one there. */
-    var pad = el("div", "nx-pad");
-    MATH_KEYS.forEach(function (k) {
-      var b = button("nx-key", k);
-      b.setAttribute("aria-label", k === "C" ? "Clear" : k === "-" ? "Minus sign" : "Digit " + k);
-      b.addEventListener("click", function () { tap(k); });
-      pad.appendChild(b);
-    });
     var meta = el("div", "nb-meta mono", metaText());
     wrap.appendChild(prompt);
     wrap.appendChild(row);
-    wrap.appendChild(pad);
     wrap.appendChild(meta);
     container.appendChild(wrap);
 
     var unbindVis = bindVisibility(doc, clock);
-
-    function tap(k) {
-      if (stopped || done || resolved) return;
-      if (k === "C") { input.value = ""; return; }
-      if (k === "-") {
-        input.value = input.value.charAt(0) === "-" ? input.value.slice(1) : "-" + input.value;
-        autoSubmit();
-        return;
-      }
-      if (input.value.length < 6) { input.value += k; autoSubmit(); }
-    }
 
     /* Zetamac style: the moment the typed value is exactly the answer, it is
        submitted. Anything else is left alone and waits for the next keystroke, so
@@ -973,16 +952,11 @@
       }
     }
 
+    /* Enter submits what is typed. Digits and Backspace reach the input
+       natively now that the on-screen pad is gone, and the input event drives
+       autoSubmit, so no keystroke needs to be intercepted. */
     function onKey(e) {
       if (e.key === "Enter") { e.preventDefault(); submit(); return; }
-      if (e.key === "Backspace") return;
-      /* preventDefault stops the browser inserting the character a second time
-         after tap() has already put it in, which is what made a typed digit land
-         twice. Paste and any other change still reach autoSubmit through the
-         input event. */
-      if (/^[0-9]$/.test(e.key)) { e.preventDefault(); tap(e.key); }
-      else if (e.key === "-" || e.key === "+") { e.preventDefault(); tap("-"); }
-      else if (e.key === "Delete") { e.preventDefault(); tap("C"); }
     }
     input.addEventListener("keydown", onKey);
     input.addEventListener("input", autoSubmit);

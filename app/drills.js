@@ -262,8 +262,13 @@
     return {
       set: function (fn, ms) {
         if (slot) clearTimeout(slot.id);
-        slot = { fn: fn, ms: ms, id: setTimeout(fn, ms), paused: false, deadline: Date.now() + ms, remaining: ms };
-        return slot.id;
+        var item = { fn: fn, ms: ms, id: 0, paused: false, deadline: Date.now() + ms, remaining: ms };
+        /* A fired timer is spent, so it leaves the slot empty. Left behind, a
+           later thaw would re-run it and rewind the phase it ended: the ufov
+           response window restarted with a full clock after Keep Training. */
+        item.id = setTimeout(function () { if (slot === item) slot = null; fn(); }, ms);
+        slot = item;
+        return item.id;
       },
       clear: function () {
         if (slot) { clearTimeout(slot.id); slot = null; }
@@ -353,17 +358,22 @@
       ".drill-nback .nb-cue,.drill-nback .nb-letter,.drill-nback .nb-meta{text-align:center}",
       ".drill-nback .nb-sum{justify-content:center}",
       ".drill-nback .drill-bar{justify-content:center}",
-      /* An option button carries its shortcut, so a key player can see what
-         the digits are. The label and the key sit side by side. */
-      ".nb-opt{display:inline-flex;align-items:center;gap:9px}",
-      ".nb-key{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--dim)}",
+      /* An option button carries its shortcut under its label, not beside it:
+         "Circle" over "1" reads as "press 1 for Circle" instead of the single
+         word "circle1". The key is a quiet keycap in the mono face, tinted with
+         the button's own text colour so it stays right on a ghost or a filled
+         button in every theme. */
+      ".nb-opt{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center}",
+      ".nb-key{font-family:var(--mono);font-size:10px;line-height:1.1;letter-spacing:.04em;color:currentColor;border:1px solid currentColor;border-radius:5px;padding:1px 5px;min-width:16px;text-align:center;opacity:.55}",
       /* Grid cells are now the position response, so they take a pointer and a
          focus ring like any other control. */
       ".drill-nback .nb-cell{cursor:pointer;padding:0;font:inherit;color:var(--ink);display:flex;align-items:center;justify-content:center}",
       ".drill-nback .nb-cell:focus-visible{outline:2px solid var(--lime-edge);outline-offset:1px}",
       /* The printed digit sits in the corner and the stimulus in the middle, so
-         a lit cell still reads as one shape and one number. */
-      ".drill-nback .nb-cell .k{position:absolute;top:3px;left:5px;font-family:var(--mono);font-size:10px;line-height:1;color:var(--dim)}",
+         a lit cell still reads as one shape and one number. It is a keycap like
+         the option keys, because it is the same kind of hint: the digit that
+         answers this cell. */
+      ".drill-nback .nb-cell .k{position:absolute;top:4px;left:5px;font-family:var(--mono);font-size:10px;line-height:1.1;color:var(--dim);border:1px solid currentColor;border-radius:4px;padding:0 3px;opacity:.85}",
       ".drill-nback .nb-cell .v{font-family:var(--mono);font-size:13px;font-weight:600;line-height:1}",
       ".drill-nback .nb-cell{position:relative}",
       /* A pressed cell keeps the mark so the eye can see what was answered. */
@@ -371,12 +381,16 @@
       /* The number rule needs the digit readable on the shape, so the stimulus
          centers its own text. */
       ".drill-switching .ts-stim{display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:24px;font-weight:600;color:var(--bg)}",
-      /* The palace study clock. A flat track that drains left to right over the
-         study period, so the time is visible rather than implied. */
+      /* The study clock. A flat track that drains left to right over the study
+         period, so the time is visible rather than implied. The ufov response
+         deadline reuses the same bar. */
       ".drill-palace .pl-study{display:flex;flex-direction:column;align-items:center;gap:6px}",
-      ".drill-palace .pl-track{width:min(300px,100%);height:4px;border-radius:2px;background:var(--line2);overflow:hidden}",
-      ".drill-palace .pl-fill{height:100%;width:100%;background:var(--lime);transform-origin:left center;transition:transform .1s linear}",
+      ".pl-track{width:min(300px,100%);height:4px;border-radius:2px;background:var(--line2);overflow:hidden}",
+      ".pl-fill{height:100%;width:100%;background:var(--lime);transform-origin:left center;transition:transform .1s linear}",
       ".drill-palace .pl-cue{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.04em}",
+      /* The ufov clock: the same draining bar, centered under the prompt, and
+         hidden when time pressure is off. */
+      ".drill-ufov .uf-clock{display:flex;justify-content:center;width:100%}",
       /* Focus presentation for the n-back. The stimulus is the hero and the grid
          supports it. Scoped to the focus stage and more specific than the rules in
          the frozen focus.css, so it wins there without editing that file. Any
@@ -393,7 +407,7 @@
       /* The shape in a lit cell is the spatial stimulus: size it to the cell, not
          to a caption. It only ever holds text in spatial mode. */
       ".nb-focus-stage .drill-nback .nb-cell .v{font-size:clamp(34px,9vmin,68px)}",
-      "@media(prefers-reduced-motion:reduce){.drill-palace .pl-fill{transition:none}}"
+      "@media(prefers-reduced-motion:reduce){.pl-fill{transition:none}}"
     ].join("");
     (document.head || document.documentElement).appendChild(s);
   }
@@ -563,9 +577,9 @@
      against it, so a hand-edited store can never put a drill out of range. */
   var DRILL_OPTION_SPEC = {
     nback: [
-      { key: "startLevel", label: "Starting level", type: "number", min: 1, max: 4, step: 1, def: 2 },
+      { key: "startLevel", label: "N level", type: "number", min: 1, max: 15, step: 1, def: 2 },
       { key: "trials", label: "Trials", type: "number", min: 12, max: 30, step: 6, def: 18 },
-      { key: "cueLength", label: "Cue length", type: "number", min: 4, max: 10, step: 1, def: 6 },
+      { key: "cueLength", label: "Cue length", type: "number", min: 1, max: 10, step: 1, def: 6 },
       { key: "stimulusMs", label: "Stimulus time", type: "choice", options: [{ value: 1500, label: "1.5 s" }, { value: 2000, label: "2 s" }, { value: 3000, label: "3 s" }], def: 2000 },
       { key: "endless", label: "Endless", type: "toggle", def: false }
     ],
@@ -574,13 +588,14 @@
       { key: "trials", label: "Trials", type: "number", min: 6, max: 20, step: 2, def: 10 },
       { key: "edgeTargets", label: "Edge targets", type: "number", min: 1, max: 2, step: 1, def: 1 },
       { key: "centerShape", label: "Center shape", type: "toggle", def: true },
+      { key: "timePressure", label: "Time pressure", type: "choice", options: [{ value: 0, label: "Off" }, { value: 2000, label: "2 s" }, { value: 3000, label: "3 s" }, { value: 5000, label: "5 s" }], def: 0 },
       { key: "endless", label: "Endless", type: "toggle", def: false }
     ],
     palace: [
       { key: "routeLength", label: "Route length", type: "number", min: 5, max: 10, step: 1, def: 5 },
       { key: "studySeconds", label: "Study seconds", type: "number", min: 1, max: 5, step: 0.5, def: 2.5 },
       { key: "itemSet", label: "Items", type: "choice", options: [{ value: "words", label: "Words" }, { value: "numbers", label: "Numbers" }, { value: "mixed", label: "Mixed" }], def: "words" },
-      { key: "recallOrder", label: "Recall order", type: "choice", options: [{ value: "in-order", label: "In order" }, { value: "any-order", label: "Any order" }], def: "in-order" }
+      { key: "recallOrder", label: "Recall scoring", type: "choice", options: [{ value: "in-order", label: "In order" }, { value: "any-order", label: "Any order" }], def: "in-order" }
     ],
     reasoning: [
       { key: "trials", label: "Trials", type: "number", min: 8, max: 20, step: 4, def: 8 },
@@ -596,7 +611,7 @@
     ],
     switching: [
       { key: "trials", label: "Trials", type: "number", min: 12, max: 30, step: 6, def: 12 },
-      { key: "switchRate", label: "Switch rate", type: "number", min: 0.2, max: 0.5, step: 0.1, def: 0.3 },
+      { key: "switchRate", label: "Switch rate", type: "number", min: 0.2, max: 0.5, step: 0.1, def: 0.5 },
       { key: "dimensions", label: "Rules", type: "choice", options: [{ value: "two", label: "Two" }, { value: "three", label: "Three" }], def: "two" },
       { key: "cueVisible", label: "Show cue", type: "toggle", def: true },
       { key: "endless", label: "Endless", type: "toggle", def: false }
@@ -617,7 +632,7 @@
     ],
     math: [
       { key: "ops", label: "Operations", type: "choice", multi: true, options: [{ value: "+", label: "Add" }, { value: "-", label: "Sub" }, { value: "*", label: "Mul" }, { value: "/", label: "Div" }], def: ["+", "-", "*", "/"] },
-      { key: "digits", label: "Operand digits", type: "number", min: 1, max: 3, step: 1, def: 2 },
+      { key: "digits", label: "Digit Max", type: "number", min: 1, max: 5, step: 1, def: 2 },
       { key: "timePerProblem", label: "Time per problem", type: "choice", options: [{ value: 0, label: "Off" }, { value: 5, label: "5 s" }, { value: 10, label: "10 s" }, { value: 15, label: "15 s" }], def: 0 },
       { key: "startLevel", label: "Starting level", type: "number", min: 1, max: 3, step: 1, def: 1 },
       { key: "endless", label: "Endless", type: "toggle", def: false }
@@ -775,9 +790,16 @@
        set shows the running count alone, with no denominator. */
     function trialCountText() { return endless ? String(i) : i + " / " + TRIALS; }
     /* The starting n and the level the set can climb to. Validated by
-       drillOptions, so it is always a whole number in 1..4. */
+       drillOptions, so it is always a whole number in 1..15. */
     var startLevel = (opts.options && typeof opts.options.startLevel === "number") ? opts.options.startLevel : 2;
-    /* Validated by drillOptions: 4 to 10 trials a rule stays live before the cue
+    /* A block's first `level` trials are warm-up with nothing to compare against,
+       so a set no longer than the starting n holds no scorable trial at all and
+       the level can never move. N level reaches 15 while trials can be as low as
+       12, so a finite set is extended to hold at least two scorable trials past
+       the warm-up. The live counter prints the extended length, so the run length
+       on screen is the run length played. */
+    if (!endless) TRIALS = Math.max(TRIALS, startLevel + 2);
+    /* Validated by drillOptions: 1 to 10 trials a rule stays live before the cue
        switches. Default 6. */
     var cueLength = (opts.options && typeof opts.options.cueLength === "number") ? opts.options.cueLength : 6;
     /* Validated by drillOptions: 1500, 2000 or 3000 ms. How long the stimulus
@@ -1087,8 +1109,16 @@
     var EDGE = (opts.options && typeof opts.options.edgeTargets === "number") ? opts.options.edgeTargets : 1;
     /* Validated by drillOptions: whether a center shape has to be identified. */
     var CENTER = !(opts.options && opts.options.centerShape === false);
+    /* Validated by drillOptions: 0 (off), 2000, 3000 or 5000 ms. When it is on,
+       every response question must be answered inside the window or the trial is
+       scored wrong and the next one starts. */
+    var timePressure = (opts.options && typeof opts.options.timePressure === "number") ? opts.options.timePressure : 0;
     var rng = rngFrom(opts);
     var timers = makeTimers();
+    /* The response deadline runs on its own bag. makeTimers holds a single pending
+       timeout, and the trial window already owns that slot, so the deadline cannot
+       share it. The repaint interval is a plain id, cleared with the deadline. */
+    var deadlineBag = makeTimers();
     /* Validated by drillOptions: a whole number of ms in 100..400. */
     var exposure = (opts.options && typeof opts.options.startExposure === "number") ? opts.options.startExposure : 200;
     var i = 0, correctCount = 0, stopped = false, timer = 0, resolved = false;
@@ -1107,9 +1137,18 @@
     /* The prompt carries the live question for the current response step. During
        the stimulus window it stays empty: the stage is the thing to read then. */
     var prompt = el("div", "drill-note", "");
+    /* The response deadline bar, the same draining track the palace study clock
+       uses. Hidden when time pressure is off, so an untimed run is exactly the
+       drill it was. */
+    var clock = el("div", "uf-clock");
+    var track = el("div", "pl-track");
+    var fill = el("div", "pl-fill");
+    track.appendChild(fill);
+    clock.appendChild(track);
+    clock.hidden = timePressure <= 0;
     var bar = el("div", "drill-bar");
     var meta = el("div", "nb-meta mono", ufovMeta());
-    wrap.appendChild(stage); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
+    wrap.appendChild(stage); wrap.appendChild(prompt); wrap.appendChild(clock); wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
 
     function ufovMeta() {
@@ -1117,6 +1156,42 @@
     }
 
     function clearBar() { bar.innerHTML = ""; }
+    /* The response deadline. Armed when a question's options appear, cleared the
+       moment one is taken. When it fires the trial is wrong and the next one
+       starts, so a question left unanswered never blocks the set. */
+    var tick = 0, deadlineAt = 0, windowLeft = 0;
+    function stopTick() { if (tick) { clearInterval(tick); tick = 0; } }
+    function clearDeadline() {
+      deadlineBag.clear();
+      stopTick();
+      deadlineAt = 0;
+      windowLeft = 0;
+      fill.style.transform = "scaleX(1)";
+    }
+    function paintClock() {
+      if (!deadlineAt) return;
+      var frac = Math.max(0, deadlineAt - Date.now()) / timePressure;
+      fill.style.transform = "scaleX(" + frac.toFixed(3) + ")";
+    }
+    function armDeadline() {
+      clearDeadline();
+      if (timePressure <= 0 || stopped || resolved) return;
+      deadlineAt = Date.now() + timePressure;
+      tick = setInterval(paintClock, 100);
+      deadlineBag.set(function () { if (stopped || resolved) return; resolve(true); }, timePressure);
+      paintClock();
+    }
+    /* The bar rides the same freeze signals the deadline bag does, so a hidden tab
+       or the exit confirm cannot drain it while the clock behind it is stopped. */
+    var detachClock = onFreeze(function () {
+      windowLeft = deadlineAt ? Math.max(0, deadlineAt - Date.now()) : 0;
+      stopTick();
+    }, function () {
+      if (!deadlineAt || tick) return;
+      deadlineAt = Date.now() + windowLeft;
+      tick = setInterval(paintClock, 100);
+      paintClock();
+    });
     /* A pick holds for a beat before the next step so the choice is visible.
        Without it the bar swapped under the player's hand and neither a click
        nor a digit showed which of the options had actually been taken. */
@@ -1127,6 +1202,7 @@
     function picked(n, next) {
       if (stopped || taken) return;
       taken = true;
+      clearDeadline();
       var b = bar.children[n];
       if (b) b.classList.add("nb-pick");
       timers.set(next, PICK_HOLD_MS);
@@ -1140,6 +1216,7 @@
           picked(idx, function () { showPosOptions(0); });
         }));
       });
+      armDeadline();
     }
     function showPosOptions(step) {
       clearBar();
@@ -1154,6 +1231,7 @@
           });
         }));
       });
+      armDeadline();
     }
     /* One or two edge targets, so the answer is a set, not a single position. */
     function sameSet(a, b) {
@@ -1167,6 +1245,7 @@
       if (stopped) return;
       if (i >= TRIALS) return finish();
       clearBar();
+      clearDeadline();
       prompt.textContent = "";
       var pool = [0, 1, 2, 3];
       for (var s = pool.length - 1; s > 0; s--) { var j = randInt(rng, s + 1); var t = pool[s]; pool[s] = pool[j]; pool[j] = t; }
@@ -1181,10 +1260,11 @@
         if (CENTER) showShapeOptions(); else showPosOptions(0);
       }, exposure);
     }
-    function resolve() {
+    function resolve(failed) {
       if (resolved) return;
       resolved = true;
-      var ok = (!CENTER || answer.pickShape === answer.shape) && sameSet(answer.picks, answer.positions);
+      clearDeadline();
+      var ok = !failed && (!CENTER || answer.pickShape === answer.shape) && sameSet(answer.picks, answer.positions);
       if (ok) correctCount++;
       exposure = adaptExposure(exposure, ok);
       i++;
@@ -1194,6 +1274,9 @@
     function finish() {
       if (stopped) return;
       stopped = true;
+      clearDeadline();
+      deadlineBag.destroy();
+      detachClock();
       unbindKey();
       /* A partial endless run scores against the trials it actually attempted,
          not an infinite ceiling, so accuracy stays a real number. */
@@ -1203,7 +1286,7 @@
       summary.appendChild(el("div", "drill-state", "Set complete"));
       summary.appendChild(el("div", "drill-note", "Threshold exposure " + exposure + " ms · accuracy " + Math.round(acc * 100) + "%"));
       container.appendChild(summary);
-      var rec = { drillId: "ufov", value: exposure, unit: "ms", t: Date.now(), meta: { accuracy: acc, edgeTargets: EDGE, centerShape: CENTER } };
+      var rec = { drillId: "ufov", value: exposure, unit: "ms", t: Date.now(), meta: { accuracy: acc, edgeTargets: EDGE, centerShape: CENTER, timePressure: timePressure } };
       if (opts.onComplete) { if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec); }
     }
     /* Digits take the visible options in order, so the printed key and the button
@@ -1230,6 +1313,9 @@
           return;
         }
         stopped = true;
+        clearDeadline();
+        deadlineBag.destroy();
+        detachClock();
         clearTimeout(timer);
         timers.destroy();
         unbindKey();
@@ -1314,7 +1400,13 @@
       recalled = []; idx = 0;
       var indices = [];
       for (var k = 0; k < placed.length; k++) indices.push(k);
-      order = RECALL_ORDER === "any-order" ? shuffled(indices) : indices;
+      /* The stops are always asked in a shuffled order. Asking them in route
+         order handed the route back one step at a time, which made recall a
+         read-off instead of a memory. recallOrder still decides how the answers
+         are judged: in-order scores the leading run of the route, any-order
+         scores every stop that landed right, and both read the recalled array by
+         stop index, so a shuffled ask order leaves the score untouched. */
+      order = shuffled(indices);
       place();
     }
     /* One item on screen for the study period. The bar drains over it so the time
@@ -1376,9 +1468,9 @@
     var detachFreeze = onFreeze(pauseClock, resumeClock);
     function recall() {
       /* Recall keeps no timer. Thinking is the task here and a clock would only
-         punish it, so the phase waits on the player and nothing else. Any order
-         asks the stops in a shuffled order and scores the placements, not the
-         run. */
+         punish it, so the phase waits on the player and nothing else. The stops
+         are asked in the shuffled order built at start, and recallOrder decides
+         the score: in-order the leading run, any-order every right placement. */
       phase = "recall";
       study.hidden = true;
       var step = 0;

@@ -277,18 +277,14 @@ function enterFocus() {
 
   var dialog = document.createElement('dialog');
   dialog.setAttribute('aria-labelledby', 'nb-exit-title');
-  dialog.setAttribute('aria-describedby', 'nb-exit-copy');
   var dialogTitle = h('h2', null, 'End this training session?');
   dialogTitle.id = 'nb-exit-title';
-  var dialogCopy = h('p', null, 'Completed drill results are saved as you go. The unfinished drill will be discarded. The daily session record is saved only after the full queue finishes.');
-  dialogCopy.id = 'nb-exit-copy';
   var keep = h('button', 'nb-dialog-keep', 'Keep Training');
   keep.type = 'button';
   keep.autofocus = true;
   var end = h('button', 'nb-dialog-end', 'End Session');
   end.type = 'button';
   dialog.appendChild(dialogTitle);
-  dialog.appendChild(dialogCopy);
   dialog.appendChild(keep);
   dialog.appendChild(end);
   stage.appendChild(dialog);
@@ -658,10 +654,10 @@ function buildModeBlock() {
      the whole panel wide of its real content. */
   var block = h('div', 'tr-mode-block');
   var row = h('div', 'tr-mode-row');
-  row.appendChild(h('span', 'tr-field', 'Mode'));
+  row.appendChild(h('span', 'tr-field', 'Variant'));
   var set = h('div', 'tr-modeset');
   set.setAttribute('role', 'group');
-  set.setAttribute('aria-label', 'N-back mode');
+  set.setAttribute('aria-label', 'N-back variant');
   var btns = {};
   for (var i = 0; i < MODES.length; i++) {
     (function (m) {
@@ -782,13 +778,15 @@ function injectStyles() {
     '.tr-seg-btn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;padding:4px 9px;border-radius:6px;min-height:26px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.tr-seg-btn:not(:disabled):hover{color:var(--ink)}',
     '.tr-seg-btn[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
-    /* The toggle reads as a switch: the live side is a solid accent thumb on a pill. */
-    '.tr-seg-switch .tr-seg-btn{min-width:50px}',
+    /* The toggle reads as a switch. Both sides carry the track's pill radius, so
+       the live accent thumb is the same shape as the track and the two sides are
+       one control: same radius, same size, no shift on press. */
+    '.tr-seg-switch .tr-seg-btn{min-width:50px;border-radius:999px}',
     '.tr-seg-switch .tr-seg-btn[aria-pressed="true"]{color:var(--bg);background:' + ACC + ';border-color:' + ACC + '}',
     /* A multi-select reads as chips: a visible outline on every chip, the on ones filled. */
     '.tr-seg-chips .tr-seg-btn{border-color:var(--line2);border-radius:999px;padding:6px 11px}',
     '.tr-seg-chips .tr-seg-btn[aria-pressed="true"]{border-color:' + ACC_E + ';background:' + ACC_S + ';color:' + ACC + '}',
-    /* The mode control is a wrapping row of pills, one per mode: each its own
+    /* The mode control is a wrapping row of pills, one per variant: each its own
        hairline box, no outer track. The live mode takes the accent fill. */
     '.tr-mode-block{display:flex;flex-direction:column;gap:6px}',
     '.tr-mode-row{display:flex;flex-direction:column;gap:6px}',
@@ -857,7 +855,6 @@ function injectStyles() {
     '.nb-focus-stage dialog{border:1px solid var(--line2);border-radius:14px;background:var(--panel);color:var(--ink);padding:22px;width:min(420px,calc(100vw - 40px))}',
     '.nb-focus-stage dialog::backdrop{background:var(--scrim)}',
     '.nb-focus-stage dialog h2{margin:0 0 8px;font-size:20px;font-weight:600;letter-spacing:-.015em}',
-    '.nb-focus-stage dialog p{margin:0 0 18px;font-size:13px;line-height:1.55;color:var(--muted)}',
     '.nb-focus-stage dialog button{font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 14px;border-radius:8px;cursor:pointer;transition:transform .12s ease,border-color .15s ease,color .15s ease,opacity .15s ease}',
     '.nb-focus-stage dialog button+button{margin-left:10px}',
     /* Keeping is the default and the safe path, so it carries the accent. Ending is

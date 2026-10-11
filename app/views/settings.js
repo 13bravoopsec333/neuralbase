@@ -5,14 +5,18 @@
    or delete the account behind a confirm step.
 
    Reached from the account button in the top bar, not the main nav, so Settings is
-   not a fourth top-nav item. Theme tokens only, both themes, no gradients, no
+   not a fourth top-nav item. Theme tokens only, every theme, no gradients, no
    shadows. Every user string is written with textContent. */
 
 import { saveProfile } from '../lib/auth.js';
 
-/* The two themes the module lists. Used only if the module is not on the page, so
-   the picker still draws in a bare test harness. */
-var FALLBACK_THEMES = [{ name: 'graphite' }, { name: 'porcelain' }];
+/* The two themes the module lists, kept as the last-resort copy. Used only if the
+   module is not on the page, so the picker still draws swatches in a bare test
+   harness. */
+var FALLBACK_THEMES = [
+  { name: 'graphite', label: 'Graphite', mode: 'dark', swatch: ['#0f1113', '#b8e04a'] },
+  { name: 'porcelain', label: 'Porcelain', mode: 'light', swatch: ['#f7f7f4', '#3f6b00'] }
+];
 
 var ctxRef = null;
 var ui = {};
@@ -22,11 +26,6 @@ function h(tag, cls, text) {
   if (cls) n.className = cls;
   if (text != null) n.textContent = text;
   return n;
-}
-
-function capitalize(s) {
-  s = String(s == null ? '' : s);
-  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
 /* ---------- theme access ----------
@@ -198,6 +197,30 @@ async function saveUsername() {
 }
 
 /* ---------- appearance ---------- */
+/* The picker shows the palette, not the name: each theme is a button holding a
+   small box split into two halves, that theme's background and accent. The name
+   survives as the accessible name and the tooltip, so a screen reader still knows
+   which theme a swatch is. The colours come from the theme list's `swatch`, never
+   from a hex in this file. */
+function swatchButton(t) {
+  var pair = t.swatch || [];
+  var label = t.label || t.name;
+  var b = h('button', 'nb-swatch');
+  b.type = 'button';
+  b.setAttribute('data-theme-name', t.name);
+  b.setAttribute('aria-pressed', t.name === themeCurrent() ? 'true' : 'false');
+  b.setAttribute('aria-label', label + ' theme' + (t.mode ? ' (' + t.mode + ')' : ''));
+  b.title = label + (t.mode ? ' (' + t.mode + ')' : '');
+  for (var i = 0; i < 2; i++) {
+    var half = h('span', 'nb-swatch-half');
+    half.setAttribute('aria-hidden', 'true');
+    if (pair[i]) half.style.backgroundColor = pair[i];
+    b.appendChild(half);
+  }
+  b.addEventListener('click', function () { pickTheme(t.name); });
+  return b;
+}
+
 function buildAppearanceCard() {
   var card = h('section', 'nb-set-card');
   card.appendChild(h('h3', null, 'Appearance'));
@@ -209,14 +232,9 @@ function buildAppearanceCard() {
   group.setAttribute('role', 'group');
   group.setAttribute('aria-label', 'Theme');
 
-  var current = themeCurrent();
   var btns = {};
   themeList().forEach(function (t) {
-    var b = h('button', 'nb-seg-btn', capitalize(t.name));
-    b.type = 'button';
-    b.setAttribute('data-theme-name', t.name);
-    b.setAttribute('aria-pressed', t.name === current ? 'true' : 'false');
-    b.addEventListener('click', function () { pickTheme(t.name); });
+    var b = swatchButton(t);
     btns[t.name] = b;
     group.appendChild(b);
   });

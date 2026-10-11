@@ -5,16 +5,27 @@
 
   var KEY = "cortex.theme";
 
-  /* Two themes: a dark default and a light variant. The old carbon, midnight and
-     ember sets were removed with the rest of the decoration, so listing them here
-     would offer names that resolve to nothing. */
+  /* Seven themes: three dark, four light. Token values live in styles.css keyed by
+     name; this list must stay in step with the [data-theme] blocks there, or a name
+     here resolves to the dark default. `label` is the accessible name for a theme
+     and `swatch` is the two colours the picker paints ([background, accent]) so the
+     view never duplicates a hex. */
   var THEMES = [
-    { name: "graphite",  label: "Dark",  mode: "dark" },
-    { name: "porcelain", label: "Light", mode: "light" }
+    { name: "graphite",  label: "Graphite",  mode: "dark",  swatch: ["#0f1113", "#b8e04a"] },
+    { name: "basalt",    label: "Basalt",    mode: "dark",  swatch: ["#14110f", "#e8a33d"] },
+    { name: "harbor",    label: "Harbor",    mode: "dark",  swatch: ["#0c1216", "#56cfe1"] },
+    { name: "porcelain", label: "Porcelain", mode: "light", swatch: ["#f7f7f4", "#3f6b00"] },
+    { name: "chalk",     label: "Chalk",     mode: "light", swatch: ["#ffffff", "#0b57d0"] },
+    { name: "linen",     label: "Linen",     mode: "light", swatch: ["#faf6f0", "#9a4a12"] },
+    { name: "tundra",    label: "Tundra",    mode: "light", swatch: ["#eef1f4", "#0f5f66"] }
   ];
   var NAMES = THEMES.map(function (t) { return t.name; });
 
-  function list() { return THEMES.map(function (t) { return { name: t.name, label: t.label, mode: t.mode }; }); }
+  function list() {
+    return THEMES.map(function (t) {
+      return { name: t.name, label: t.label, mode: t.mode, swatch: t.swatch.slice() };
+    });
+  }
   function has(name) { return NAMES.indexOf(name) !== -1; }
   function meta(name) { for (var i = 0; i < THEMES.length; i++) if (THEMES[i].name === name) return THEMES[i]; return null; }
 

@@ -1,6 +1,6 @@
 /* Neuralbase v2 auth view.
    One page, two modes (sign in / create account), plus a profile-completion step
-   for Google sign-ins, which carry no date of birth.
+   for Google sign-ins, which carry no username.
    All auth goes through the frozen lib/auth.js envelope API, so nothing here throws. */
 
 import { isDemo } from '../lib/supabase.js';
@@ -9,8 +9,6 @@ import {
   signIn,
   signInWithGoogle,
   saveProfile,
-  ageOk,
-  MIN_AGE,
   getSession,
   verifySignupCode,
   resendSignupCode,
@@ -18,9 +16,9 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
-const SIGNUP_FIELDS = ['su-email', 'su-password', 'su-username', 'su-dob'];
+const SIGNUP_FIELDS = ['su-email', 'su-password', 'su-username'];
 const SIGNIN_FIELDS = ['si-email', 'si-password'];
-const COMPLETE_FIELDS = ['co-username', 'co-dob'];
+const COMPLETE_FIELDS = ['co-username'];
 const VERIFY_FIELDS = ['vf-code'];
 
 /* ---------------- validation (client side, matches the server rules) ---------------- */
@@ -102,9 +100,6 @@ function friendly(error) {
   if (/23505|duplicate|unique|username is taken/i.test(s)) {
     return 'That username is taken. Try another.';
   }
-  if (/invalid_dob/i.test(s)) {
-    return 'That date of birth was not accepted. Check the format.';
-  }
   if (/rate limit|too many/i.test(s)) {
     return 'Too many attempts. Wait a minute and try again.';
   }
@@ -154,7 +149,7 @@ function go() {
 
 function needsCompletion(user) {
   const meta = (user && user.user_metadata) || {};
-  return !meta.username || !meta.dob;
+  return !meta.username;
 }
 
 /* ---------------- modes ---------------- */
@@ -321,7 +316,6 @@ async function onSignup(event) {
   const email = val('su-email');
   const password = $('su-password').value;
   const username = val('su-username');
-  const dob = val('su-dob');
 
   let bad = false;
   if (!emailOk(email)) {
@@ -336,17 +330,10 @@ async function onSignup(event) {
     setErr('su-username', 'Use 3 to 24 letters, numbers, or _.');
     bad = true;
   }
-  if (!dob) {
-    setErr('su-dob', 'Enter your date of birth.');
-    bad = true;
-  } else if (!ageOk(dob)) {
-    setErr('su-dob', 'You must be ' + MIN_AGE + ' or older to create an account.');
-    bad = true;
-  }
   if (bad) return;
 
   busy('su-submit', true, 'Creating account...');
-  const res = await signUp({ email, password, username, dob });
+  const res = await signUp({ email, password, username });
   busy('su-submit', false);
 
   if (!res.ok) {
@@ -414,24 +401,16 @@ async function onComplete(event) {
   clearFields(COMPLETE_FIELDS);
   setAlert('co-alert', '');
   const username = val('co-username');
-  const dob = val('co-dob');
 
   let bad = false;
   if (!usernameOk(username)) {
     setErr('co-username', 'Use 3 to 24 letters, numbers, or _.');
     bad = true;
   }
-  if (!dob) {
-    setErr('co-dob', 'Enter your date of birth.');
-    bad = true;
-  } else if (!ageOk(dob)) {
-    setErr('co-dob', 'You must be ' + MIN_AGE + ' or older.');
-    bad = true;
-  }
   if (bad) return;
 
   busy('co-submit', true, 'Saving...');
-  const res = await saveProfile({ username, dob });
+  const res = await saveProfile({ username });
   busy('co-submit', false);
 
   if (!res.ok) {
@@ -473,12 +452,6 @@ async function onDemoContinue() {
 /* ---------------- boot ---------------- */
 
 function wire() {
-  const today = new Date().toISOString().slice(0, 10);
-  ['su-dob', 'co-dob'].forEach((id) => {
-    const el = $(id);
-    if (el) el.max = today;
-  });
-
   $('signinForm').addEventListener('submit', onSignin);
   $('signupForm').addEventListener('submit', onSignup);
   $('completeForm').addEventListener('submit', onComplete);

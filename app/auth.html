@@ -74,11 +74,6 @@
       <h2 class="auth-h2">Create your account</h2>
       <p class="auth-sub">Takes under a minute, and your progress saves to the cloud.</p>
 
-      <p class="age-note">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><path d="M12 16h.01"></path></svg>
-        <span>You must be 16 or older to create an account. We only use your date of birth to check your age.</span>
-      </p>
-
       <p class="alert" id="su-alert" role="alert" hidden></p>
 
       <form id="signupForm" novalidate>
@@ -96,11 +91,6 @@
           <label for="su-username">Username</label>
           <input class="input" id="su-username" name="username" type="text" autocomplete="username" placeholder="Letters, numbers, _" maxlength="24" aria-describedby="su-username-err">
           <p class="err" id="su-username-err" role="alert"></p>
-        </div>
-        <div class="field">
-          <label for="su-dob">Date of birth</label>
-          <input class="input" id="su-dob" name="dob" type="date" autocomplete="bday" aria-describedby="su-dob-err">
-          <p class="err" id="su-dob-err" role="alert"></p>
         </div>
         <button class="btn-primary btn-block" type="submit" id="su-submit">Create account</button>
       </form>
@@ -141,12 +131,7 @@
     <!-- ===== Complete profile (Google) ===== -->
     <div id="panel-complete" hidden>
       <h2 class="auth-h2">One more step</h2>
-      <p class="auth-sub">Google did not send a username or date of birth. Add them to finish your account.</p>
-
-      <p class="age-note">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><path d="M12 16h.01"></path></svg>
-        <span>You must be 16 or older. We only use your date of birth to check your age.</span>
-      </p>
+      <p class="auth-sub">Google did not send a username. Add one to finish your account.</p>
 
       <p class="alert" id="co-alert" role="alert" hidden></p>
 
@@ -155,11 +140,6 @@
           <label for="co-username">Username</label>
           <input class="input" id="co-username" name="username" type="text" autocomplete="username" placeholder="Letters, numbers, _" maxlength="24" aria-describedby="co-username-err">
           <p class="err" id="co-username-err" role="alert"></p>
-        </div>
-        <div class="field">
-          <label for="co-dob">Date of birth</label>
-          <input class="input" id="co-dob" name="dob" type="date" autocomplete="bday" aria-describedby="co-dob-err">
-          <p class="err" id="co-dob-err" role="alert"></p>
         </div>
         <button class="btn-primary btn-block" type="submit" id="co-submit">Finish and continue</button>
       </form>

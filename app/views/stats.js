@@ -369,12 +369,19 @@ function injectStyles() {
     '.st-cal-sum b{color:var(--ink);font-weight:600}',
     '.st-cal-empty{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}',
 
-    /* chart */
+    /* chart. Two pickers, two weights: the measure is quiet text chips, the
+       drill selector is a row of bordered tiles so each task reads as its own
+       button instead of a bare word in a list. */
     '.st-chips{display:flex;flex-wrap:wrap;gap:4px 16px}',
     '.st-chip{background:none;border:0;padding:2px 0;font:inherit;font-size:13px;color:var(--muted);cursor:pointer;transition:color .12s ease}',
     '.st-chip:hover{color:var(--ink)}',
     '.st-chip[aria-pressed="true"]{color:var(--accent,var(--lime))}',
     '.st-chip:focus-visible{outline:2px solid var(--accent,var(--lime));outline-offset:2px;border-radius:4px}',
+    '.st-drills{display:flex;flex-wrap:wrap;gap:var(--gap-2,8px);margin-top:2px}',
+    '.st-drill{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:var(--r,8px);background:var(--panel2);padding:5px 11px;min-height:30px;font-family:var(--sans,system-ui,sans-serif);font-size:12.5px;font-weight:500;line-height:1.3;color:var(--muted);cursor:pointer;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
+    '.st-drill:hover{color:var(--ink);border-color:var(--line2)}',
+    '.st-drill[aria-pressed="true"]{color:var(--accent,var(--lime));font-weight:600;background:var(--accent-soft,rgba(184,224,74,.12));border-color:var(--accent-edge,rgba(184,224,74,.30))}',
+    '.st-drill:focus-visible{outline:2px solid var(--accent,var(--lime));outline-offset:2px}',
     '.st-measure{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 14px}',
     '.st-measure-label{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}',
     '.st-chart-host{position:relative;min-height:140px}',
@@ -477,7 +484,7 @@ function injectStyles() {
     '.st-table td.st-none{justify-content:flex-start}',
     '.st-cell-label{display:inline;color:var(--dim);font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.06em;text-transform:uppercase}',
     '}',
-    '@media (prefers-reduced-motion:reduce){.st-chip,.st-cal-icon,.st-cal-today,.st-cal-cell,.st-cal-fill{transition:none}}'
+    '@media (prefers-reduced-motion:reduce){.st-chip,.st-drill,.st-cal-icon,.st-cal-today,.st-cal-cell,.st-cal-fill{transition:none}}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -861,11 +868,11 @@ function buildChartSection(model) {
     chartInto(host, d, model, mode);
   }
 
-  var chips = h('div', 'st-chips');
+  var chips = h('div', 'st-drills');
   chips.setAttribute('role', 'group');
   chips.setAttribute('aria-label', 'Choose a drill for the chart');
   D.forEach(function (d) {
-    var b = h('button', 'st-chip', d.name);
+    var b = h('button', 'st-drill', d.name);
     b.type = 'button';
     b.setAttribute('aria-pressed', 'false');
     b.addEventListener('click', function () { selected = d.id; renderChart(); });
