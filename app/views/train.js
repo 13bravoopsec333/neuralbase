@@ -578,6 +578,10 @@ function buildMultiRow(id, entry, current) {
 
 function buildModeBlock() {
   var MODES = (globalThis.Content && globalThis.Content.MODES) || [];
+  /* The blurb is a sibling of the row, not a line inside it: a percentage-width
+     line in a wrapping flex row inflates the row's max-content, which would push
+     the whole panel wide of its real content. */
+  var block = h('div', 'tr-mode-block');
   var row = h('div', 'tr-mode-row');
   row.appendChild(h('span', 'tr-field', 'Mode'));
   var set = h('div', 'tr-modeset');
@@ -598,12 +602,13 @@ function buildModeBlock() {
   }
   row.appendChild(set);
   var blurb = h('p', 'tr-blurb', '');
-  row.appendChild(blurb);
+  block.appendChild(row);
+  block.appendChild(blurb);
   /* paintModes reads these, so the panel owns them while it is on screen. */
-  ui.modesBlock = row;
+  ui.modesBlock = block;
   ui.modeBtns = btns;
   ui.modeBlurb = blurb;
-  return row;
+  return block;
 }
 
 function leaveFocus() {
@@ -667,15 +672,18 @@ function injectStyles() {
        drill, and centering re-centered the whole column on every selection, which
        is the up-and-down the picker used to do. Pinned to the top, nothing moves. */
     '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0;justify-content:flex-start;padding-top:var(--gap-5)}',
-    /* The drill selector: a short stack of labelled groups, centred. The group is
-       what separates the nine drills. Every item is a real control with a reserved
-       box, so the selected state changes colour and border only and never the
-       metrics, and selecting one cannot reflow the row. */
-    '.tr-picker{display:flex;flex-direction:column;gap:6px;width:100%;max-width:640px;margin-inline:auto}',
-    '.tr-picker-row{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;align-items:center}',
-    '.tr-picker-group{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);white-space:nowrap}',
-    '.tr-picker-items{display:flex;flex-wrap:wrap;gap:4px;min-width:0}',
-    '.tr-drill{display:inline-flex;align-items:center;background:transparent;border:1px solid transparent;border-radius:8px;padding:4px 10px;min-height:30px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;line-height:1.4;max-width:100%;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
+    /* The drill selector: a short stack of labelled groups, centred. One grid owns
+       the tracks, so every group label sits in the same column and every name
+       starts at the same x down the panel: the rows are what used to be per-row
+       grids and started the names at a different x each. The group is what
+       separates the nine drills. Every item is a real control with a reserved box,
+       so the selected state changes colour and border only and never the metrics,
+       and selecting one cannot reflow the row. */
+    '.tr-picker{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 14px;width:100%;max-width:640px;margin-inline:auto;align-items:center}',
+    '.tr-picker-row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:center}',
+    '.tr-picker-group{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);white-space:nowrap;align-self:start;padding-top:10px}',
+    '.tr-picker-items{display:flex;flex-wrap:wrap;gap:6px;min-width:0}',
+    '.tr-drill{display:inline-flex;align-items:center;background:transparent;border:1px solid transparent;border-radius:8px;padding:5px 11px;min-height:32px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;line-height:1.4;max-width:100%;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.tr-drill:hover{color:var(--ink);border-color:var(--line2)}',
     '.tr-drill[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
     '.tr-drill-name{white-space:nowrap}',
@@ -687,46 +695,50 @@ function injectStyles() {
        to grow to fill the page. */
     '.tr-view .drill-mount{flex:0 0 auto;min-height:0;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}',
     '.tr-view .drill{width:100%}',
-    /* Settings: one row per setting, two tight columns so every label sits beside
-       its control. Each row subgrids into the shared tracks, so the controls line
-       up down the panel and the label keeps its natural width. The 12px column gap
-       is the label-to-control gap and must not shrink. */
+    /* Settings: one centred line per setting, the label immediately beside its
+       control. Each row is a centred group of label plus control, so the block
+       reads as one form centred on the page instead of a left label rail pushing
+       the controls right of centre. Each control hugs its own options rather than
+       filling a shared 1fr column, which is what left the dead space on the right
+       and made the bordered track a full-width bar. The 12px column gap is the
+       label-to-control gap and must not shrink. */
     '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-4);width:fit-content;max-width:100%;margin-inline:auto}',
-    '.tr-set-rows{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 12px;align-items:center}',
-    '.tr-set-row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:center}',
-    '.tr-set-head{display:flex;align-items:center;gap:8px;min-width:0;justify-content:flex-end}',
-    '.tr-set-label{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;text-align:right;justify-self:end}',
+    '.tr-set-rows{display:flex;flex-direction:column;gap:8px;align-items:center}',
+    '.tr-set-row{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;column-gap:12px;row-gap:6px;max-width:100%}',
+    '.tr-set-head{display:flex;align-items:center;min-width:0;flex:0 0 auto}',
+    '.tr-set-label{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}',
     /* The value readout stays in the tree for assistive tech, but the active
        control already shows it, so it is not drawn twice. */
     '.tr-set-val{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
     /* A setting is a real control. A single-select is a segmented bar on a bordered
        track, a toggle is a pill switch, a multi-select is a row of on/off chips.
        Every one reserves its box, so the active state never reflows it. */
-    '.tr-seg{display:flex;flex-wrap:wrap;gap:2px;min-width:0}',
-    '.tr-seg-bar{padding:3px;border:1px solid var(--line2);border-radius:10px;background:var(--panel2)}',
-    '.tr-seg-switch{gap:2px;padding:3px;border:1px solid var(--line2);border-radius:999px;background:var(--panel2)}',
+    '.tr-seg{display:flex;flex-wrap:wrap;gap:2px;min-width:0;flex:0 1 auto}',
+    '.tr-seg-bar{padding:2px;border:1px solid var(--line2);border-radius:9px;background:var(--panel2)}',
+    '.tr-seg-switch{gap:2px;padding:2px;border:1px solid var(--line2);border-radius:999px;background:var(--panel2)}',
     '.tr-seg-chips{gap:6px;padding:0}',
-    '.tr-seg-btn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;padding:4px 10px;border-radius:7px;min-height:28px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
+    '.tr-seg-btn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;padding:3px 10px;border-radius:6px;min-height:24px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.tr-seg-btn:not(:disabled):hover{color:var(--ink)}',
     '.tr-seg-btn[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
     /* The toggle reads as a switch: the live side is a solid accent thumb on a pill. */
     '.tr-seg-switch .tr-seg-btn{min-width:52px}',
     '.tr-seg-switch .tr-seg-btn[aria-pressed="true"]{color:var(--bg);background:' + ACC + ';border-color:' + ACC + '}',
     /* A multi-select reads as chips: a visible outline on every chip, the on ones filled. */
-    '.tr-seg-chips .tr-seg-btn{border-color:var(--line2);border-radius:999px;padding:4px 12px}',
+    '.tr-seg-chips .tr-seg-btn{border-color:var(--line2);border-radius:999px;padding:6px 12px}',
     '.tr-seg-chips .tr-seg-btn[aria-pressed="true"]{border-color:' + ACC_E + ';background:' + ACC_S + ';color:' + ACC + '}',
     /* The mode control is a real segmented bar: a bordered track, one segment per
-       mode, the live mode filled with the accent. Not a row of loose text. It
-       shares the settings grid, so its label and track line up with the rest. */
-    '.tr-mode-row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:center}',
-    '.tr-field{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;text-align:right;justify-self:end}',
-    '.tr-modeset{display:flex;gap:2px;flex-wrap:wrap;min-width:0;padding:3px;border:1px solid var(--line2);border-radius:10px;background:var(--panel2)}',
-    '.tr-mode{display:inline-flex;align-items:center;background:transparent;border:1px solid transparent;padding:4px 10px;border-radius:7px;min-height:28px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
+       mode, the live mode filled with the accent. Not a row of loose text. It sits
+       on the same centred line as the settings, label beside it. */
+    '.tr-mode-block{display:flex;flex-direction:column;gap:6px;align-items:center}',
+    '.tr-mode-row{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;column-gap:12px;row-gap:6px;max-width:100%}',
+    '.tr-field{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;flex:0 0 auto}',
+    '.tr-modeset{display:flex;gap:2px;flex-wrap:wrap;min-width:0;flex:0 1 auto;padding:2px;border:1px solid var(--line2);border-radius:9px;background:var(--panel2)}',
+    '.tr-mode{display:inline-flex;align-items:center;background:transparent;border:1px solid transparent;padding:3px 10px;border-radius:6px;min-height:24px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.tr-mode:not(:disabled):hover{color:var(--ink)}',
     '.tr-mode[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
     '.tr-mode:disabled{opacity:.45;cursor:not-allowed}',
     '.tr-mode[aria-pressed="true"]:disabled{opacity:.7}',
-    '.tr-blurb{grid-column:1 / -1;font-size:12px;color:var(--dim);margin:0;max-width:52ch}',
+    '.tr-blurb{font-size:12px;color:var(--dim);margin:0;max-width:52ch;text-align:center}',
     /* Every control is a real button, so every one carries a visible focus ring. */
     '.tr-drill:focus-visible,.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-start:focus-visible,.rs-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
     /* Start: centered under the panel, the one primary action on the page. */

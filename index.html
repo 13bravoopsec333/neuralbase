@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="graphite">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -7,8 +7,34 @@
 <meta name="description" content="Short daily drills for working memory, attention and speed.">
 <link rel="canonical" href="app/index.html">
 <meta http-equiv="refresh" content="0; url=app/index.html">
+<style>
+  /* Inline so the very first painted frame is the dark shell, never white. */
+  :root{color-scheme:dark;--bg:#0f1113;--panel:#16191c;--line:#262b30;--ink:#e9ebe7;--muted:#9ba1a8;--lime:#b8e04a}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);display:grid;place-items:center;
+       font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+  .boot{display:flex;flex-direction:column;align-items:center;gap:14px}
+  .boot svg{width:40px;height:40px;color:var(--lime);display:block}
+  .boot p{margin:0;color:var(--muted);font-size:13px}
+  .boot a{color:var(--ink);text-decoration:underline;text-underline-offset:2px}
+</style>
 </head>
 <body>
-<p><a href="app/index.html">Continue to Neuralbase</a></p>
+
+<div class="boot" role="status" aria-live="polite">
+  <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
+    <rect x="8" y="8" width="8" height="8"/><rect x="8" y="18" width="8" height="8"/><rect x="8" y="28" width="8" height="8"/><rect x="8" y="38" width="8" height="8"/><rect x="8" y="48" width="8" height="8"/>
+    <rect x="48" y="8" width="8" height="8"/><rect x="48" y="18" width="8" height="8"/><rect x="48" y="28" width="8" height="8"/><rect x="48" y="38" width="8" height="8"/><rect x="48" y="48" width="8" height="8"/>
+    <rect x="18" y="18" width="8" height="8"/><rect x="28" y="28" width="8" height="8"/><rect x="38" y="38" width="8" height="8"/>
+  </svg>
+  <p>Opening Neuralbase. <a href="app/index.html">Sign in or create an account</a></p>
+</div>
+
+<script>
+  /* Replace straight into the app so the sign-in / create-account page is what
+     the user lands on. location.replace keeps this page out of history. */
+  location.replace('app/index.html');
+</script>
+
 </body>
 </html>

@@ -19,6 +19,20 @@ var MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July
 var WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 var CAL_HEADS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+/* How the trend is measured. "run" is the original behaviour: every saved run is
+   its own point. "day" folds a drill's runs on one calendar day into one point
+   (their mean, placed at midday). "session" folds a drill's runs into the saved
+   session they belong to. */
+var MEASURE_MODES = [
+  { id: 'run', label: 'By run' },
+  { id: 'day', label: 'By day' },
+  { id: 'session', label: 'By session' }
+];
+/* A run joins its nearest saved session only when that session is within this
+   window. A run with no session near it stands alone rather than vanishing, so
+   the chart never silently drops data. */
+var SESSION_WINDOW = 4 * 3600000;
+
 var ctxRef = null;
 /* The month the calendar is showing. Kept across repaints, so a data refresh
    does not throw the reader back to the current month. */
@@ -157,18 +171,11 @@ function dayLabel(key, now) {
   var d = new Date(key + 'T12:00:00');
   return MONTHS[d.getMonth()] + ' ' + d.getDate();
 }
-function relTime(t, now) {
-  if (!t) return 'unknown time';
-  var d = now - t;
-  if (d < 45000) return 'just now';
-  var m = Math.floor(d / 60000);
-  if (m < 60) return m + (m === 1 ? ' minute ago' : ' minutes ago');
-  var hrs = Math.floor(d / 3600000);
-  if (hrs < 24) return hrs + (hrs === 1 ? ' hour ago' : ' hours ago');
-  var days = Math.floor(d / DAY);
-  if (days < 30) return days + (days === 1 ? ' day ago' : ' days ago');
-  var mo = Math.floor(days / 30);
-  return mo + (mo === 1 ? ' month ago' : ' months ago');
+/* Clock time for a feed row, so a day header carries the date and the row the
+   time. Plain 24 hour, zero padded. */
+function clockOf(t) {
+  var d = new Date(t);
+  return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
 }
 function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
@@ -211,9 +218,16 @@ function trendKind(records, drillId, direction, now) {
 
 /* Points for one drill's results, in an SVG box of w by h with pad around it.
    X is real time across the span, so gaps show as gaps. Null when there are no
-   runs, so the caller can say so plainly rather than draw an empty box. */
-export function buildChart(runs, w, h, pad) {
+   runs, so the caller can say so plainly rather than draw an empty box.
+   opts.padL / padR / padT / padB override the single pad per side, so the value
+   gutter can be wider than the rest without moving the plot. */
+export function buildChart(runs, w, h, pad, opts) {
   w = w || 640; h = h || 200; pad = pad == null ? 30 : pad;
+  opts = opts || {};
+  var padL = opts.padL == null ? pad : opts.padL;
+  var padR = opts.padR == null ? pad : opts.padR;
+  var padT = opts.padT == null ? pad : opts.padT;
+  var padB = opts.padB == null ? pad : opts.padB;
   var rs = runs.slice().sort(function (a, b) { return a.t - b.t; });
   if (!rs.length) return null;
   var tmin = rs[0].t, tmax = rs[rs.length - 1].t;
@@ -222,13 +236,56 @@ export function buildChart(runs, w, h, pad) {
     if (rs[i].value < vmin) vmin = rs[i].value;
     if (rs[i].value > vmax) vmax = rs[i].value;
   }
-  var x0 = pad, x1 = w - pad, y0 = h - pad, y1 = pad;
+  var x0 = padL, x1 = w - padR, y0 = h - padB, y1 = padT;
   var spanT = tmax - tmin, spanV = vmax - vmin;
   function xOf(t) { return spanT ? x0 + (t - tmin) / spanT * (x1 - x0) : (x0 + x1) / 2; }
   function yOf(v) { return spanV ? y0 - (v - vmin) / spanV * (y0 - y1) : (y0 + y1) / 2; }
-  var points = rs.map(function (r) { return { x: xOf(r.t), y: yOf(r.value), v: r.value, t: r.t }; });
+  var points = rs.map(function (r) {
+    return { x: xOf(r.t), y: yOf(r.value), v: r.value, t: r.t, n: r.n || 1 };
+  });
   var d = points.map(function (p, i) { return (i ? 'L' : 'M') + round2(p.x) + ' ' + round2(p.y); }).join(' ');
-  return { d: d, points: points, vmin: vmin, vmax: vmax, tmin: tmin, tmax: tmax, w: w, h: h, pad: pad };
+  return { d: d, points: points, vmin: vmin, vmax: vmax, tmin: tmin, tmax: tmax, w: w, h: h, pad: pad,
+           padL: padL, padR: padR, padT: padT, padB: padB };
+}
+
+/* One drill's runs folded to the chosen measure. Returns [{value, t, n}] sorted
+   by time. "run" is one point per run; "day" one point per calendar day (mean,
+   at midday); "session" one point per saved session (mean of the runs that fall
+   nearest it), with any run that has no session near it kept as its own point. */
+export function aggregatePoints(runs, mode, sessions) {
+  var rs = (runs || []).slice().sort(function (a, b) { return a.t - b.t; });
+  if (mode !== 'day' && mode !== 'session') {
+    return rs.map(function (r) { return { value: r.value, t: r.t, n: 1 }; });
+  }
+  if (mode === 'day') {
+    var by = {};
+    for (var i = 0; i < rs.length; i++) {
+      var k = dayKeyOf(rs[i].t);
+      (by[k] = by[k] || []).push(rs[i]);
+    }
+    return Object.keys(by).sort().map(function (key) {
+      var list = by[key];
+      return { value: mean(list), t: new Date(key + 'T12:00:00').getTime(), n: list.length };
+    });
+  }
+  var ss = (sessions || []).filter(function (s) { return s && s.t; });
+  var buckets = {}, orphans = [];
+  for (var j = 0; j < rs.length; j++) {
+    var r = rs[j], best = null, gap = Infinity;
+    for (var m = 0; m < ss.length; m++) {
+      var d = Math.abs(ss[m].t - r.t);
+      if (d < gap) { gap = d; best = ss[m]; }
+    }
+    if (best && gap <= SESSION_WINDOW) (buckets[best.t] = buckets[best.t] || []).push(r);
+    else orphans.push(r);
+  }
+  var out = [];
+  Object.keys(buckets).forEach(function (key) {
+    out.push({ value: mean(buckets[key]), t: Number(key), n: buckets[key].length });
+  });
+  for (var o = 0; o < orphans.length; o++) out.push({ value: orphans[o].value, t: orphans[o].t, n: 1 });
+  out.sort(function (a, b) { return a.t - b.t; });
+  return out;
 }
 
 /* ---------- styles ---------- */
@@ -276,23 +333,24 @@ function injectStyles() {
     '.st-cal-today{border:1px solid var(--line2);background:transparent;color:var(--ink);border-radius:var(--r,8px);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:border-color .12s ease,color .12s ease}',
     '.st-cal-today:hover{border-color:var(--accent-edge,var(--lime-edge));color:var(--accent,var(--lime))}',
     '.st-cal-icon:focus-visible,.st-cal-today:focus-visible{outline:2px solid var(--accent,var(--lime));outline-offset:2px}',
-    '.st-cal-wd{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}',
+    '.st-cal-wd{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}',
     '.st-cal-wd span{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim);text-align:center}',
     '.st-cal-wd .st-we{opacity:.55}',
-    '.st-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}',
-    '.st-cal-cell{position:relative;aspect-ratio:1/1;border:1px solid var(--line);border-radius:6px;background:var(--panel2);padding:5px 6px;display:flex;flex-direction:column;min-width:0;overflow:hidden;transition:border-color .12s ease}',
+    '.st-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}',
+    '.st-cal-cell{position:relative;height:36px;border:1px solid var(--line);border-radius:5px;background:var(--panel2);padding:4px 6px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;transition:border-color .12s ease}',
     '.st-cal-cell:hover{border-color:var(--line2)}',
     '.st-cal-fill{position:absolute;inset:0;background:var(--accent,var(--lime));opacity:0;transition:opacity .12s ease}',
     '.st-cal-cell[data-level="1"] .st-cal-fill{opacity:.20}',
     '.st-cal-cell[data-level="2"] .st-cal-fill{opacity:.38}',
     '.st-cal-cell[data-level="3"] .st-cal-fill{opacity:.58}',
     '.st-cal-cell[data-level="4"] .st-cal-fill{opacity:.82}',
-    '.st-cal-d{position:relative;font-family:var(--mono,ui-monospace,monospace);font-size:11px;line-height:1;color:var(--muted)}',
-    '.st-cal-n{position:relative;margin-top:auto;align-self:flex-end;font-family:var(--mono,ui-monospace,monospace);font-size:11px;font-weight:600;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}',
+    '.st-cal-d{position:relative;font-family:var(--mono,ui-monospace,monospace);font-size:12px;font-weight:500;line-height:1;color:var(--muted);font-variant-numeric:tabular-nums}',
+    '.st-cal-n{position:relative;align-self:flex-end;font-family:var(--mono,ui-monospace,monospace);font-size:12px;font-weight:600;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}',
     '.st-cal-cell[data-level="3"] .st-cal-d,.st-cal-cell[data-level="4"] .st-cal-d,.st-cal-cell[data-level="3"] .st-cal-n,.st-cal-cell[data-level="4"] .st-cal-n{color:var(--bg)}',
     '.st-cal-cell.st-adj{opacity:.4;background:transparent;border-style:dashed}',
     '.st-cal-cell.st-adj .st-cal-fill{display:none}',
-    '.st-cal-cell.st-today{border-color:var(--accent,var(--lime));box-shadow:inset 0 0 0 1px var(--accent,var(--lime))}',
+    '.st-cal-cell.st-today{border-color:var(--accent,var(--lime))}',
+    '.st-cal-cell.st-today .st-cal-d{color:var(--accent,var(--lime));font-weight:600}',
     '.st-cal-cell:focus-visible{outline:2px solid var(--accent,var(--lime));outline-offset:1px}',
     '.st-cal-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-3,12px);flex-wrap:wrap;border-top:1px solid var(--line);padding-top:11px}',
     '.st-cal-legend{display:flex;align-items:center;gap:5px}',
@@ -313,26 +371,42 @@ function injectStyles() {
     '.st-chip:hover{color:var(--ink)}',
     '.st-chip[aria-pressed="true"]{color:var(--accent,var(--lime))}',
     '.st-chip:focus-visible{outline:2px solid var(--accent,var(--lime));outline-offset:2px;border-radius:4px}',
-    '.st-chart-host{min-height:140px}',
-    '.st-chart{display:block;width:100%;max-width:100%;height:auto;aspect-ratio:16/5;color:var(--muted)}',
+    '.st-measure{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 14px}',
+    '.st-measure-label{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}',
+    '.st-chart-host{position:relative;min-height:140px}',
+    '.st-chart{display:block;width:100%;max-width:100%;height:auto;color:var(--muted)}',
     '.st-chart .st-grid{stroke:var(--line);stroke-width:1}',
     '.st-chart .st-axis{stroke:var(--line2);stroke-width:1}',
     '.st-chart .st-line{fill:none;stroke:var(--accent,var(--lime));stroke-width:1.75;stroke-linejoin:round;stroke-linecap:round}',
     '.st-chart .st-dot{fill:var(--accent,var(--lime))}',
+    '.st-chart .st-hit{fill:transparent;stroke:none;cursor:pointer;outline:none}',
+    '.st-chart .st-hit:focus-visible{fill:var(--accent-soft,rgba(184,224,74,.12));stroke:var(--accent,var(--lime));stroke-width:1.5}',
     '.st-chart .st-tick{fill:var(--dim);font-family:var(--mono,ui-monospace,monospace);font-size:10px}',
     '.st-chart .st-tick-val{fill:var(--muted)}',
+    '.st-chart .st-axis-unit{fill:var(--dim);letter-spacing:.08em}',
+    /* tooltip: plain panel, hairline border, no shadow */
+    '.st-tip{position:absolute;z-index:3;display:none;flex-direction:column;gap:2px;padding:7px 9px;border:1px solid var(--line2);border-radius:var(--r,8px);background:var(--panel);pointer-events:none;transform:translate(-50%,calc(-100% - 12px));max-width:220px}',
+    '.st-tip.is-on{display:flex}',
+    '.st-tip.is-below{transform:translate(-50%,14px)}',
+    '.st-tip-name{font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.st-tip-val{font-family:var(--mono,ui-monospace,monospace);font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;color:var(--ink)}',
+    '.st-tip-when{font-family:var(--mono,ui-monospace,monospace);font-size:11px;color:var(--dim);white-space:nowrap}',
 
     /* lower band: the table beside the recent list */
     '.st-cols{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:var(--gap-6,32px);align-items:start}',
 
-    /* per-drill table */
-    '.st-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}',
-    '.st-table th{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:500;text-align:right;padding:0 12px 9px;border-bottom:1px solid var(--line2);white-space:nowrap}',
-    '.st-table th:first-child{text-align:left}',
+    /* by drill: a boxed, gridded table so it reads as a data block */
+    '.st-panel{border:1px solid var(--line);border-radius:var(--r,8px);background:var(--panel);padding:var(--gap-4,16px);gap:0}',
+    '.st-panel .st-sec-head{padding-bottom:var(--gap-3,12px)}',
+    '.st-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;margin-top:12px}',
+    '.st-table th{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:500;text-align:right;padding:7px 12px;background:var(--panel2);border-bottom:1px solid var(--line2);white-space:nowrap}',
+    '.st-table th:first-child{text-align:left;border-top-left-radius:5px;border-bottom-left-radius:5px}',
+    '.st-table th:last-child{border-top-right-radius:5px;border-bottom-right-radius:5px}',
     '.st-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--mono,ui-monospace,monospace);color:var(--ink)}',
     '.st-table td:first-child{text-align:left;font-family:var(--sans,system-ui,sans-serif)}',
+    '.st-table tbody tr:last-child td{border-bottom:0}',
     '.st-row:hover td{background:var(--hover,rgba(255,255,255,.04))}',
-    '.st-name{color:var(--ink)}',
+    '.st-name{color:var(--ink);font-weight:500}',
     '.st-unit{font-family:var(--mono,ui-monospace,monospace);font-size:11px;color:var(--dim);margin-left:7px}',
     '.st-none{color:var(--dim);font-family:var(--sans,system-ui,sans-serif)}',
     '.st-table td.st-none{text-align:left}',
@@ -349,15 +423,19 @@ function injectStyles() {
     '.st-trend[data-trend="none"] .st-trend-dot{background:transparent;border:1px solid var(--line2)}',
     '.st-trend{font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.03em}',
 
-    /* recent runs */
-    '.st-recent{display:flex;flex-direction:column}',
-    '.st-run-day{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-top:var(--gap-3,12px);padding-bottom:3px}',
-    '.st-recent .st-run-day:first-child{margin-top:0}',
-    '.st-run{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line)}',
-    '.st-recent .st-run:last-child{border-bottom:0}',
-    '.st-run-name{color:var(--ink);font-size:13px;min-width:0;overflow-wrap:break-word}',
-    '.st-run-val{font-family:var(--mono,ui-monospace,monospace);font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink);white-space:nowrap}',
-    '.st-run-when{font-family:var(--mono,ui-monospace,monospace);font-size:11px;color:var(--dim);white-space:nowrap;text-align:right;min-width:76px}',
+    /* recent runs: an open, chronological feed, deliberately unlike the table */
+    '.st-feed{display:flex;flex-direction:column}',
+    '.st-feed-list{display:flex;flex-direction:column}',
+    '.st-feed-day{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:18px;padding-top:10px;border-top:1px solid var(--line2)}',
+    '.st-feed .st-feed-day:first-child{margin-top:0;padding-top:0;border-top:0}',
+    '.st-feed-day-label{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}',
+    '.st-feed-day-n{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.03em;color:var(--dim)}',
+    '.st-feed-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}',
+    '.st-feed .st-feed-row:last-child{border-bottom:0}',
+    '.st-feed-item{display:flex;flex-direction:column;gap:2px;min-width:0}',
+    '.st-feed-name{color:var(--ink);font-size:13px;overflow-wrap:break-word}',
+    '.st-feed-when{font-family:var(--mono,ui-monospace,monospace);font-size:11px;color:var(--dim)}',
+    '.st-feed-val{font-family:var(--mono,ui-monospace,monospace);font-variant-numeric:tabular-nums;font-size:16px;font-weight:600;color:var(--ink);white-space:nowrap}',
 
     /* empty state */
     '.st-empty{display:flex;flex-direction:column;gap:var(--gap-3,12px);max-width:52ch;color:var(--muted)}',
@@ -381,10 +459,11 @@ function injectStyles() {
     '.st-title{font-size:21px}',
     '.st-stat-value{font-size:24px}',
     '.st-cal{padding:var(--gap-3,12px)}',
-    '.st-cal-grid,.st-cal-wd{gap:4px}',
-    '.st-cal-cell{padding:4px;border-radius:5px}',
-    '.st-cal-n{display:none}',
-    '.st-chart{aspect-ratio:4/3}',
+    '.st-cal-month{font-size:17px}',
+    '.st-cal-cell{height:30px;padding:3px 4px}',
+    '.st-cal-d{font-size:11px}',
+    '.st-cal-n{font-size:11px}',
+    '.st-panel{padding:var(--gap-3,12px)}',
     '.st-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
     '.st-table,.st-table tbody,.st-table tr,.st-table td{display:block;width:auto}',
     '.st-table tr{border-bottom:1px solid var(--line);padding:11px 0}',
@@ -393,7 +472,7 @@ function injectStyles() {
     '.st-table td.st-none{justify-content:flex-start}',
     '.st-cell-label{display:inline;color:var(--dim);font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.06em;text-transform:uppercase}',
     '}',
-    '@media (prefers-reduced-motion:reduce){.st-chip,.st-cal-icon,.st-cal-today{transition:none}}'
+    '@media (prefers-reduced-motion:reduce){.st-chip,.st-cal-icon,.st-cal-today,.st-cal-cell,.st-cal-fill{transition:none}}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -428,13 +507,14 @@ function buildTotalsSection(model) {
   var state = model.state;
   var streak = Store && Store.streak ? Store.streak(state, new Date(model.now)) : 0;
   var longest = Store && Store.longestStreak ? Store.longestStreak(state) : 0;
+  var activeDays = Object.keys(dayActivity(state, model.records)).length;
   var section = h('section', 'st-section');
   var head = h('div', 'st-sec-head');
   head.appendChild(h('h2', 'st-h', 'Totals'));
   section.appendChild(head);
   var list = h('div', 'st-totals');
   list.appendChild(statItem('runs', 'Runs', String(model.records.length)));
-  list.appendChild(statItem('sessions', 'Sessions', String(model.sessions.length)));
+  list.appendChild(statItem('days', 'Days', String(activeDays)));
   list.appendChild(statItem('streak', 'Current streak', String(streak), 'days'));
   list.appendChild(statItem('longest', 'Longest streak', String(longest), 'days'));
   list.appendChild(statItem('drills', 'Drills trained', String(model.trainedCount)));
@@ -623,40 +703,125 @@ function appendTick(svg, x, y, text, anchor, cls) {
   svg.appendChild(t);
 }
 
-function chartInto(host, drill, records) {
+function whenLabel(t, mode) {
+  var d = new Date(t);
+  var base = MONTHS[d.getMonth()] + ' ' + d.getDate();
+  if (mode === 'day') return base;
+  return base + ', ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+
+/* The tooltip for one point: the drill, its value with unit, and when it
+   happened. A folded point also says how many runs it stands for. */
+function tipFor(drill, p, mode) {
+  var unit = drill.unit || '';
+  var val = fmtNum(p.v) + (unit ? ' ' + unit : '');
+  var when = whenLabel(p.t, mode);
+  var extra = mode === 'day' && p.n > 1 ? p.n + ' runs, average'
+    : mode === 'session' && p.n > 1 ? p.n + ' runs in this session'
+    : '';
+  return {
+    name: drill.name, val: val, when: when, extra: extra,
+    aria: drill.name + ', ' + val + ', ' + when + (extra ? ', ' + extra : '')
+  };
+}
+
+function chartInto(host, drill, model, mode) {
   clear(host);
-  var rs = runsFor(records, drill.id);
-  if (!rs.length) {
+  var runs = runsFor(model.records, drill.id);
+  var series = aggregatePoints(runs, mode, model.sessions);
+  if (!series.length) {
     host.appendChild(h('p', 'st-none', 'No runs yet for this drill.'));
     return;
   }
-  var c = buildChart(rs, 640, 200, 30);
-  var svg = svgEl('svg', {
-    viewBox: '0 0 ' + c.w + ' ' + c.h,
-    preserveAspectRatio: 'none',
-    class: 'st-chart',
-    role: 'img',
-    'aria-label': drill.name + ' results over time'
-  });
-  /* Three hairline guides behind the line, so the eye can read a value off the
-     height without a full grid. */
-  var mid = (c.vmin + c.vmax) / 2;
-  var guides = [c.vmax, mid, c.vmin];
-  for (var g = 0; g < guides.length; g++) {
-    var gy = round2(c.h - c.pad - (guides[g] - c.vmin) / (c.vmax - c.vmin || 1) * (c.h - 2 * c.pad));
-    svg.appendChild(svgEl('line', { x1: c.pad, y1: gy, x2: c.w - c.pad, y2: gy, class: 'st-grid' }));
+  var usedW = 0;
+  /* Drawn twice: once now so the tree is never empty, then again on the next
+     frame at the host's real width, so the viewBox matches the rendered box and
+     text is never stretched. */
+  function draw() {
+    clear(host);
+    var w = Math.round(host.clientWidth || 0) || 640;
+    w = Math.max(300, Math.min(w, 1400));
+    usedW = w;
+    var compact = w < 560;
+    var hh = compact ? Math.round(w * 0.64) : Math.round(w * 0.42);
+    var c = buildChart(series, w, hh, 0, {
+      padL: compact ? 30 : 42, padR: 14, padT: 20, padB: 26
+    });
+    if (!c) return;
+    var svg = svgEl('svg', {
+      viewBox: '0 0 ' + c.w + ' ' + c.h,
+      preserveAspectRatio: 'none',
+      class: 'st-chart',
+      role: 'group',
+      'aria-label': drill.name + ' results over time, ' + c.points.length +
+        (c.points.length === 1 ? ' point' : ' points')
+    });
+    /* Three hairline guides behind the line, so the eye can read a value off the
+       height without a full grid. */
+    var mid = (c.vmin + c.vmax) / 2;
+    var guides = [c.vmax, mid, c.vmin];
+    for (var g = 0; g < guides.length; g++) {
+      var gy = round2(c.h - c.padB - (guides[g] - c.vmin) / (c.vmax - c.vmin || 1) * (c.h - c.padT - c.padB));
+      svg.appendChild(svgEl('line', { x1: c.padL, y1: gy, x2: c.w - c.padR, y2: gy, class: 'st-grid' }));
+    }
+    svg.appendChild(svgEl('line', { x1: c.padL, y1: c.h - c.padB, x2: c.w - c.padR, y2: c.h - c.padB, class: 'st-axis' }));
+    svg.appendChild(svgEl('line', { x1: c.padL, y1: c.padT, x2: c.padL, y2: c.h - c.padB, class: 'st-axis' }));
+    /* Bare value ticks. The unit is not glued to a number; it is the axis label. */
+    appendTick(svg, c.padL - 6, c.padT + 4, fmtNum(c.vmax), 'end', 'st-tick-val');
+    appendTick(svg, c.padL - 6, c.h - c.padB + 4, fmtNum(c.vmin), 'end');
+    appendTick(svg, c.padL, c.h - c.padB + 15, dateLabel(c.tmin), 'start');
+    appendTick(svg, c.w - c.padR, c.h - c.padB + 15, dateLabel(c.tmax), 'end');
+    if (drill.unit) {
+      var u = svgEl('text', { x: c.padL, y: c.padT - 8, class: 'st-tick st-axis-unit', 'text-anchor': 'start' });
+      u.textContent = drill.unit;
+      svg.appendChild(u);
+    }
+    svg.appendChild(svgEl('path', { d: c.d, class: 'st-line' }));
+
+    var tip = h('div', 'st-tip');
+    for (var i = 0; i < c.points.length; i++) {
+      var p = c.points[i];
+      svg.appendChild(svgEl('circle', { cx: round2(p.x), cy: round2(p.y), r: 2.4, class: 'st-dot' }));
+      var hit = svgEl('circle', {
+        cx: round2(p.x), cy: round2(p.y), r: 9, class: 'st-hit',
+        tabindex: '0', focusable: 'true', role: 'img', 'aria-label': tipFor(drill, p, mode).aria
+      });
+      /* Closure per point so each keeps its own coordinates. */
+      (function (pt) {
+        function show() {
+          var info = tipFor(drill, pt, mode);
+          tip.replaceChildren();
+          tip.appendChild(h('span', 'st-tip-name', info.name));
+          tip.appendChild(h('span', 'st-tip-val', info.val));
+          tip.appendChild(h('span', 'st-tip-when', info.when + (info.extra ? '  ·  ' + info.extra : '')));
+          tip.style.left = round2(pt.x) + 'px';
+          tip.style.top = round2(pt.y) + 'px';
+          tip.classList.toggle('is-below', pt.y < 70);
+          tip.classList.add('is-on');
+          /* Keep the box inside the chart: centre it on the point, then pull it
+             back by half its own width when it would cross either edge. */
+          var half = (tip.offsetWidth || 0) / 2;
+          var cx = Math.min(Math.max(pt.x, half + 2), w - half - 2);
+          tip.style.left = round2(cx) + 'px';
+        }
+        function hide() { tip.classList.remove('is-on'); }
+        hit.addEventListener('mouseenter', show);
+        hit.addEventListener('mouseleave', hide);
+        hit.addEventListener('focus', show);
+        hit.addEventListener('blur', hide);
+      })(p);
+      svg.appendChild(hit);
+    }
+    host.appendChild(svg);
+    host.appendChild(tip);
   }
-  svg.appendChild(svgEl('line', { x1: c.pad, y1: c.h - c.pad, x2: c.w - c.pad, y2: c.h - c.pad, class: 'st-axis' }));
-  svg.appendChild(svgEl('line', { x1: c.pad, y1: c.pad, x2: c.pad, y2: c.h - c.pad, class: 'st-axis' }));
-  appendTick(svg, c.pad - 6, c.pad + 4, fmtNum(c.vmax) + (drill.unit ? ' ' + drill.unit : ''), 'end', 'st-tick-val');
-  appendTick(svg, c.pad - 6, c.h - c.pad + 4, fmtNum(c.vmin), 'end');
-  appendTick(svg, c.pad, c.h - c.pad + 15, dateLabel(c.tmin), 'start');
-  appendTick(svg, c.w - c.pad, c.h - c.pad + 15, dateLabel(c.tmax), 'end');
-  svg.appendChild(svgEl('path', { d: c.d, class: 'st-line' }));
-  for (var i = 0; i < c.points.length; i++) {
-    svg.appendChild(svgEl('circle', { cx: round2(c.points[i].x), cy: round2(c.points[i].y), r: 2, class: 'st-dot' }));
+  draw();
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(function () {
+      if (typeof document === 'undefined' || !host.isConnected) return;
+      if (Math.round(host.clientWidth || 0) !== usedW) draw();
+    });
   }
-  host.appendChild(svg);
 }
 
 function buildChartSection(model) {
@@ -677,13 +842,18 @@ function buildChartSection(model) {
   }
 
   var host = h('div', 'st-chart-host');
-  var btns = {};
+  var mode = 'run';
+  var drillBtns = {};
+  var modeBtns = {};
   function renderChart() {
     var d = drillById(selected);
-    for (var id in btns) {
-      if (Object.prototype.hasOwnProperty.call(btns, id)) btns[id].setAttribute('aria-pressed', id === selected ? 'true' : 'false');
+    for (var id in drillBtns) {
+      if (Object.prototype.hasOwnProperty.call(drillBtns, id)) drillBtns[id].setAttribute('aria-pressed', id === selected ? 'true' : 'false');
     }
-    chartInto(host, d, model.records);
+    for (var m in modeBtns) {
+      if (Object.prototype.hasOwnProperty.call(modeBtns, m)) modeBtns[m].setAttribute('aria-pressed', m === mode ? 'true' : 'false');
+    }
+    chartInto(host, d, model, mode);
   }
 
   var chips = h('div', 'st-chips');
@@ -694,12 +864,26 @@ function buildChartSection(model) {
     b.type = 'button';
     b.setAttribute('aria-pressed', 'false');
     b.addEventListener('click', function () { selected = d.id; renderChart(); });
-    btns[d.id] = b;
+    drillBtns[d.id] = b;
     chips.appendChild(b);
   });
   head.appendChild(chips);
-
   section.appendChild(head);
+
+  var measure = h('div', 'st-measure');
+  measure.setAttribute('role', 'group');
+  measure.setAttribute('aria-label', 'Measure the trend by');
+  measure.appendChild(h('span', 'st-measure-label', 'Measure'));
+  MEASURE_MODES.forEach(function (m) {
+    var b = h('button', 'st-chip', m.label);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', function () { mode = m.id; renderChart(); });
+    modeBtns[m.id] = b;
+    measure.appendChild(b);
+  });
+  section.appendChild(measure);
+
   section.appendChild(host);
   renderChart();
   return section;
@@ -718,7 +902,7 @@ function cell(label, value) {
 
 function buildTableSection(model) {
   var Store = globalThis.Store;
-  var section = h('section', 'st-section');
+  var section = h('section', 'st-section st-panel');
   var head = h('div', 'st-sec-head');
   head.appendChild(h('h2', 'st-h', 'By drill'));
   head.appendChild(h('span', 'st-sec-note', plural(drillList().length, 'drill', 'drills')));
@@ -782,7 +966,7 @@ function buildTableSection(model) {
 /* ---------- recent runs ---------- */
 
 function buildRecentSection(model) {
-  var section = h('section', 'st-section');
+  var section = h('section', 'st-section st-feed');
   var head = h('div', 'st-sec-head');
   head.appendChild(h('h2', 'st-h', 'Recent runs'));
   var rs = model.records.slice().sort(function (a, b) { return b.t - a.t; }).slice(0, RECENT_LIMIT);
@@ -793,20 +977,31 @@ function buildRecentSection(model) {
     section.appendChild(h('p', 'st-none', 'No runs yet.'));
     return section;
   }
-  var list = h('div', 'st-recent');
+  /* How many of these recent runs fall on each day, so a day header can say. */
+  var perDay = {};
+  rs.forEach(function (r) {
+    var k = dayKeyOf(r.t);
+    perDay[k] = (perDay[k] || 0) + 1;
+  });
+  var list = h('div', 'st-feed-list');
   var lastKey = null;
   rs.forEach(function (r) {
     var key = dayKeyOf(r.t);
     if (key !== lastKey) {
-      list.appendChild(h('div', 'st-run-day', dayLabel(key, model.now)));
+      var dayHead = h('div', 'st-feed-day');
+      dayHead.appendChild(h('span', 'st-feed-day-label', dayLabel(key, model.now)));
+      dayHead.appendChild(h('span', 'st-feed-day-n', plural(perDay[key], 'run', 'runs')));
+      list.appendChild(dayHead);
       lastKey = key;
     }
     var d = drillById(r.drillId);
-    var row = h('div', 'st-run');
-    row.appendChild(h('span', 'st-run-name', d.name));
     var unit = r.unit || d.unit || '';
-    row.appendChild(h('span', 'st-run-val', fmtNum(r.value) + (unit ? ' ' + unit : '')));
-    row.appendChild(h('span', 'st-run-when', relTime(r.t, model.now)));
+    var row = h('div', 'st-feed-row');
+    var item = h('div', 'st-feed-item');
+    item.appendChild(h('span', 'st-feed-name', d.name));
+    item.appendChild(h('span', 'st-feed-when', clockOf(r.t)));
+    row.appendChild(item);
+    row.appendChild(h('span', 'st-feed-val', fmtNum(r.value) + (unit ? ' ' + unit : '')));
     list.appendChild(row);
   });
   section.appendChild(list);
