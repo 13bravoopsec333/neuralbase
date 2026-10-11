@@ -540,11 +540,13 @@
      warm-up with nothing to compare against, so a chunk no longer than the
      level holds no scorable trial at all and the level climbs on free
      auto-passes. Two trials past the warm-up guarantees at least one, while
-     never exceeding what is left in the set. */
+     never exceeding what is left in the set. An endless set has no trials left
+     to count down from, so a positive remaining value that is not finite
+     (Infinity) means unbounded rather than nothing. */
   function nbackChunkSize(block, level, remaining) {
     var b = typeof block === "number" && isFinite(block) ? block : 0;
     var l = typeof level === "number" && isFinite(level) ? level : 0;
-    var r = typeof remaining === "number" && isFinite(remaining) ? remaining : 0;
+    var r = typeof remaining === "number" && !isNaN(remaining) && remaining > 0 ? remaining : 0;
     return Math.max(0, Math.min(Math.max(b, l + 2), r));
   }
 
@@ -557,13 +559,15 @@
       { key: "startLevel", label: "Starting level", type: "number", min: 1, max: 4, step: 1, def: 2 },
       { key: "trials", label: "Trials", type: "number", min: 12, max: 30, step: 6, def: 18 },
       { key: "cueLength", label: "Cue length", type: "number", min: 4, max: 10, step: 1, def: 6 },
-      { key: "stimulusMs", label: "Stimulus time", type: "choice", options: [{ value: 1500, label: "1.5 s" }, { value: 2000, label: "2 s" }, { value: 3000, label: "3 s" }], def: 2000 }
+      { key: "stimulusMs", label: "Stimulus time", type: "choice", options: [{ value: 1500, label: "1.5 s" }, { value: 2000, label: "2 s" }, { value: 3000, label: "3 s" }], def: 2000 },
+      { key: "endless", label: "Endless", type: "toggle", def: false }
     ],
     ufov: [
       { key: "startExposure", label: "Start exposure", type: "number", min: 100, max: 400, step: 50, def: 200 },
       { key: "trials", label: "Trials", type: "number", min: 6, max: 20, step: 2, def: 10 },
       { key: "edgeTargets", label: "Edge targets", type: "number", min: 1, max: 2, step: 1, def: 1 },
-      { key: "centerShape", label: "Center shape", type: "toggle", def: true }
+      { key: "centerShape", label: "Center shape", type: "toggle", def: true },
+      { key: "endless", label: "Endless", type: "toggle", def: false }
     ],
     palace: [
       { key: "routeLength", label: "Route length", type: "number", min: 5, max: 10, step: 1, def: 5 },
@@ -574,7 +578,8 @@
     reasoning: [
       { key: "trials", label: "Trials", type: "number", min: 8, max: 20, step: 4, def: 8 },
       { key: "timeLimit", label: "Time limit", type: "choice", options: [{ value: 0, label: "Off" }, { value: 10, label: "10 s" }, { value: 20, label: "20 s" }], def: 0 },
-      { key: "relationSet", label: "Relations", type: "choice", options: [{ value: "all", label: "All" }, { value: "part-whole", label: "Part-whole" }, { value: "function", label: "Function" }, { value: "category", label: "Category" }, { value: "opposite", label: "Opposite" }, { value: "sequence", label: "Sequence" }, { value: "cause-effect", label: "Cause-effect" }], def: "all" }
+      { key: "relationSet", label: "Relations", type: "choice", options: [{ value: "all", label: "All" }, { value: "part-whole", label: "Part-whole" }, { value: "function", label: "Function" }, { value: "category", label: "Category" }, { value: "opposite", label: "Opposite" }, { value: "sequence", label: "Sequence" }, { value: "cause-effect", label: "Cause-effect" }], def: "all" },
+      { key: "endless", label: "Endless", type: "toggle", def: false }
     ],
     spaced: [
       { key: "reviewLimit", label: "Review limit", type: "number", min: 5, max: 30, step: 5, def: 10 },
@@ -586,25 +591,29 @@
       { key: "trials", label: "Trials", type: "number", min: 12, max: 30, step: 6, def: 12 },
       { key: "switchRate", label: "Switch rate", type: "number", min: 0.2, max: 0.5, step: 0.1, def: 0.3 },
       { key: "dimensions", label: "Rules", type: "choice", options: [{ value: "two", label: "Two" }, { value: "three", label: "Three" }], def: "two" },
-      { key: "cueVisible", label: "Show cue", type: "toggle", def: true }
+      { key: "cueVisible", label: "Show cue", type: "toggle", def: true },
+      { key: "endless", label: "Endless", type: "toggle", def: false }
     ],
     sart: [
       { key: "trials", label: "Trials", type: "number", min: 20, max: 60, step: 10, def: 30 },
       { key: "targetDigit", label: "Target digit", type: "number", min: 1, max: 9, step: 1, def: 3 },
       { key: "signalRate", label: "Signal rate", type: "number", min: 0.1, max: 0.3, step: 0.05, def: 0.2 },
-      { key: "responseWindow", label: "Response window", type: "choice", options: [{ value: 0, label: "Off" }, { value: 800, label: "800 ms" }, { value: 1200, label: "1200 ms" }], def: 0 }
+      { key: "responseWindow", label: "Response window", type: "choice", options: [{ value: 0, label: "Off" }, { value: 800, label: "800 ms" }, { value: 1200, label: "1200 ms" }], def: 0 },
+      { key: "endless", label: "Endless", type: "toggle", def: false }
     ],
     crt: [
       { key: "trials", label: "Trials", type: "number", min: 10, max: 40, step: 10, def: 20 },
       { key: "choices", label: "Lights", type: "number", min: 2, max: 4, step: 1, def: 2 },
       { key: "foreperiod", label: "Foreperiod", type: "choice", options: [{ value: "fixed", label: "Fixed" }, { value: "random", label: "Random" }], def: "random" },
-      { key: "catchTrials", label: "Catch trials", type: "toggle", def: false }
+      { key: "catchTrials", label: "Catch trials", type: "toggle", def: false },
+      { key: "endless", label: "Endless", type: "toggle", def: false }
     ],
     math: [
       { key: "ops", label: "Operations", type: "choice", multi: true, options: [{ value: "+", label: "Add" }, { value: "-", label: "Sub" }, { value: "*", label: "Mul" }, { value: "/", label: "Div" }], def: ["+", "-", "*", "/"] },
       { key: "digits", label: "Operand digits", type: "number", min: 1, max: 3, step: 1, def: 2 },
       { key: "timePerProblem", label: "Time per problem", type: "choice", options: [{ value: 0, label: "Off" }, { value: 5, label: "5 s" }, { value: 10, label: "10 s" }, { value: 15, label: "15 s" }], def: 0 },
-      { key: "startLevel", label: "Starting level", type: "number", min: 1, max: 3, step: 1, def: 1 }
+      { key: "startLevel", label: "Starting level", type: "number", min: 1, max: 3, step: 1, def: 1 },
+      { key: "endless", label: "Endless", type: "toggle", def: false }
     ]
   };
 
@@ -670,7 +679,8 @@
   var DrillsCore = { isMatch: isMatch, nbackChunkSize: nbackChunkSize, pressGuard: pressGuard, nextLevel: nextLevel, adaptExposure: adaptExposure, palaceScore: palaceScore, relationKey: relationKey,
     drillOptionSpec: drillOptionSpec, drillOptions: drillOptions,
     PALACE_STUDY_SECONDS: PALACE_STUDY_SECONDS, PALACE_STUDY_MS: PALACE_STUDY_MS,
-    PALACE_ROUTE: 5, bindKey: bindKey, digitIndex: digitIndex, silenceAudio: silenceAudio, reviewQueue: reviewQueue, spacedQueue: spacedQueue, switchCost: switchCost, nbackTrialCorrect: nbackTrialCorrect, nbackOutcome: nbackOutcome, nbackVoiceMode: nbackVoiceMode, isVowel: isVowel, dPrime: dPrime, ruleShiftAccuracy: ruleShiftAccuracy, mulberry32: mulberry32, seedFrom: seedFrom, randInt: randInt, pick: pick, nbackSequence: nbackSequence, NB_MODES: NB_MODES, coerceDrillOption: coerceDrillOption };
+    PALACE_ROUTE: 5, bindKey: bindKey, digitIndex: digitIndex, silenceAudio: silenceAudio, reviewQueue: reviewQueue, spacedQueue: spacedQueue, switchCost: switchCost, nbackTrialCorrect: nbackTrialCorrect, nbackOutcome: nbackOutcome, nbackVoiceMode: nbackVoiceMode, isVowel: isVowel, dPrime: dPrime, ruleShiftAccuracy: ruleShiftAccuracy, mulberry32: mulberry32, seedFrom: seedFrom, randInt: randInt, pick: pick, nbackSequence: nbackSequence, NB_MODES: NB_MODES, coerceDrillOption: coerceDrillOption,
+    focusStageUp: focusStageUp, reportEndlessPartial: reportEndlessPartial };
 
   /* ---------- registry ---------- */
   var factories = {};
@@ -718,6 +728,24 @@
     return b;
   }
 
+  /* Endless runs have no natural end, so their score only reaches Stats when the
+     host stops the drill. The host stops a drill from four places: End Session,
+     Restart, the queue advancing, and leaving the view. End Session is the one
+     that tears the focus stage down before it stops the drill (train.js runs
+     leaveFocus before stopSet), so a still-present focus stage means this stop is
+     any of the others and the partial must not be recorded. The report is deferred
+     one tick so it lands after the host has finished stopping the set, which keeps
+     the abandon path from banking a session record it never banked before. */
+  function focusStageUp() {
+    return !!(doc && typeof doc.querySelector === "function" && doc.querySelector(".nb-focus-stage"));
+  }
+  function reportEndlessPartial(opts, rec) {
+    if (!opts || typeof opts.onComplete !== "function") return;
+    var emit = function () { opts.onComplete(rec); };
+    if (typeof queueMicrotask === "function") queueMicrotask(emit);
+    else setTimeout(emit, 0);
+  }
+
   /* ---------- 1. Executive N-Back, six modes (default dual: rule-cued switching) ---------- */
   function nback(container, opts) {
     injectStyles();
@@ -730,9 +758,15 @@
     var spatial = mode === "spatial";
     var voiceMode = nbackVoiceMode(mode);
     /* Validated by drillOptions: 12, 18 or 24. The default keeps the 18 trial
-       set the drill has always run. */
-    var TRIALS = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 18;
+       set the drill has always run. Endless removes the ceiling: the set never
+       completes on its own and the count has no denominator. */
+    var endless = !!(opts.options && opts.options.endless);
+    var bankPartial = false;
+    var TRIALS = endless ? Infinity : ((opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 18);
     var BLOCK = 4;
+    /* The on-screen trial counter. A finite set shows the denominator; an endless
+       set shows the running count alone, with no denominator. */
+    function trialCountText() { return endless ? String(i) : i + " / " + TRIALS; }
     /* The starting n and the level the set can climb to. Validated by
        drillOptions, so it is always a whole number in 1..4. */
     var startLevel = (opts.options && typeof opts.options.startLevel === "number") ? opts.options.startLevel : 2;
@@ -819,7 +853,7 @@
     var oneBtn = button("btn-primary", "Match");
     if (dual) { bar.appendChild(posBtn); bar.appendChild(letBtn); }
     else bar.appendChild(oneBtn);
-    var meta = el("div", "nb-meta mono", "n = " + level + " · 0 / " + TRIALS + " · " + stimMs + " ms");
+    var meta = el("div", "nb-meta mono", "n = " + level + " · " + trialCountText() + " · " + stimMs + " ms");
 
     wrap.appendChild(cueEl);
     /* Arithmetic has no grid (the sum is the stimulus) and spatial has no letter
@@ -897,7 +931,7 @@
         if (!spatial) stim.textContent = "?";
       }
       cueEl.textContent = cueText();
-      meta.textContent = "n = " + level + " · " + i + " / " + TRIALS + " · " + stimMs + " ms";
+      meta.textContent = "n = " + level + " · " + trialCountText() + " · " + stimMs + " ms";
     }
 
     /* Blank the stimulus without touching the printed digits or the response
@@ -975,6 +1009,20 @@
       beginTrial();
     }
 
+    /* Accuracy and d-prime are over the trials that carried a comparison. Counting
+       the warm-up trials, which auto-pass because the right answer is to do
+       nothing, inflated both. scorable is zero only if the set ended before
+       any real trial, and the guards keep that off the page as NaN. */
+    function nbackRecord() {
+      var acc = scorable > 0 ? correctTrials / scorable : 0;
+      var dp = dPrime(hits, falseAlarms, scorable);
+      var rs = ruleShiftAccuracy(perTrial);
+      var meta = { mode: mode, accuracy: acc, hits: hits, falseAlarms: falseAlarms, ruleShiftAccuracy: rs, dPrime: dp };
+      /* A partial endless run reports the trials it actually scored. */
+      if (endless) meta.trials = scorable;
+      return { drillId: "nback", value: maxLevel, unit: "n", t: Date.now(), meta: meta };
+    }
+
     function finish() {
       if (stopped) return;
       stopped = true;
@@ -982,20 +1030,12 @@
       timers.destroy();
       blankTimers.destroy();
       unbindKey();
-      /* Accuracy and d-prime are over the trials that carried a comparison. Counting
-         the warm-up trials, which auto-pass because the right answer is to do
-         nothing, inflated both. scorable is zero only if the set ended before
-         any real trial, and the guards keep that off the page as NaN. */
-      var acc = scorable > 0 ? correctTrials / scorable : 0;
-      var dp = dPrime(hits, falseAlarms, scorable);
-      var rs = ruleShiftAccuracy(perTrial);
+      var rec = nbackRecord();
       var summary = el("div", "drill-summary");
       summary.appendChild(el("div", "drill-state", "Set complete"));
-      summary.appendChild(el("div", "drill-note", "Highest n " + maxLevel + " · accuracy " + Math.round(acc * 100) + "%" + (rs != null ? " · shift " + Math.round(rs * 100) + "%" : "")));
+      summary.appendChild(el("div", "drill-note", "Highest n " + maxLevel + " · accuracy " + Math.round(rec.meta.accuracy * 100) + "%" + (rec.meta.ruleShiftAccuracy != null ? " · shift " + Math.round(rec.meta.ruleShiftAccuracy * 100) + "%" : "")));
       container.appendChild(summary);
-      if (opts.onComplete) {
-        opts.onComplete({ drillId: "nback", value: maxLevel, unit: "n", t: Date.now(), meta: { mode: mode, accuracy: acc, hits: hits, falseAlarms: falseAlarms, ruleShiftAccuracy: rs, dPrime: dp } });
-      }
+      if (opts.onComplete) opts.onComplete(rec);
     }
 
     paint();
@@ -1003,8 +1043,20 @@
     return {
       stop: function () {
         /* A finished set is not a stopped one: let the final feedback clip play
-           out. Any other stop goes silent at once. */
+           out. An endless set has no finish of its own, so End Session banks the
+           partial run. The focus stage is already down only on the End Session
+           path, so the other stop paths stay silent. */
         if (finished) return;
+        if (endless && i > 0 && !focusStageUp()) {
+          stopped = true;
+          finished = true;
+          timers.destroy();
+          blankTimers.destroy();
+          unbindKey();
+          silenceAudio();
+          reportEndlessPartial(opts, nbackRecord());
+          return;
+        }
         halt(true);
       }
     };
@@ -1015,8 +1067,12 @@
   function ufov(container, opts) {
     var SHAPES = ["Circle", "Triangle", "Square"];
     var POS = ["Top", "Right", "Bottom", "Left"];
-    /* Validated by drillOptions: 6 to 20 on a two step grid. */
-    var TRIALS = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 10;
+    /* Validated by drillOptions: 6 to 20 on a two step grid. Endless removes the
+       ceiling: the set never completes on its own and the count has no
+       denominator. */
+    var endless = !!(opts.options && opts.options.endless);
+    var bankPartial = false;
+    var TRIALS = endless ? Infinity : ((opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 10);
     /* Validated by drillOptions: one or two edge targets to locate. */
     var EDGE = (opts.options && typeof opts.options.edgeTargets === "number") ? opts.options.edgeTargets : 1;
     /* Validated by drillOptions: whether a center shape has to be identified. */
@@ -1049,7 +1105,7 @@
       return CENTER ? "Watch the center shape and " + edge + "." : "Watch " + edge + ".";
     }
     function ufovMeta() {
-      return "exposure " + exposure + " ms · " + EDGE + (EDGE === 1 ? " dot" : " dots") + " · " + i + " / " + TRIALS;
+      return "exposure " + exposure + " ms · " + EDGE + (EDGE === 1 ? " dot" : " dots") + " · " + (endless ? String(i) : i + " / " + TRIALS);
     }
 
     function clearBar() { bar.innerHTML = ""; }
@@ -1131,12 +1187,16 @@
       if (stopped) return;
       stopped = true;
       unbindKey();
-      var acc = correctCount / TRIALS;
+      /* A partial endless run scores against the trials it actually attempted,
+         not an infinite ceiling, so accuracy stays a real number. */
+      var total = endless ? i : TRIALS;
+      var acc = total > 0 ? correctCount / total : 0;
       var summary = el("div", "drill-summary");
       summary.appendChild(el("div", "drill-state", "Set complete"));
       summary.appendChild(el("div", "drill-note", "Threshold exposure " + exposure + " ms · accuracy " + Math.round(acc * 100) + "%"));
       container.appendChild(summary);
-      if (opts.onComplete) opts.onComplete({ drillId: "ufov", value: exposure, unit: "ms", t: Date.now(), meta: { accuracy: acc, edgeTargets: EDGE, centerShape: CENTER } });
+      var rec = { drillId: "ufov", value: exposure, unit: "ms", t: Date.now(), meta: { accuracy: acc, edgeTargets: EDGE, centerShape: CENTER } };
+      if (opts.onComplete) { if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec); }
     }
     /* Digits take the visible options in order, so the printed key and the button
        position cannot drift apart. Both questions use this one path. Guarded on
@@ -1153,6 +1213,14 @@
     timer = timers.set(trial, 700);
     return {
       stop: function () {
+        /* An endless set has no finish of its own, so End Session banks the
+           partial run. Only the End Session path has the focus stage down, so
+           the other stop paths stay silent and record nothing. */
+        if (endless && i > 0 && !stopped && !focusStageUp()) {
+          bankPartial = true; finish(); silenceAudio();
+          clearTimeout(timer); timers.destroy();
+          return;
+        }
         stopped = true;
         clearTimeout(timer);
         timers.destroy();
@@ -1435,8 +1503,11 @@
       { relation: "sequence", a: "Waking", b: "Sleeping", c: "Sprout", correct: "Flower", wrong: ["Pencil", "Loud"] }
     ];
     var rng = rngFrom(opts);
-    /* Validated by drillOptions: 8 to 20 on a four step grid. */
-    var TRIALS = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 8;
+    /* Validated by drillOptions: 8 to 20 on a four step grid. Endless removes the
+       ceiling: the set never completes on its own. */
+    var endless = !!(opts.options && opts.options.endless);
+    var bankPartial = false;
+    var TRIALS = endless ? Infinity : ((opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 8);
     /* Validated by drillOptions: 0 (untimed), 10 or 20 seconds. A nonzero limit
        auto-advances a trial when the time is up, so an unanswered item counts as
        wrong instead of waiting forever. */
@@ -1466,7 +1537,7 @@
     /* The trial count, the limit and the relation set, on screen, so the chosen
        settings are visible while the set runs. */
     function metaText() {
-      return i + " / " + TRIALS + (timeLimit > 0 ? " · " + timeLimit + " s limit" : " · untimed") + " · " + (relationSet === "all" ? "all relations" : relationSet);
+      return (endless ? String(i) : i + " / " + TRIALS) + (timeLimit > 0 ? " · " + timeLimit + " s limit" : " · untimed") + " · " + (relationSet === "all" ? "all relations" : relationSet);
     }
 
     /* The pool the trial draws from. A single relation narrows it; all of them
@@ -1546,11 +1617,14 @@
       clearLimit();
       detachFreeze();
       unbindKey();
+      /* A partial endless run scores against the trials it actually attempted. */
+      var total = endless ? i : TRIALS;
       var summary = el("div", "drill-summary");
       summary.appendChild(el("div", "drill-state", "Set complete"));
-      summary.appendChild(el("div", "drill-note", correctCount + " of " + TRIALS + " correct"));
+      summary.appendChild(el("div", "drill-note", correctCount + " of " + total + " correct"));
       container.appendChild(summary);
-      if (opts.onComplete) opts.onComplete({ drillId: "reasoning", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: TRIALS, timeLimit: timeLimit, relationSet: relationSet } });
+      var rec = { drillId: "reasoning", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: total, timeLimit: timeLimit, relationSet: relationSet } };
+      if (opts.onComplete) { if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec); }
     }
     /* Digits pick the option in the order the buttons are shown, so the printed
        key and the visual order can never drift apart. */
@@ -1567,7 +1641,7 @@
     });
     var detachFreeze = onFreeze(pauseLimit, resumeLimit);
     trial();
-    return { stop: function () { stopped = true; clearLimit(); detachFreeze(); unbindKey(); } };
+    return { stop: function () { if (endless && i > 0 && !stopped && !focusStageUp()) { bankPartial = true; finish(); silenceAudio(); return; } stopped = true; clearLimit(); detachFreeze(); unbindKey(); } };
   }
 
   /* ---------- 5. Spaced Retrieval ---------- */
@@ -1792,8 +1866,11 @@
   /* ---------- 6. Task Switching ---------- */
   function switching(container, opts) {
     var rng = rngFrom(opts);
-    /* Validated by drillOptions: 12 to 30 on a six step grid. */
-    var TRIALS = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 12;
+    /* Validated by drillOptions: 12 to 30 on a six step grid. Endless removes the
+       ceiling: the set never completes on its own. */
+    var endless = !!(opts.options && opts.options.endless);
+    var bankPartial = false;
+    var TRIALS = endless ? Infinity : ((opts.options && typeof opts.options.trials === "number") ? opts.options.trials : 12);
     /* Validated by drillOptions: 0.2 to 0.5. The share of trials whose rule
        differs from the one before it. */
     var switchRate = (opts.options && typeof opts.options.switchRate === "number") ? opts.options.switchRate : 0.3;
@@ -1825,7 +1902,7 @@
 
     /* Trial count, switch rate and how many rules are live, on screen. */
     function metaText() {
-      return i + " / " + TRIALS + " · " + Math.round(switchRate * 100) + "% switch · " + DIMS.length + " rules";
+      return (endless ? String(i) : i + " / " + TRIALS) + " · " + Math.round(switchRate * 100) + "% switch · " + DIMS.length + " rules";
     }
 
     /* The rule the next trial shows. With no previous rule it is a fair draw;
@@ -1885,11 +1962,14 @@
       stopped = true;
       unbindKey();
       var cost = switchCost(repeatTimes, switchTimes);
+      /* A partial endless run scores against the trials it actually attempted. */
+      var total = endless ? i : TRIALS;
       var summary = el("div", "drill-summary");
       summary.appendChild(el("div", "drill-state", "Set complete"));
-      summary.appendChild(el("div", "drill-note", correctCount + " of " + TRIALS + " correct" + (cost != null ? " · switch cost " + cost + " ms" : "")));
+      summary.appendChild(el("div", "drill-note", correctCount + " of " + total + " correct" + (cost != null ? " · switch cost " + cost + " ms" : "")));
       container.appendChild(summary);
-      if (opts.onComplete) opts.onComplete({ drillId: "switching", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: TRIALS, accuracy: correctCount / TRIALS, switchCost: cost, dimensions: DIMS.length, cueVisible: cueVisible } });
+      var rec = { drillId: "switching", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: total, accuracy: total > 0 ? correctCount / total : 0, switchCost: cost, dimensions: DIMS.length, cueVisible: cueVisible } };
+      if (opts.onComplete) { if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec); }
     }
     /* Two options, one digit each, in the order they are drawn. The rule changes
        between trials but the count does not, so the handler reads the current
@@ -1906,7 +1986,7 @@
       btn.click();
     });
     trial();
-    return { stop: function () { stopped = true; unbindKey(); } };
+    return { stop: function () { if (endless && i > 0 && !stopped && !focusStageUp()) { bankPartial = true; finish(); silenceAudio(); return; } stopped = true; unbindKey(); } };
   }
 
   /* ---------- placeholders replaced in later tasks ---------- */

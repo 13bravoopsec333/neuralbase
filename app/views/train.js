@@ -58,19 +58,13 @@ function writeMode(id) {
 }
 
 /* A seed is an 8 digit hex label. Short enough to read out loud, wide enough
-   that a collision is not worth worrying about. It is not on screen: the same
-   seed is replayed on a repeat visit, so a run can be compared against the one
-   before it. */
+   that a collision is not worth worrying about. It is not on screen. Every set
+   draws a new one, so a repeat run is a new sequence; the recorded seed is what
+   makes a single run reproducible after the fact. */
 function newSeed() {
   var n = Math.floor(Math.random() * 0xffffffff) >>> 0;
   var s = ('00000000' + n.toString(16)).slice(-8);
   return s.toUpperCase();
-}
-function readSeed() {
-  var v = null;
-  try { v = localStorage.getItem(SEED_KEY); } catch (e) { /* fall through */ }
-  if (v && /^[0-9a-f]{1,8}$/i.test(v)) return v.toUpperCase();
-  return newSeed();
 }
 function writeSeed(s) {
   try { localStorage.setItem(SEED_KEY, s); } catch (e) { /* degrade */ }
@@ -448,10 +442,14 @@ function paintIdle() {
    is the pressed one. */
 function buildSetup(d) {
   var panel = h('div', 'tr-setup');
-  if (d.id === 'nback') panel.appendChild(buildModeBlock());
   var spec = optionSpecFor(d.id);
   var opts = optionsFor(d.id);
   var rows = h('div', 'tr-set-rows');
+  /* The mode row sits in the same grid as the settings, so its label and its
+     track line up with every other label and control instead of starting at a
+     different x. It is a .tr-mode-row, not a .tr-set-row, because it is not one
+     of the drill's settings. */
+  if (d.id === 'nback') rows.appendChild(buildModeBlock());
   for (var i = 0; i < spec.length; i++) {
     rows.appendChild(buildOptionRow(d.id, spec[i], opts[spec[i].key]));
   }
@@ -499,16 +497,17 @@ function buildOptionRow(id, entry, current) {
 }
 
 /* One group of option buttons, named by the setting, so a screen reader hears
-   "Starting level, 2, pressed" rather than a bare number. */
-function segGroup(entry) {
-  var seg = h('div', 'tr-seg');
+   "Starting level, 2, pressed" rather than a bare number. The variant class picks
+   the control's shape: a segmented bar, a pill switch, or a row of chips. */
+function segGroup(entry, variant) {
+  var seg = h('div', 'tr-seg ' + variant);
   seg.setAttribute('role', 'group');
   seg.setAttribute('aria-label', entry.label);
   return seg;
 }
 
 function buildNumberRow(id, entry, current) {
-  var seg = segGroup(entry);
+  var seg = segGroup(entry, 'tr-seg-bar');
   /* Built from an index count rather than an accumulating loop, so a fractional
      step still lands on every value without float drift. */
   var count = Math.round((entry.max - entry.min) / entry.step) + 1;
@@ -525,7 +524,7 @@ function buildNumberRow(id, entry, current) {
 }
 
 function buildToggleRow(id, entry, current) {
-  var seg = segGroup(entry);
+  var seg = segGroup(entry, 'tr-seg-switch');
   [[false, 'Off'], [true, 'On']].forEach(function (pair) {
     var b = h('button', 'tr-seg-btn', pair[1]);
     b.type = 'button';
@@ -537,7 +536,7 @@ function buildToggleRow(id, entry, current) {
 }
 
 function buildChoiceRow(id, entry, current) {
-  var seg = segGroup(entry);
+  var seg = segGroup(entry, 'tr-seg-bar');
   entry.options.forEach(function (o) {
     var b = h('button', 'tr-seg-btn', o.label);
     b.type = 'button';
@@ -551,7 +550,7 @@ function buildChoiceRow(id, entry, current) {
 /* A multi choice keeps a set of values. Turning off the last one is refused, so
    the drill always has at least one option to run. */
 function buildMultiRow(id, entry, current) {
-  var seg = segGroup(entry);
+  var seg = segGroup(entry, 'tr-seg-chips');
   var on = Array.isArray(current) ? current.slice() : [];
   entry.options.forEach(function (o) {
     var b = h('button', 'tr-seg-btn', o.label);
@@ -578,8 +577,8 @@ function buildMultiRow(id, entry, current) {
 
 function buildModeBlock() {
   var MODES = (globalThis.Content && globalThis.Content.MODES) || [];
-  var block = h('div', 'tr-modes');
-  block.appendChild(h('span', 'tr-field', 'Mode'));
+  var row = h('div', 'tr-mode-row');
+  row.appendChild(h('span', 'tr-field', 'Mode'));
   var set = h('div', 'tr-modeset');
   set.setAttribute('role', 'group');
   set.setAttribute('aria-label', 'N-back mode');
@@ -596,14 +595,14 @@ function buildModeBlock() {
       set.appendChild(b);
     })(MODES[i]);
   }
-  block.appendChild(set);
+  row.appendChild(set);
   var blurb = h('p', 'tr-blurb', '');
-  block.appendChild(blurb);
+  row.appendChild(blurb);
   /* paintModes reads these, so the panel owns them while it is on screen. */
-  ui.modesBlock = block;
+  ui.modesBlock = row;
   ui.modeBtns = btns;
   ui.modeBlurb = blurb;
-  return block;
+  return row;
 }
 
 function leaveFocus() {
@@ -656,18 +655,28 @@ function injectStyles() {
   /* One accent alias with a fallback, so the view still reads if the shell lane
      has not landed --accent yet. Everything else is an existing token. */
   var ACC = 'var(--accent,var(--lime))';
+  var ACC_S = 'var(--accent-soft,var(--lime-soft))';
+  var ACC_E = 'var(--accent-edge,var(--lime-edge))';
   s.textContent = [
     /* The root is one column that keeps the frame .view gives every page: a flex
        column taking the height the shell has left. max-width:none cancels the
        view-mid-wide ceiling the container carries, because that is a measure width
-       for running text, not a limit on the drill area. */
-    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0}',
-    /* The drill selector: one plain text row. Nine names, no boxes, no marks. The
-       selected drill is the accent and a heavier weight, nothing more. */
-    '.tr-picker{display:flex;flex-wrap:wrap;gap:2px 12px;justify-content:center;width:100%;max-width:100%}',
-    '.tr-drill{display:inline-flex;align-items:center;background:none;border:0;padding:3px 0;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;line-height:1.5;max-width:100%;transition:color .15s ease}',
-    '.tr-drill:hover{color:var(--ink)}',
-    '.tr-drill[aria-pressed="true"]{color:' + ACC + ';font-weight:700}',
+       for running text, not a limit on the drill area. justify-content:flex-start
+       overrides the shell's safe-center: the settings panel changes height per
+       drill, and centering re-centered the whole column on every selection, which
+       is the up-and-down the picker used to do. Pinned to the top, nothing moves. */
+    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0;justify-content:flex-start;padding-top:var(--gap-5)}',
+    /* The drill selector: a short stack of labelled groups, centred. The group is
+       what separates the nine drills. Every item is a real control with a reserved
+       box, so the selected state changes colour and border only and never the
+       metrics, and selecting one cannot reflow the row. */
+    '.tr-picker{display:flex;flex-direction:column;gap:6px;width:100%;max-width:640px;margin-inline:auto}',
+    '.tr-picker-row{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;align-items:center}',
+    '.tr-picker-group{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);white-space:nowrap}',
+    '.tr-picker-items{display:flex;flex-wrap:wrap;gap:4px;min-width:0}',
+    '.tr-drill{display:inline-flex;align-items:center;background:transparent;border:1px solid transparent;border-radius:8px;padding:4px 10px;min-height:30px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;line-height:1.4;max-width:100%;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
+    '.tr-drill:hover{color:var(--ink);border-color:var(--line2)}',
+    '.tr-drill[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
     '.tr-drill-name{white-space:nowrap}',
     /* One short line: the selected drill's description, quiet under the picker. */
     '.tr-line{margin:0;text-align:center;color:var(--dim);font-size:13px;line-height:1.4;max-width:70ch;align-self:center}',
@@ -677,31 +686,46 @@ function injectStyles() {
        to grow to fill the page. */
     '.tr-view .drill-mount{flex:0 0 auto;min-height:0;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}',
     '.tr-view .drill{width:100%}',
-    /* Settings: one row per setting, laid out as two tight columns so every label
-       sits beside its values instead of a label on the far left and values far
-       right. Each row subgrids into the shared tracks, so the values line up down
-       the panel while the label keeps its natural width. */
+    /* Settings: one row per setting, two tight columns so every label sits beside
+       its control. Each row subgrids into the shared tracks, so the controls line
+       up down the panel and the label keeps its natural width. The 12px column gap
+       is the label-to-control gap and must not shrink. */
     '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-4);width:fit-content;max-width:100%;margin-inline:auto}',
-    '.tr-set-rows{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 12px;align-items:baseline}',
-    '.tr-set-row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:baseline}',
-    '.tr-set-head{display:flex;align-items:baseline;gap:8px;min-width:0;justify-content:flex-end}',
+    '.tr-set-rows{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 12px;align-items:center}',
+    '.tr-set-row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:center}',
+    '.tr-set-head{display:flex;align-items:center;gap:8px;min-width:0;justify-content:flex-end}',
     '.tr-set-label{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;text-align:right;justify-self:end}',
-    /* The value readout stays in the tree, but the pressed value button already
-       shows it, so it is not drawn twice. */
+    /* The value readout stays in the tree for assistive tech, but the active
+       control already shows it, so it is not drawn twice. */
     '.tr-set-val{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
-    '.tr-seg{display:flex;flex-wrap:wrap;gap:2px}',
-    '.tr-seg-btn{background:none;border:0;padding:3px 6px;border-radius:6px;min-height:26px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.4;transition:color .15s ease}',
+    /* A setting is a real control. A single-select is a segmented bar on a bordered
+       track, a toggle is a pill switch, a multi-select is a row of on/off chips.
+       Every one reserves its box, so the active state never reflows it. */
+    '.tr-seg{display:flex;flex-wrap:wrap;gap:2px;min-width:0}',
+    '.tr-seg-bar{padding:3px;border:1px solid var(--line2);border-radius:10px;background:var(--panel2)}',
+    '.tr-seg-switch{gap:2px;padding:3px;border:1px solid var(--line2);border-radius:999px;background:var(--panel2)}',
+    '.tr-seg-chips{gap:6px;padding:0}',
+    '.tr-seg-btn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;padding:4px 10px;border-radius:7px;min-height:28px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.tr-seg-btn:not(:disabled):hover{color:var(--ink)}',
-    '.tr-seg-btn[aria-pressed="true"]{color:' + ACC + ';font-weight:700}',
-    '.tr-mode{background:none;border:0;padding:3px 6px;border-radius:6px;min-height:26px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;line-height:1.4;display:inline-flex;align-items:center;transition:color .15s ease}',
+    '.tr-seg-btn[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
+    /* The toggle reads as a switch: the live side is a solid accent thumb on a pill. */
+    '.tr-seg-switch .tr-seg-btn{min-width:52px}',
+    '.tr-seg-switch .tr-seg-btn[aria-pressed="true"]{color:var(--bg);background:' + ACC + ';border-color:' + ACC + '}',
+    /* A multi-select reads as chips: a visible outline on every chip, the on ones filled. */
+    '.tr-seg-chips .tr-seg-btn{border-color:var(--line2);border-radius:999px;padding:4px 12px}',
+    '.tr-seg-chips .tr-seg-btn[aria-pressed="true"]{border-color:' + ACC_E + ';background:' + ACC_S + ';color:' + ACC + '}',
+    /* The mode control is a real segmented bar: a bordered track, one segment per
+       mode, the live mode filled with the accent. Not a row of loose text. It
+       shares the settings grid, so its label and track line up with the rest. */
+    '.tr-mode-row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:center}',
+    '.tr-field{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;text-align:right;justify-self:end}',
+    '.tr-modeset{display:flex;gap:2px;flex-wrap:wrap;min-width:0;padding:3px;border:1px solid var(--line2);border-radius:10px;background:var(--panel2)}',
+    '.tr-mode{display:inline-flex;align-items:center;background:transparent;border:1px solid transparent;padding:4px 10px;border-radius:7px;min-height:28px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.tr-mode:not(:disabled):hover{color:var(--ink)}',
-    '.tr-mode[aria-pressed="true"]{color:' + ACC + ';font-weight:700}',
-    '.tr-mode:disabled{opacity:.5;cursor:not-allowed}',
+    '.tr-mode[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
+    '.tr-mode:disabled{opacity:.45;cursor:not-allowed}',
     '.tr-mode[aria-pressed="true"]:disabled{opacity:.7}',
-    '.tr-modes{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 12px;align-items:baseline;width:100%}',
-    '.tr-field{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}',
-    '.tr-modeset{display:flex;gap:2px;flex-wrap:wrap;min-width:0}',
-    '.tr-blurb{grid-column:1 / -1;font-size:12px;color:var(--dim);margin:2px 0 0;max-width:52ch}',
+    '.tr-blurb{grid-column:1 / -1;font-size:12px;color:var(--dim);margin:0;max-width:52ch}',
     /* Every control is a real button, so every one carries a visible focus ring. */
     '.tr-drill:focus-visible,.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-start:focus-visible,.rs-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
     /* Start: centered under the panel, the one primary action on the page. */
@@ -764,22 +788,43 @@ function injectStyles() {
   document.head.appendChild(s);
 }
 
-function buildDOM(container) {
-  container.innerHTML = '';
-  injectStyles();
+/* The nine drills, grouped so the picker reads as families instead of one flat
+   wall of names. Presentation only: the registry still owns the list, and any
+   drill the groups do not name lands in a trailing group so none is unreachable. */
+var DRILL_GROUPS = [
+  { label: 'Memory', ids: ['nback', 'palace', 'spaced'] },
+  { label: 'Attention', ids: ['sart', 'switching'] },
+  { label: 'Speed', ids: ['ufov', 'crt'] },
+  { label: 'Reasoning', ids: ['reasoning', 'math'] }
+];
 
-  var D = (globalThis.Content && globalThis.Content.DRILLS) || [];
-
-  /* The drill selector. Real buttons in a labelled group, so every drill is one
-     click or one keypress away. Arrow keys move focus and selection together, and
-     only the selected button is a tab stop, so the group is one stop, not nine. */
+/* The drill selector: labelled groups of real buttons. Arrow keys move focus and
+   selection together, and only the selected button is a tab stop, so the whole
+   picker is one stop, not nine. */
+function buildPicker(D) {
   var picker = h('div', 'tr-picker');
   picker.setAttribute('role', 'group');
   picker.setAttribute('aria-label', 'Choose a drill');
   var pickBtns = {};
-  var order = D.map(function (p) { return p.id; });
-  D.forEach(function (p) {
-    (function (p) {
+  var order = [];
+  var byId = {};
+  D.forEach(function (p) { byId[p.id] = p; });
+  var seen = {};
+  var groups = [];
+  for (var i = 0; i < DRILL_GROUPS.length; i++) {
+    var ids = DRILL_GROUPS[i].ids.filter(function (id) { return byId[id] && !seen[id]; });
+    for (var j = 0; j < ids.length; j++) seen[ids[j]] = 1;
+    if (ids.length) groups.push({ label: DRILL_GROUPS[i].label, ids: ids });
+  }
+  var rest = D.map(function (p) { return p.id; }).filter(function (id) { return !seen[id]; });
+  if (rest.length) groups.push({ label: 'More', ids: rest });
+
+  groups.forEach(function (g) {
+    var row = h('div', 'tr-picker-row');
+    row.appendChild(h('span', 'tr-picker-group', g.label));
+    var items = h('div', 'tr-picker-items');
+    g.ids.forEach(function (id) {
+      var p = byId[id];
       var b = h('button', 'tr-drill');
       b.type = 'button';
       b.setAttribute('data-drill', p.id);
@@ -788,9 +833,13 @@ function buildDOM(container) {
       b.appendChild(h('span', 'tr-drill-name', p.name));
       b.addEventListener('click', function () { pickDrill(p.id); });
       pickBtns[p.id] = b;
-      picker.appendChild(b);
-    })(p);
+      order.push(p.id);
+      items.appendChild(b);
+    });
+    row.appendChild(items);
+    picker.appendChild(row);
   });
+
   picker.addEventListener('keydown', function (e) {
     var i = order.indexOf(currentDrill);
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); i = (i + 1) % order.length; }
@@ -803,6 +852,19 @@ function buildDOM(container) {
     if (next && next.focus) next.focus();
     pickDrill(id);
   });
+
+  return { picker: picker, pickBtns: pickBtns };
+}
+
+function buildDOM(container) {
+  container.innerHTML = '';
+  injectStyles();
+
+  var D = (globalThis.Content && globalThis.Content.DRILLS) || [];
+
+  var built = buildPicker(D);
+  var picker = built.picker;
+  var pickBtns = built.pickBtns;
 
   /* One short line: the selected drill's name and its one description line. */
   var line = h('p', 'tr-line', '');
@@ -939,6 +1001,11 @@ function nextDrill() {
   if (!pending.length) return finishSession();
   currentDrill = pending.shift();
   sessionDrills.push(currentDrill);
+  /* A fresh seed every run, so a repeated drill does not replay the last sequence.
+     It is written to the store so the run's meta.seed records it, and it is never
+     shown in the UI. */
+  seed = newSeed();
+  writeSeed(seed);
   /* The set is live. The mode locks here and stays locked until finishSession
      unlocks it, so the running drill keeps the stream it started with. */
   var firstOfSet = !running;
@@ -1234,8 +1301,6 @@ export function render(container, ctx) {
   lastRun = null;
   ctxRef = ctx;
   mode = readMode();
-  seed = readSeed();
-  writeSeed(seed);
   /* The shared centered column. Train is now the drills and nothing else, so it
      takes the full width the frame gives and its own max-width:none rule lifts
      the wide-column ceiling. */

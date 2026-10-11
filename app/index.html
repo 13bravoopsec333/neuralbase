@@ -24,6 +24,7 @@
   <nav class="topnav" aria-label="Views">
     <a href="#train" data-view="train" aria-current="page">Drills</a>
     <a href="#stats" data-view="stats">Stats</a>
+    <a href="#circuit" data-view="circuit">Circuit</a>
   </nav>
   <div class="topbar-right">
     <span class="account" id="accountName">Account</span>
@@ -37,6 +38,7 @@
   <div class="content" id="view-root">
     <section class="view" id="view-train" tabindex="-1" aria-label="Drills" hidden></section>
     <section class="view" id="view-stats" tabindex="-1" aria-label="Stats" hidden></section>
+    <section class="view" id="view-circuit" tabindex="-1" aria-label="Circuit" hidden></section>
   </div>
 </main>
 
@@ -70,7 +72,7 @@
 
 <script>
   /* View modules that exist in app/views/. The router imports only names listed here. */
-  window.CORTEX_VIEWS = ["train", "stats"];
+  window.CORTEX_VIEWS = ["train", "stats", "circuit"];
 </script>
 <script src="content.js"></script>
 <script src="store.js"></script>

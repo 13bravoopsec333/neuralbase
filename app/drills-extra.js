@@ -237,7 +237,6 @@
       ".nx-row{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}",
       ".nx-in{flex:1;min-width:110px;min-height:48px;padding:10px 12px;border-radius:8px;border:1px solid var(--line2);background:var(--panel2);color:var(--ink);font:inherit;font-family:var(--mono);font-size:19px;text-align:center}",
       ".nx-in:focus{outline:2px solid var(--lime-edge);outline-offset:1px}",
-      ".nx-go{min-height:48px;flex:1;min-width:96px}",
       ".nx-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:320px}",
       ".nx-key{min-height:48px;border-radius:8px;border:1px solid var(--line2);background:var(--panel2);color:var(--ink);font-family:var(--mono);font-size:18px;cursor:pointer}",
       ".nx-key:focus-visible{outline:2px solid var(--lime-edge);outline-offset:1px}",
@@ -275,6 +274,20 @@
     var A = globalThis.CortexAudio;
     if (!A || !A.ctx || typeof A.ctx.suspend !== "function") return;
     if (A.ctx.state === "running") { try { A.ctx.suspend(); } catch (e) {} }
+  }
+
+  /* The host-side endless helpers live on DrillsCore. An endless run banks its
+     partial only when the focus stage is down (End Session), deferred a tick so
+     the host finishes stopping the set first, exactly like n-back. Fall back to a
+     direct call if core is not loaded. */
+  function focusStageUp() {
+    var D = globalThis.Drills && globalThis.Drills.DrillsCore;
+    return !!(D && typeof D.focusStageUp === "function" && D.focusStageUp());
+  }
+  function reportEndlessPartial(opts, rec) {
+    var D = globalThis.Drills && globalThis.Drills.DrillsCore;
+    if (D && typeof D.reportEndlessPartial === "function") return D.reportEndlessPartial(opts, rec);
+    if (opts && typeof opts.onComplete === "function") opts.onComplete(rec);
   }
 
   /* One teardown for every drill here: clear the clock, drop both listeners, and
@@ -407,8 +420,11 @@
     var clock = makeClock();
     var stopped = false, done = false;
     var i = 0, trials = [], timerId = 0;
-    /* Validated by drillOptions: 20 to 60 on a ten step grid. Default 30. */
-    var total = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : SART_TRIALS;
+    /* Validated by drillOptions: 20 to 60 on a ten step grid. Default 30. Endless
+       removes the ceiling: the stream never ends on its own. */
+    var endless = !!(opts.options && opts.options.endless);
+    var bankPartial = false;
+    var total = endless ? Infinity : ((opts.options && typeof opts.options.trials === "number") ? opts.options.trials : SART_TRIALS);
     /* Validated by drillOptions: 1 to 9. The digit the player must withhold on.
        Default 3 is the classic SART target. */
     var targetDigit = (opts.options && typeof opts.options.targetDigit === "number") ? opts.options.targetDigit : SART_TARGET;
@@ -441,7 +457,7 @@
     container.appendChild(wrap);
 
     function sartMeta() {
-      return i + " / " + total + " · " + Math.round(signalRate * 100) + "% signal · " + (responseWindow > 0 ? responseWindow + " ms" : "Off");
+      return (endless ? String(i) : i + " / " + total) + " · " + Math.round(signalRate * 100) + "% signal · " + (responseWindow > 0 ? responseWindow + " ms" : "Off");
     }
 
     var unbindVis = bindVisibility(doc, clock);
@@ -530,7 +546,7 @@
         (sc.rtMedian == null ? "" : " · median press " + sc.rtMedian + " ms")
       ));
       if (opts.onComplete) {
-        opts.onComplete({
+        var rec = {
           drillId: "sart",
           value: sc.correct,
           unit: "correct",
@@ -543,7 +559,8 @@
             accuracy: sc.accuracy,
             rtMedian: sc.rtMedian
           }
-        });
+        };
+        if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec);
       }
     }
 
@@ -551,6 +568,7 @@
     timerId = clock.set(next, 900);
     return {
       stop: function () {
+        if (endless && trials.length > 0 && !done && !focusStageUp()) { bankPartial = true; finish(); silenceAudio(); return; }
         if (stopped) return;
         stopped = true;
         teardown(true);
@@ -570,8 +588,11 @@
     var clock = makeClock();
     var stopped = false, done = false;
     var i = 0, choice = 2, hits = 0, misses = 0, catchHits = 0, rts = [];
-    /* Validated by drillOptions: 10 to 40 on a ten step grid. */
-    var total = (opts.options && typeof opts.options.trials === "number") ? opts.options.trials : CRT_TRIALS;
+    /* Validated by drillOptions: 10 to 40 on a ten step grid. Endless removes the
+       ceiling: the set never completes on its own. */
+    var endless = !!(opts.options && opts.options.endless);
+    var bankPartial = false;
+    var total = endless ? Infinity : ((opts.options && typeof opts.options.trials === "number") ? opts.options.trials : CRT_TRIALS);
     /* Validated by drillOptions: 2 to 4. The number of lights the set starts on.
        The adaptive rule widens it as reactions speed up, up to the chosen count. */
     var choices = (opts.options && typeof opts.options.choices === "number") ? opts.options.choices : 2;
@@ -599,7 +620,7 @@
     container.appendChild(wrap);
 
     function crtMeta() {
-      return i + " / " + total + " · " + choice + " lights · " + foreperiod + (catchTrials ? " · catch" : "");
+      return (endless ? String(i) : i + " / " + total) + " · " + choice + " lights · " + foreperiod + (catchTrials ? " · catch" : "");
     }
     function crtNote() {
       if (choice >= 4) return "Four lights. Trains simple reaction speed.";
@@ -748,8 +769,10 @@
       /* Every trial lands in exactly one bucket: a hit, a miss (including a
          press on a catch trial), or a correctly held catch trial. Accuracy is
          the correct share, so a run that errs on every catch cannot read the
-         same as a clean one. */
-      var accuracy = total > 0 ? (hits + catchHits) / total : 0;
+         same as a clean one. A partial endless run divides by the trials it
+         actually attempted. */
+      var denom = endless ? i : total;
+      var accuracy = denom > 0 ? (hits + catchHits) / denom : 0;
       container.appendChild(summaryEl(
         "Set complete",
         value + " ms median · " + hits + " hits · " + misses + " missed" +
@@ -757,13 +780,13 @@
         (fast == null ? "" : " · fastest " + Math.round(fast) + " ms")
       ));
       if (opts.onComplete) {
-        opts.onComplete({
+        var rec = {
           drillId: "crt",
           value: value,
           unit: "ms",
           t: Date.now(),
           meta: {
-            trials: total,
+            trials: denom,
             hits: hits,
             misses: misses,
             catchHits: catchHits,
@@ -774,7 +797,8 @@
             foreperiod: foreperiod,
             catchTrials: catchTrials
           }
-        });
+        };
+        if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec);
       }
     }
 
@@ -782,6 +806,7 @@
     timerId = clock.set(schedule, 900);
     return {
       stop: function () {
+        if (endless && i > 0 && !done && !focusStageUp()) { bankPartial = true; finish(); silenceAudio(); return; }
         if (stopped) return;
         stopped = true;
         teardown(true);
@@ -801,6 +826,11 @@
     var clock = makeClock();
     var stopped = false, done = false;
     var i = 0, level = 0, correct = 0, levelSet = false;
+    /* Endless removes the twenty-problem ceiling: the sprint never completes on
+       its own and the count has no denominator. */
+    var endless = !!(opts.options && opts.options.endless);
+    var bankPartial = false;
+    var total = endless ? Infinity : MATH_TRIALS;
     /* The panel's starting level maps onto the generator's three tiers: 1 is the
        current default (add and subtract), 2 starts on times tables and division,
        3 starts on the wide-range tier. A start above tier one marks the level as
@@ -821,13 +851,11 @@
 
     /* Trial count, running score, the clock and the live operations, on screen. */
     function metaText() {
-      return i + " / " + MATH_TRIALS + " · " + correct + " correct · " + (problemMs > 0 ? timePerProblem + " s" : "untimed") + " · " + ops.join("");
+      return (endless ? String(i) : i + " / " + total) + " · " + correct + " correct · " + (problemMs > 0 ? timePerProblem + " s" : "untimed") + " · " + ops.join("");
     }
 
     var wrap = el("div", "drill drill-math");
     var prompt = el("div", "nx-problem mono", "");
-    var cue = el("div", "nx-cue", "Type the answer, then press enter.");
-    cue.setAttribute("aria-live", "polite");
     var row = el("div", "nx-row");
     var input = document.createElement("input");
     input.type = "text";
@@ -837,25 +865,21 @@
     input.setAttribute("autocomplete", "off");
     input.setAttribute("autocapitalize", "off");
     input.setAttribute("spellcheck", "false");
-    var go = button("btn-primary nx-go", "Enter");
     row.appendChild(input);
-    row.appendChild(go);
+    /* The keypad stays. inputmode="numeric" hides the minus key on most mobile
+       keyboards, and subtraction problems do produce negative answers, so the
+       on-screen minus is the only way to enter one there. */
     var pad = el("div", "nx-pad");
-    var padKeys = [];
     MATH_KEYS.forEach(function (k) {
       var b = button("nx-key", k);
       b.setAttribute("aria-label", k === "C" ? "Clear" : k === "-" ? "Minus sign" : "Digit " + k);
       b.addEventListener("click", function () { tap(k); });
       pad.appendChild(b);
-      padKeys.push(b);
     });
-    var note = el("div", "drill-note", "Small sums first, then times tables. Trains mental arithmetic fluency.");
     var meta = el("div", "nb-meta mono", metaText());
     wrap.appendChild(prompt);
-    wrap.appendChild(cue);
     wrap.appendChild(row);
     wrap.appendChild(pad);
-    wrap.appendChild(note);
     wrap.appendChild(meta);
     container.appendChild(wrap);
 
@@ -866,9 +890,18 @@
       if (k === "C") { input.value = ""; return; }
       if (k === "-") {
         input.value = input.value.charAt(0) === "-" ? input.value.slice(1) : "-" + input.value;
+        autoSubmit();
         return;
       }
-      if (input.value.length < 6) input.value += k;
+      if (input.value.length < 6) { input.value += k; autoSubmit(); }
+    }
+
+    /* Zetamac style: the moment the typed value is exactly the answer, it is
+       submitted. Anything else is left alone and waits for the next keystroke, so
+       a longer wrong value such as 12 against an answer of 11 does nothing. */
+    function autoSubmit() {
+      if (stopped || done || resolved || !cur) return;
+      if (checkAnswer(input.value, cur.expected)) submit();
     }
 
     function submit() {
@@ -879,10 +912,8 @@
       times.push(Date.now() - shownAt - clock.hiddenMs());
       if (ok) {
         correct++;
-        cue.textContent = "right";
         playSfx("correct");
       } else {
-        cue.textContent = input.value.trim() ? "wrong, it was " + cur.expected : "wrong";
         playSfx("incorrect");
       }
       i++;
@@ -896,7 +927,6 @@
       resolved = true;
       clock.clear(timerId);
       times.push(problemMs);
-      cue.textContent = "time, it was " + cur.expected;
       playSfx("incorrect");
       i++;
       meta.textContent = metaText();
@@ -905,21 +935,15 @@
 
     function next() {
       if (stopped) return;
-      if (i >= MATH_TRIALS) return finish();
+      if (i >= total) return finish();
       if (!levelSet && i === MATH_PROBE) {
         levelSet = true;
-        if (correct / MATH_PROBE >= 0.75) {
-          level = 1;
-          note.textContent = "Times tables and division now. Trains mental arithmetic fluency.";
-        }
+        if (correct / MATH_PROBE >= 0.75) level = 1;
       }
       cur = makeProblem(level, rng, { ops: ops, digits: digits });
       resolved = false;
       shownAt = Date.now();
       prompt.textContent = cur.text + " =";
-      /* The last outcome stays on the cue while the next problem is answered, so
-         right / wrong, it was N / time, it was N is readable instead of being
-         wiped 240 ms after it appears. */
       input.value = "";
       try { input.focus(); } catch (e) {}
       if (problemMs > 0) timerId = clock.set(timeout, problemMs);
@@ -931,52 +955,58 @@
       stopped = true;
       teardown(false);
       var med = median(times);
+      /* A partial endless run scores against the problems it actually attempted. */
+      var denom = endless ? i : total;
       container.appendChild(summaryEl(
         "Set complete",
-        correct + " of " + MATH_TRIALS + " correct" +
+        correct + " of " + denom + " correct" +
         (med == null ? "" : " · median " + Math.round(med) + " ms per problem")
       ));
       if (opts.onComplete) {
-        opts.onComplete({
+        var rec = {
           drillId: "math",
           value: correct,
           unit: "correct",
           t: Date.now(),
           meta: {
-            trials: MATH_TRIALS,
+            trials: denom,
             correct: correct,
-            accuracy: correct / MATH_TRIALS,
+            accuracy: denom > 0 ? correct / denom : 0,
             medianMs: med == null ? null : Math.round(med),
             level: level,
             ops: ops.slice(),
             digits: digits,
             timePerProblem: timePerProblem
           }
-        });
+        };
+        if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec);
       }
     }
 
     function onKey(e) {
       if (e.key === "Enter") { e.preventDefault(); submit(); return; }
       if (e.key === "Backspace") return;
-      if (/^[0-9]$/.test(e.key)) tap(e.key);
-      else if (e.key === "-" || e.key === "+") tap("-");
-      else if (e.key === "Delete") tap("C");
+      /* preventDefault stops the browser inserting the character a second time
+         after tap() has already put it in, which is what made a typed digit land
+         twice. Paste and any other change still reach autoSubmit through the
+         input event. */
+      if (/^[0-9]$/.test(e.key)) { e.preventDefault(); tap(e.key); }
+      else if (e.key === "-" || e.key === "+") { e.preventDefault(); tap("-"); }
+      else if (e.key === "Delete") { e.preventDefault(); tap("C"); }
     }
     input.addEventListener("keydown", onKey);
-    go.addEventListener("click", function () { submit(); });
+    input.addEventListener("input", autoSubmit);
 
-    /* The input's own handler dies with the element, so teardown removes it too
+    /* The input's own handlers die with the element, so teardown removes them too
        and the drill leaves nothing bound anywhere. */
-    var unbindKey = function () { input.removeEventListener("keydown", onKey); };
+    var unbindKey = function () { input.removeEventListener("keydown", onKey); input.removeEventListener("input", autoSubmit); };
     var teardown = makeTeardown(clock, unbindVis, unbindKey);
 
     timerId = clock.set(next, 800);
     return {
       stop: function () {
-        if (stopped) return;
-        stopped = true;
-        teardown(true);
+        if (endless && i > 0 && !done && !focusStageUp()) { bankPartial = true; finish(); silenceAudio(); }
+        else { if (stopped) return; stopped = true; teardown(true); }
         if (input.parentNode) input.parentNode.removeChild(input);
       }
     };

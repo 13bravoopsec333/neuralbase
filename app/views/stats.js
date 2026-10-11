@@ -1,17 +1,28 @@
 /* Neuralbase view: Stats.
    Reads the same cache and cloud rows the app already saves (cortex.cache.data
-   then ctx.db.loadUserData) and draws a plain, typographic stats page: totals, a
-   per-drill table, a chart of one drill's results over time, and the most recent
-   runs. Every number comes from the stored rows. No cards, no shadows, hairline
-   rules only, tabular figures for every number. */
+   then ctx.db.loadUserData) and draws a plain, typographic stats page: a monthly
+   activity calendar beside the totals, a chart of one drill's results over time,
+   a per-drill breakdown, and the most recent runs grouped by day. Every number
+   comes from the stored rows. No cards, no shadows, no gradients, hairline rules
+   only, tabular figures for every number.
+
+   The month grid follows the approach the earlier site used for its habit
+   calendar: seven weekday columns, a cell per day shaded by how much was trained
+   that day, a ring on today, and roving-tabindex arrow-key navigation. */
 
 var CACHE_KEY = 'cortex.cache.data';
 var DAY = 86400000;
 var TREND_DAYS = 14;
-var RECENT_LIMIT = 10;
+var RECENT_LIMIT = 12;
 var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+var MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+var WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+var CAL_HEADS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 var ctxRef = null;
+/* The month the calendar is showing. Kept across repaints, so a data refresh
+   does not throw the reader back to the current month. */
+var calMonth = null;
 
 function h(tag, cls, text) {
   var n = document.createElement(tag);
@@ -36,6 +47,16 @@ function mean(rs) {
   var s = 0;
   for (var i = 0; i < rs.length; i++) s += rs[i].value;
   return rs.length ? s / rs.length : 0;
+}
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+/* Local calendar day key, the same one the store uses for streaks and the
+   heatmap, so the calendar and the totals never disagree about a day. */
+function dayKeyOf(t) {
+  var Store = globalThis.Store;
+  if (Store && Store.iso) return Store.iso(new Date(t));
+  var d = new Date(t);
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
 }
 
 /* ---------- data ---------- */
@@ -72,6 +93,22 @@ function toState(data) {
     if (k && !seen[k]) { seen[k] = 1; days.push(k); }
   }
   return { records: records, sessions: sessions, days: days };
+}
+
+/* Runs per local day, with session-only days folded in at their own count, so a
+   day trained without a saved run still shows up rather than reading as empty. */
+function dayActivity(state, records) {
+  var counts = {};
+  for (var i = 0; i < records.length; i++) {
+    var k = dayKeyOf(records[i].t);
+    if (k) counts[k] = (counts[k] || 0) + 1;
+  }
+  var Store = globalThis.Store;
+  var sess = Store && Store.dayCounts ? Store.dayCounts(state) : {};
+  for (var key in sess) {
+    if (Object.prototype.hasOwnProperty.call(sess, key) && !counts[key]) counts[key] = sess[key];
+  }
+  return counts;
 }
 
 function drillList() { return (globalThis.Content && globalThis.Content.DRILLS) || []; }
@@ -114,6 +151,12 @@ function dateLabel(ms) {
   var d = new Date(ms);
   return MONTHS[d.getMonth()] + ' ' + d.getDate();
 }
+function dayLabel(key, now) {
+  if (key === dayKeyOf(now)) return 'Today';
+  if (key === dayKeyOf(now - DAY)) return 'Yesterday';
+  var d = new Date(key + 'T12:00:00');
+  return MONTHS[d.getMonth()] + ' ' + d.getDate();
+}
 function relTime(t, now) {
   if (!t) return 'unknown time';
   var d = now - t;
@@ -127,6 +170,7 @@ function relTime(t, now) {
   var mo = Math.floor(days / 30);
   return mo + (mo === 1 ? ' month ago' : ' months ago');
 }
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
 /* ---------- derivations ---------- */
 
@@ -160,6 +204,10 @@ function trendText(records, drillId, direction, now) {
   if (t === null) return 'Not enough data';
   return t === 'improving' ? 'Improving' : t === 'declining' ? 'Declining' : 'Steady';
 }
+function trendKind(records, drillId, direction, now) {
+  var t = trendOf(records, drillId, direction, now);
+  return t === 'improving' || t === 'declining' || t === 'steady' ? t : 'none';
+}
 
 /* Points for one drill's results, in an SVG box of w by h with pad around it.
    X is real time across the span, so gaps show as gaps. Null when there are no
@@ -190,57 +238,162 @@ function injectStyles() {
   var s = document.createElement('style');
   s.id = 'nb-stats-styles';
   s.textContent = [
-    '.st-view{display:flex;flex-direction:column;gap:var(--gap-6,32px);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0;justify-content:flex-start;padding-block:var(--gap-4,16px)}',
+    '.st-view{display:flex;flex-direction:column;gap:var(--gap-6,32px);width:100%;max-width:1120px;margin-inline:auto;flex:1 1 auto;min-height:0;justify-content:flex-start;padding-block:20px 44px}',
+
+    /* page head */
+    '.st-head{display:flex;flex-direction:column;gap:6px;padding-bottom:var(--gap-4,16px);border-bottom:1px solid var(--line2)}',
+    '.st-title{margin:0;font-size:24px;font-weight:600;letter-spacing:-.02em;color:var(--ink)}',
+    '.st-sub{margin:0;font-size:13px;color:var(--muted)}',
+
+    /* shared section language */
     '.st-section{display:flex;flex-direction:column;gap:var(--gap-3,12px)}',
-    '.st-h{margin:0;font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim,#5E6673);font-weight:500}',
-    '.st-summary{display:flex;flex-wrap:wrap;gap:var(--gap-5,24px) var(--gap-6,32px)}',
-    '.st-stat{display:flex;flex-direction:column;gap:2px;min-width:0}',
-    '.st-stat-label{font-size:12px;color:var(--muted,#8B93A1)}',
-    '.st-stat-value{font-family:var(--mono,ui-monospace,monospace);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;line-height:1.1;color:var(--ink,#E7EAEF)}',
-    '.st-stat-unit{font-size:13px;font-weight:500;color:var(--muted,#8B93A1);margin-left:5px}',
+    '.st-sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3,12px) var(--gap-4,16px);flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid var(--line)}',
+    '.st-h{margin:0;font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);font-weight:500}',
+    '.st-sec-note{font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.03em;color:var(--dim)}',
+
+    /* top band: calendar beside the totals */
+    '.st-top{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:var(--gap-6,32px);align-items:start}',
+
+    /* totals */
+    '.st-totals{display:flex;flex-direction:column}',
+    '.st-stat{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3,12px);padding:13px 0;border-bottom:1px solid var(--line);min-width:0}',
+    '.st-stat:first-child{border-top:1px solid var(--line2)}',
+    '.st-stat-label{font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}',
+    '.st-stat-value{font-family:var(--mono,ui-monospace,monospace);font-variant-numeric:tabular-nums;font-size:30px;font-weight:600;line-height:1;color:var(--ink)}',
+    '.st-stat-unit{font-size:13px;font-weight:500;color:var(--muted);margin-left:5px}',
+
+    /* calendar */
+    '.st-cal{display:flex;flex-direction:column;gap:var(--gap-3,12px);border:1px solid var(--line);border-radius:var(--r,8px);background:var(--panel);padding:var(--gap-4,16px);max-width:620px}',
+    '.st-cal-top{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--gap-3,12px);flex-wrap:wrap}',
+    '.st-cal-title{display:flex;flex-direction:column;gap:4px;min-width:0}',
+    '.st-cal-month{margin:0;font-size:19px;font-weight:600;letter-spacing:-.015em;color:var(--ink)}',
+    '.st-cal-sub{margin:0;font-family:var(--mono,ui-monospace,monospace);font-size:12px;color:var(--muted)}',
+    '.st-cal-tools{display:flex;align-items:center;gap:6px}',
+    '.st-cal-icon{width:30px;height:30px;flex:none;border:1px solid var(--line2);border-radius:var(--r,8px);background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;transition:border-color .12s ease,color .12s ease}',
+    '.st-cal-icon:hover{border-color:var(--accent-edge,var(--lime-edge));color:var(--accent,var(--lime))}',
+    '.st-cal-icon svg{width:15px;height:15px;display:block}',
+    '.st-cal-chev{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}',
+    '.st-cal-today{border:1px solid var(--line2);background:transparent;color:var(--ink);border-radius:var(--r,8px);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:border-color .12s ease,color .12s ease}',
+    '.st-cal-today:hover{border-color:var(--accent-edge,var(--lime-edge));color:var(--accent,var(--lime))}',
+    '.st-cal-icon:focus-visible,.st-cal-today:focus-visible{outline:2px solid var(--accent,var(--lime));outline-offset:2px}',
+    '.st-cal-wd{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}',
+    '.st-cal-wd span{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim);text-align:center}',
+    '.st-cal-wd .st-we{opacity:.55}',
+    '.st-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}',
+    '.st-cal-cell{position:relative;aspect-ratio:1/1;border:1px solid var(--line);border-radius:6px;background:var(--panel2);padding:5px 6px;display:flex;flex-direction:column;min-width:0;overflow:hidden;transition:border-color .12s ease}',
+    '.st-cal-cell:hover{border-color:var(--line2)}',
+    '.st-cal-fill{position:absolute;inset:0;background:var(--accent,var(--lime));opacity:0;transition:opacity .12s ease}',
+    '.st-cal-cell[data-level="1"] .st-cal-fill{opacity:.20}',
+    '.st-cal-cell[data-level="2"] .st-cal-fill{opacity:.38}',
+    '.st-cal-cell[data-level="3"] .st-cal-fill{opacity:.58}',
+    '.st-cal-cell[data-level="4"] .st-cal-fill{opacity:.82}',
+    '.st-cal-d{position:relative;font-family:var(--mono,ui-monospace,monospace);font-size:11px;line-height:1;color:var(--muted)}',
+    '.st-cal-n{position:relative;margin-top:auto;align-self:flex-end;font-family:var(--mono,ui-monospace,monospace);font-size:11px;font-weight:600;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}',
+    '.st-cal-cell[data-level="3"] .st-cal-d,.st-cal-cell[data-level="4"] .st-cal-d,.st-cal-cell[data-level="3"] .st-cal-n,.st-cal-cell[data-level="4"] .st-cal-n{color:var(--bg)}',
+    '.st-cal-cell.st-adj{opacity:.4;background:transparent;border-style:dashed}',
+    '.st-cal-cell.st-adj .st-cal-fill{display:none}',
+    '.st-cal-cell.st-today{border-color:var(--accent,var(--lime));box-shadow:inset 0 0 0 1px var(--accent,var(--lime))}',
+    '.st-cal-cell:focus-visible{outline:2px solid var(--accent,var(--lime));outline-offset:1px}',
+    '.st-cal-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-3,12px);flex-wrap:wrap;border-top:1px solid var(--line);padding-top:11px}',
+    '.st-cal-legend{display:flex;align-items:center;gap:5px}',
+    '.st-cal-leg-label{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}',
+    '.st-cal-sw{position:relative;width:12px;height:12px;border-radius:3px;border:1px solid var(--line);background:var(--panel2);overflow:hidden}',
+    '.st-cal-sw::after{content:"";position:absolute;inset:0;background:var(--accent,var(--lime));opacity:0}',
+    '.st-cal-sw[data-level="1"]::after{opacity:.20}',
+    '.st-cal-sw[data-level="2"]::after{opacity:.38}',
+    '.st-cal-sw[data-level="3"]::after{opacity:.58}',
+    '.st-cal-sw[data-level="4"]::after{opacity:.82}',
+    '.st-cal-sum{font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.02em;color:var(--muted)}',
+    '.st-cal-sum b{color:var(--ink);font-weight:600}',
+    '.st-cal-empty{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}',
+
+    /* chart */
+    '.st-chips{display:flex;flex-wrap:wrap;gap:4px 16px}',
+    '.st-chip{background:none;border:0;padding:2px 0;font:inherit;font-size:13px;color:var(--muted);cursor:pointer;transition:color .12s ease}',
+    '.st-chip:hover{color:var(--ink)}',
+    '.st-chip[aria-pressed="true"]{color:var(--accent,var(--lime))}',
+    '.st-chip:focus-visible{outline:2px solid var(--accent,var(--lime));outline-offset:2px;border-radius:4px}',
+    '.st-chart-host{min-height:140px}',
+    '.st-chart{display:block;width:100%;max-width:100%;height:auto;aspect-ratio:16/5;color:var(--muted)}',
+    '.st-chart .st-grid{stroke:var(--line);stroke-width:1}',
+    '.st-chart .st-axis{stroke:var(--line2);stroke-width:1}',
+    '.st-chart .st-line{fill:none;stroke:var(--accent,var(--lime));stroke-width:1.75;stroke-linejoin:round;stroke-linecap:round}',
+    '.st-chart .st-dot{fill:var(--accent,var(--lime))}',
+    '.st-chart .st-tick{fill:var(--dim);font-family:var(--mono,ui-monospace,monospace);font-size:10px}',
+    '.st-chart .st-tick-val{fill:var(--muted)}',
+
+    /* lower band: the table beside the recent list */
+    '.st-cols{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:var(--gap-6,32px);align-items:start}',
+
+    /* per-drill table */
     '.st-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}',
-    '.st-table th{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim,#5E6673);font-weight:500;text-align:right;padding:0 10px 8px;border-bottom:1px solid var(--line2,#343A45);white-space:nowrap}',
+    '.st-table th{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:500;text-align:right;padding:0 12px 9px;border-bottom:1px solid var(--line2);white-space:nowrap}',
     '.st-table th:first-child{text-align:left}',
-    '.st-table td{padding:10px;border-bottom:1px solid var(--line,#2A2F38);text-align:right;font-family:var(--mono,ui-monospace,monospace);color:var(--ink,#E7EAEF)}',
+    '.st-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--mono,ui-monospace,monospace);color:var(--ink)}',
     '.st-table td:first-child{text-align:left;font-family:var(--sans,system-ui,sans-serif)}',
-    '.st-name{color:var(--ink,#E7EAEF)}',
-    '.st-unit{font-family:var(--mono,ui-monospace,monospace);font-size:11px;color:var(--dim,#5E6673);margin-left:7px}',
-    '.st-none{color:var(--dim,#5E6673);font-family:var(--sans,system-ui,sans-serif)}',
+    '.st-row:hover td{background:var(--hover,rgba(255,255,255,.04))}',
+    '.st-name{color:var(--ink)}',
+    '.st-unit{font-family:var(--mono,ui-monospace,monospace);font-size:11px;color:var(--dim);margin-left:7px}',
+    '.st-none{color:var(--dim);font-family:var(--sans,system-ui,sans-serif)}',
     '.st-table td.st-none{text-align:left}',
     '.st-cell-label{display:none}',
-    '.st-chart-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:var(--gap-2,8px) var(--gap-4,16px)}',
-    '.st-chips{display:flex;flex-wrap:wrap;gap:2px 14px}',
-    '.st-chip{background:none;border:0;padding:2px 0;font:inherit;font-size:13px;color:var(--muted,#8B93A1);cursor:pointer;transition:color .12s ease}',
-    '.st-chip:hover{color:var(--ink,#E7EAEF)}',
-    '.st-chip[aria-pressed="true"]{color:var(--lime,#B6E24A)}',
-    '.st-chart-host{min-height:120px}',
-    '.st-chart{display:block;width:100%;max-width:720px;height:auto;aspect-ratio:16/5;color:var(--muted,#8B93A1)}',
-    '.st-chart .st-axis{stroke:var(--line2,#343A45);stroke-width:1}',
-    '.st-chart .st-line{fill:none;stroke:var(--lime,#B6E24A);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}',
-    '.st-chart .st-dot{fill:var(--lime,#B6E24A)}',
-    '.st-chart .st-tick{fill:var(--dim,#5E6673);font-family:var(--mono,ui-monospace,monospace);font-size:10px}',
+    '.st-trend-v{display:inline-flex;align-items:center;gap:7px}',
+    '.st-trend-dot{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}',
+    '.st-trend[data-trend="improving"]{color:var(--accent,var(--lime))}',
+    '.st-trend[data-trend="improving"] .st-trend-dot{background:var(--accent,var(--lime))}',
+    '.st-trend[data-trend="declining"]{color:var(--warn)}',
+    '.st-trend[data-trend="declining"] .st-trend-dot{background:var(--warn)}',
+    '.st-trend[data-trend="steady"]{color:var(--muted)}',
+    '.st-trend[data-trend="steady"] .st-trend-dot{background:var(--line2)}',
+    '.st-trend[data-trend="none"]{color:var(--dim)}',
+    '.st-trend[data-trend="none"] .st-trend-dot{background:transparent;border:1px solid var(--line2)}',
+    '.st-trend{font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.03em}',
+
+    /* recent runs */
     '.st-recent{display:flex;flex-direction:column}',
-    '.st-run{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3,12px);padding:9px 0;border-bottom:1px solid var(--line,#2A2F38)}',
-    '.st-run-name{color:var(--ink,#E7EAEF);font-size:13px;min-width:0}',
-    '.st-run-right{display:flex;align-items:baseline;gap:var(--gap-3,12px);flex:none}',
-    '.st-run-val{font-family:var(--mono,ui-monospace,monospace);font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink,#E7EAEF);white-space:nowrap}',
-    '.st-run-when{font-size:12px;color:var(--dim,#5E6673);white-space:nowrap}',
-    '.st-empty{display:flex;flex-direction:column;gap:var(--gap-3,12px);max-width:52ch;color:var(--muted,#8B93A1)}',
+    '.st-run-day{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-top:var(--gap-3,12px);padding-bottom:3px}',
+    '.st-recent .st-run-day:first-child{margin-top:0}',
+    '.st-run{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line)}',
+    '.st-recent .st-run:last-child{border-bottom:0}',
+    '.st-run-name{color:var(--ink);font-size:13px;min-width:0;overflow-wrap:break-word}',
+    '.st-run-val{font-family:var(--mono,ui-monospace,monospace);font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink);white-space:nowrap}',
+    '.st-run-when{font-family:var(--mono,ui-monospace,monospace);font-size:11px;color:var(--dim);white-space:nowrap;text-align:right;min-width:76px}',
+
+    /* empty state */
+    '.st-empty{display:flex;flex-direction:column;gap:var(--gap-3,12px);max-width:52ch;color:var(--muted)}',
     '.st-empty p{margin:0;font-size:14px;line-height:1.55}',
-    '.st-empty .st-h{color:var(--dim,#5E6673)}',
-    '.st-chip:focus-visible{outline:2px solid var(--accent,var(--lime,#B6E24A));outline-offset:2px;border-radius:4px}',
+    '.st-empty .st-h{color:var(--dim)}',
+
+    /* one orchestrated entrance, staggered, never under reduced motion */
+    '@media (prefers-reduced-motion:no-preference){',
+    '.st-view>*{animation:st-rise .38s cubic-bezier(.3,.9,.3,1) both}',
+    '.st-view>*:nth-child(2){animation-delay:.05s}',
+    '.st-view>*:nth-child(3){animation-delay:.1s}',
+    '.st-view>*:nth-child(4){animation-delay:.15s}',
+    '.st-view>*:nth-child(5){animation-delay:.2s}',
+    '@keyframes st-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}',
+    '}',
+
+    /* narrow screens */
+    '@media (max-width:900px){.st-top,.st-cols{grid-template-columns:minmax(0,1fr)}}',
     '@media (max-width:600px){',
+    '.st-view{gap:var(--gap-5,24px);padding-block:16px 32px}',
+    '.st-title{font-size:21px}',
+    '.st-stat-value{font-size:24px}',
+    '.st-cal{padding:var(--gap-3,12px)}',
+    '.st-cal-grid,.st-cal-wd{gap:4px}',
+    '.st-cal-cell{padding:4px;border-radius:5px}',
+    '.st-cal-n{display:none}',
+    '.st-chart{aspect-ratio:4/3}',
     '.st-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
     '.st-table,.st-table tbody,.st-table tr,.st-table td{display:block;width:auto}',
-    '.st-table tr{border-bottom:1px solid var(--line,#2A2F38);padding:10px 0}',
+    '.st-table tr{border-bottom:1px solid var(--line);padding:11px 0}',
     '.st-table td{border:0;padding:2px 0;text-align:left;display:flex;justify-content:space-between;gap:12px;align-items:baseline}',
     '.st-table td:first-child{padding-bottom:7px}',
     '.st-table td.st-none{justify-content:flex-start}',
-    '.st-cell-label{display:inline;color:var(--dim,#5E6673);font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.06em;text-transform:uppercase}',
-    '.st-summary{gap:var(--gap-4,16px) var(--gap-5,24px)}',
-    '.st-stat-value{font-size:21px}',
+    '.st-cell-label{display:inline;color:var(--dim);font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.06em;text-transform:uppercase}',
     '}',
-    '@media (prefers-reduced-motion:reduce){.st-chip{transition:none}}'
+    '@media (prefers-reduced-motion:reduce){.st-chip,.st-cal-icon,.st-cal-today{transition:none}}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -257,81 +410,215 @@ function statItem(metric, label, value, unit) {
   return box;
 }
 
-function buildSummarySection(model) {
+function buildHeader(model) {
+  var head = h('header', 'st-head');
+  head.appendChild(h('h1', 'st-title', 'Stats'));
+  var earliest = 0;
+  for (var i = 0; i < model.records.length; i++) {
+    if (!earliest || model.records[i].t < earliest) earliest = model.records[i].t;
+  }
+  var bits = [plural(model.records.length, 'run', 'runs'), plural(model.trainedCount, 'drill', 'drills')];
+  if (earliest) bits.push('since ' + dateLabel(earliest));
+  head.appendChild(h('p', 'st-sub', bits.join('  ·  ')));
+  return head;
+}
+
+function buildTotalsSection(model) {
   var Store = globalThis.Store;
   var state = model.state;
   var streak = Store && Store.streak ? Store.streak(state, new Date(model.now)) : 0;
   var longest = Store && Store.longestStreak ? Store.longestStreak(state) : 0;
-  var section = h('div', 'st-section');
-  section.appendChild(h('h2', 'st-h', 'Summary'));
-  var strip = h('div', 'st-summary');
-  strip.appendChild(statItem('runs', 'Runs', String(model.records.length)));
-  strip.appendChild(statItem('sessions', 'Sessions', String(model.sessions.length)));
-  strip.appendChild(statItem('streak', 'Current streak', String(streak), 'days'));
-  strip.appendChild(statItem('longest', 'Longest streak', String(longest), 'days'));
-  strip.appendChild(statItem('drills', 'Drills trained', String(model.trainedCount)));
-  section.appendChild(strip);
+  var section = h('section', 'st-section');
+  var head = h('div', 'st-sec-head');
+  head.appendChild(h('h2', 'st-h', 'Totals'));
+  section.appendChild(head);
+  var list = h('div', 'st-totals');
+  list.appendChild(statItem('runs', 'Runs', String(model.records.length)));
+  list.appendChild(statItem('sessions', 'Sessions', String(model.sessions.length)));
+  list.appendChild(statItem('streak', 'Current streak', String(streak), 'days'));
+  list.appendChild(statItem('longest', 'Longest streak', String(longest), 'days'));
+  list.appendChild(statItem('drills', 'Drills trained', String(model.trainedCount)));
+  section.appendChild(list);
   return section;
 }
 
-var COLS = ['Best', 'Last', 'Average', 'Runs', 'Trend'];
+/* ---------- calendar ---------- */
 
-function cell(label, value) {
-  var td = h('td');
-  td.appendChild(h('span', 'st-cell-label', label));
-  td.appendChild(h('span', 'st-cell-value', value));
-  return td;
+function monthStart(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
+
+function chevron(kind) {
+  var svg = svgEl('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true', focusable: 'false' });
+  var d = kind === 'prev' ? 'M10 3 L5 8 L10 13' : 'M6 3 L11 8 L6 13';
+  svg.appendChild(svgEl('path', { d: d, class: 'st-cal-chev' }));
+  return svg;
 }
 
-function buildTableSection(model) {
-  var Store = globalThis.Store;
-  var section = h('div', 'st-section');
-  section.appendChild(h('h2', 'st-h', 'By drill'));
-  var table = h('table', 'st-table');
-  var thead = h('thead');
-  var hr = h('tr');
-  hr.appendChild(h('th', null, 'Drill'));
-  for (var c = 0; c < COLS.length; c++) hr.appendChild(h('th', null, COLS[c]));
-  thead.appendChild(hr);
-  table.appendChild(thead);
+function buildCalendar(model) {
+  var S = globalThis.Store;
+  var counts = dayActivity(model.state, model.records);
+  var now = new Date(model.now);
+  var todayKey = dayKeyOf(model.now);
+  var current = calMonth ? monthStart(calMonth) : monthStart(now);
+  calMonth = current;
+  var section = h('section', 'st-cal');
 
-  var tbody = h('tbody');
-  var D = drillList();
-  for (var i = 0; i < D.length; i++) {
-    var d = D[i];
-    var dir = directionOf(d.id);
-    var tr = h('tr', 'st-row');
-    tr.setAttribute('data-drill', d.id);
+  function draw() {
+    clear(section);
+    var y = current.getFullYear(), mo = current.getMonth();
+    var monthName = MONTHS_FULL[mo] + ' ' + y;
+    section.setAttribute('aria-label', 'Activity calendar for ' + monthName);
 
-    var nameTd = h('td');
-    nameTd.appendChild(h('span', 'st-name', d.name));
-    if (d.unit) nameTd.appendChild(h('span', 'st-unit', d.unit));
-    tr.appendChild(nameTd);
+    var daysInMonth = new Date(y, mo + 1, 0).getDate();
+    var lead = (new Date(y, mo, 1).getDay() + 6) % 7;
+    var prevDays = new Date(y, mo, 0).getDate();
+    var totalCells = Math.ceil((lead + daysInMonth) / 7) * 7;
 
-    var rs = runsFor(model.records, d.id);
-    if (!rs.length) {
-      var none = h('td', 'st-none', 'no runs yet');
-      none.setAttribute('colspan', String(COLS.length));
-      tr.appendChild(none);
-    } else {
-      var agg = Store.aggregate(model.state, d.id, dir);
-      var sorted = rs.slice().sort(function (a, b) { return a.t - b.t; });
-      var last = sorted[sorted.length - 1];
-      tr.appendChild(cell('Best', fmtNum(agg.best)));
-      tr.appendChild(cell('Last', fmtNum(last.value)));
-      tr.appendChild(cell('Average', fmtNum(agg.avg)));
-      tr.appendChild(cell('Runs', String(agg.attempts)));
-      tr.appendChild(cell('Trend', trendText(model.records, d.id, dir, model.now)));
+    var monthRuns = 0, activeDays = 0, bestDay = 0, maxN = 0, day;
+    for (day = 1; day <= daysInMonth; day++) {
+      var kn = counts[dayKeyOf(new Date(y, mo, day, 12).getTime())] || 0;
+      monthRuns += kn;
+      if (kn > 0) activeDays++;
+      if (kn > bestDay) bestDay = kn;
+      if (kn > maxN) maxN = kn;
     }
-    tbody.appendChild(tr);
+
+    var top = h('div', 'st-cal-top');
+    var titleWrap = h('div', 'st-cal-title');
+    titleWrap.appendChild(h('h2', 'st-cal-month', monthName));
+    titleWrap.appendChild(h('p', 'st-cal-sub',
+      plural(monthRuns, 'run', 'runs') + '  ·  ' + plural(activeDays, 'active day', 'active days')));
+    top.appendChild(titleWrap);
+
+    var tools = h('div', 'st-cal-tools');
+    var prev = h('button', 'st-cal-icon');
+    prev.type = 'button';
+    prev.setAttribute('aria-label', 'Previous month');
+    prev.appendChild(chevron('prev'));
+    prev.addEventListener('click', function () { current = addMonths(current, -1); calMonth = current; draw(); });
+    var todayBtn = h('button', 'st-cal-today', 'Today');
+    todayBtn.type = 'button';
+    todayBtn.addEventListener('click', function () { current = monthStart(new Date()); calMonth = current; draw(); });
+    var next = h('button', 'st-cal-icon');
+    next.type = 'button';
+    next.setAttribute('aria-label', 'Next month');
+    next.appendChild(chevron('next'));
+    next.addEventListener('click', function () { current = addMonths(current, 1); calMonth = current; draw(); });
+    tools.appendChild(prev);
+    tools.appendChild(todayBtn);
+    tools.appendChild(next);
+    top.appendChild(tools);
+    section.appendChild(top);
+
+    var wd = h('div', 'st-cal-wd');
+    wd.setAttribute('aria-hidden', 'true');
+    for (var wi = 0; wi < CAL_HEADS.length; wi++) wd.appendChild(h('span', wi >= 5 ? 'st-we' : null, CAL_HEADS[wi]));
+    section.appendChild(wd);
+
+    var grid = h('div', 'st-cal-grid');
+    grid.setAttribute('role', 'grid');
+    grid.setAttribute('aria-label', monthName + ', runs per day');
+    var cells = [];
+    var todayIndex = -1;
+    for (var i = 0; i < totalCells; i++) {
+      var dayNum, cellDate, inMonth;
+      if (i < lead) {
+        dayNum = prevDays - lead + 1 + i;
+        cellDate = new Date(y, mo - 1, dayNum, 12);
+        inMonth = false;
+      } else if (i >= lead + daysInMonth) {
+        dayNum = i - (lead + daysInMonth) + 1;
+        cellDate = new Date(y, mo + 1, dayNum, 12);
+        inMonth = false;
+      } else {
+        dayNum = i - lead + 1;
+        cellDate = new Date(y, mo, dayNum, 12);
+        inMonth = true;
+      }
+      var k = dayKeyOf(cellDate.getTime());
+      var n = inMonth ? (counts[k] || 0) : 0;
+      var level = S && S.heatmapBuckets ? S.heatmapBuckets(n, maxN) : 0;
+      var isToday = k === todayKey;
+
+      var cell = h('div', 'st-cal-cell' + (inMonth ? '' : ' st-adj') + (isToday ? ' st-today' : ''));
+      cell.setAttribute('role', 'gridcell');
+      cell.setAttribute('data-level', String(level));
+      cell.setAttribute('data-day', k);
+      var label = WEEKDAYS[(cellDate.getDay() + 6) % 7] + ' ' + dayNum + ' ' + MONTHS_FULL[cellDate.getMonth()] + ', ' +
+        (n === 0 ? 'no runs' : plural(n, 'run', 'runs')) + (isToday ? ', today' : '');
+      cell.setAttribute('aria-label', label);
+      cell.title = label;
+      if (isToday) cell.setAttribute('aria-current', 'date');
+      cell.tabIndex = -1;
+
+      var fill = h('span', 'st-cal-fill');
+      fill.setAttribute('aria-hidden', 'true');
+      cell.appendChild(fill);
+      cell.appendChild(h('span', 'st-cal-d', String(dayNum)));
+      if (n > 0 && inMonth) cell.appendChild(h('span', 'st-cal-n', String(n)));
+      if (isToday) todayIndex = cells.length;
+      cells.push(cell);
+      grid.appendChild(cell);
+    }
+
+    /* Roving tabindex: one tab stop for the whole grid, arrows move inside it.
+       Rows are weeks, so left/right step a day and up/down step a week. */
+    var startIndex = todayIndex >= 0 ? todayIndex : Math.min(lead, cells.length - 1);
+    if (startIndex < 0) startIndex = 0;
+    for (var c = 0; c < cells.length; c++) cells[c].tabIndex = c === startIndex ? 0 : -1;
+    grid.addEventListener('keydown', function (e) {
+      var cur = cells.indexOf(document.activeElement);
+      if (cur < 0) return;
+      var next = -1;
+      var rowStart = cur - (cur % 7);
+      if (e.key === 'ArrowRight') next = cur + 1 <= rowStart + 6 ? cur + 1 : -1;
+      else if (e.key === 'ArrowLeft') next = cur - 1 >= rowStart ? cur - 1 : -1;
+      else if (e.key === 'ArrowDown') next = cur + 7;
+      else if (e.key === 'ArrowUp') next = cur - 7;
+      else if (e.key === 'Home') next = rowStart;
+      else if (e.key === 'End') next = rowStart + 6;
+      else return;
+      if (next < 0 || next >= cells.length) return;
+      e.preventDefault();
+      cells[cur].tabIndex = -1;
+      cells[next].tabIndex = 0;
+      cells[next].focus();
+    });
+    section.appendChild(grid);
+
+    var foot = h('div', 'st-cal-foot');
+    var legend = h('div', 'st-cal-legend');
+    legend.appendChild(h('span', 'st-cal-leg-label', 'Less'));
+    for (var lv = 0; lv <= 4; lv++) {
+      var sw = h('span', 'st-cal-sw');
+      sw.setAttribute('data-level', String(lv));
+      legend.appendChild(sw);
+    }
+    legend.appendChild(h('span', 'st-cal-leg-label', 'More'));
+    foot.appendChild(legend);
+
+    var streak = S && S.streak ? S.streak(model.state, now) : 0;
+    var sum = h('div', 'st-cal-sum');
+    sum.appendChild(h('span', null, 'Best day '));
+    sum.appendChild(h('b', null, String(bestDay)));
+    sum.appendChild(h('span', null, '  ·  streak ' + plural(streak, 'day', 'days')));
+    foot.appendChild(sum);
+    section.appendChild(foot);
+
+    if (!monthRuns) {
+      section.appendChild(h('p', 'st-cal-empty',
+        'No runs in ' + monthName + ' yet. Pick another month, or start a drill to fill this one in.'));
+    }
   }
-  table.appendChild(tbody);
-  section.appendChild(table);
+
+  draw();
   return section;
 }
 
-function appendTick(svg, x, y, text, anchor) {
-  var t = svgEl('text', { x: x, y: y, class: 'st-tick', 'text-anchor': anchor });
+/* ---------- chart ---------- */
+
+function appendTick(svg, x, y, text, anchor, cls) {
+  var t = svgEl('text', { x: x, y: y, class: 'st-tick' + (cls ? ' ' + cls : ''), 'text-anchor': anchor });
   t.textContent = text;
   svg.appendChild(t);
 }
@@ -346,15 +633,23 @@ function chartInto(host, drill, records) {
   var c = buildChart(rs, 640, 200, 30);
   var svg = svgEl('svg', {
     viewBox: '0 0 ' + c.w + ' ' + c.h,
-    preserveAspectRatio: 'xMidYMid meet',
+    preserveAspectRatio: 'none',
     class: 'st-chart',
     role: 'img',
     'aria-label': drill.name + ' results over time'
   });
+  /* Three hairline guides behind the line, so the eye can read a value off the
+     height without a full grid. */
+  var mid = (c.vmin + c.vmax) / 2;
+  var guides = [c.vmax, mid, c.vmin];
+  for (var g = 0; g < guides.length; g++) {
+    var gy = round2(c.h - c.pad - (guides[g] - c.vmin) / (c.vmax - c.vmin || 1) * (c.h - 2 * c.pad));
+    svg.appendChild(svgEl('line', { x1: c.pad, y1: gy, x2: c.w - c.pad, y2: gy, class: 'st-grid' }));
+  }
   svg.appendChild(svgEl('line', { x1: c.pad, y1: c.h - c.pad, x2: c.w - c.pad, y2: c.h - c.pad, class: 'st-axis' }));
   svg.appendChild(svgEl('line', { x1: c.pad, y1: c.pad, x2: c.pad, y2: c.h - c.pad, class: 'st-axis' }));
-  appendTick(svg, c.pad - 6, c.pad + 4, fmtNum(c.vmax) + (drill.unit ? ' ' + drill.unit : ''), 'end');
-  appendTick(svg, c.pad - 6, c.h - c.pad, fmtNum(c.vmin), 'end');
+  appendTick(svg, c.pad - 6, c.pad + 4, fmtNum(c.vmax) + (drill.unit ? ' ' + drill.unit : ''), 'end', 'st-tick-val');
+  appendTick(svg, c.pad - 6, c.h - c.pad + 4, fmtNum(c.vmin), 'end');
   appendTick(svg, c.pad, c.h - c.pad + 15, dateLabel(c.tmin), 'start');
   appendTick(svg, c.w - c.pad, c.h - c.pad + 15, dateLabel(c.tmax), 'end');
   svg.appendChild(svgEl('path', { d: c.d, class: 'st-line' }));
@@ -365,8 +660,8 @@ function chartInto(host, drill, records) {
 }
 
 function buildChartSection(model) {
-  var section = h('div', 'st-section');
-  var head = h('div', 'st-chart-head');
+  var section = h('section', 'st-section');
+  var head = h('div', 'st-sec-head');
   head.appendChild(h('h2', 'st-h', 'Results over time'));
 
   var counts = {};
@@ -410,34 +705,120 @@ function buildChartSection(model) {
   return section;
 }
 
+/* ---------- per-drill table ---------- */
+
+var COLS = ['Best', 'Last', 'Average', 'Runs', 'Trend'];
+
+function cell(label, value) {
+  var td = h('td');
+  td.appendChild(h('span', 'st-cell-label', label));
+  td.appendChild(h('span', 'st-cell-value', value));
+  return td;
+}
+
+function buildTableSection(model) {
+  var Store = globalThis.Store;
+  var section = h('section', 'st-section');
+  var head = h('div', 'st-sec-head');
+  head.appendChild(h('h2', 'st-h', 'By drill'));
+  head.appendChild(h('span', 'st-sec-note', plural(drillList().length, 'drill', 'drills')));
+  section.appendChild(head);
+
+  var table = h('table', 'st-table');
+  var thead = h('thead');
+  var hr = h('tr');
+  hr.appendChild(h('th', null, 'Drill'));
+  for (var c = 0; c < COLS.length; c++) hr.appendChild(h('th', null, COLS[c]));
+  thead.appendChild(hr);
+  table.appendChild(thead);
+
+  var tbody = h('tbody');
+  var D = drillList();
+  for (var i = 0; i < D.length; i++) {
+    var d = D[i];
+    var dir = directionOf(d.id);
+    var tr = h('tr', 'st-row');
+    tr.setAttribute('data-drill', d.id);
+
+    var nameTd = h('td');
+    nameTd.appendChild(h('span', 'st-name', d.name));
+    if (d.unit) nameTd.appendChild(h('span', 'st-unit', d.unit));
+    tr.appendChild(nameTd);
+
+    var rs = runsFor(model.records, d.id);
+    if (!rs.length) {
+      var none = h('td', 'st-none', 'no runs yet');
+      none.setAttribute('colspan', String(COLS.length));
+      tr.appendChild(none);
+    } else {
+      var agg = Store.aggregate(model.state, d.id, dir);
+      var sorted = rs.slice().sort(function (a, b) { return a.t - b.t; });
+      var last = sorted[sorted.length - 1];
+      tr.appendChild(cell('Best', fmtNum(agg.best)));
+      tr.appendChild(cell('Last', fmtNum(last.value)));
+      tr.appendChild(cell('Average', fmtNum(agg.avg)));
+      tr.appendChild(cell('Runs', String(agg.attempts)));
+      var trendTd = h('td');
+      trendTd.appendChild(h('span', 'st-cell-label', 'Trend'));
+      var kind = trendKind(model.records, d.id, dir, model.now);
+      var wrap = h('span', 'st-trend');
+      wrap.setAttribute('data-trend', kind);
+      var dot = h('span', 'st-trend-dot');
+      dot.setAttribute('aria-hidden', 'true');
+      var txt = h('span', 'st-trend-v');
+      txt.appendChild(dot);
+      txt.appendChild(h('span', null, trendText(model.records, d.id, dir, model.now)));
+      wrap.appendChild(txt);
+      trendTd.appendChild(wrap);
+      tr.appendChild(trendTd);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  section.appendChild(table);
+  return section;
+}
+
+/* ---------- recent runs ---------- */
+
 function buildRecentSection(model) {
-  var section = h('div', 'st-section');
-  section.appendChild(h('h2', 'st-h', 'Recent runs'));
+  var section = h('section', 'st-section');
+  var head = h('div', 'st-sec-head');
+  head.appendChild(h('h2', 'st-h', 'Recent runs'));
   var rs = model.records.slice().sort(function (a, b) { return b.t - a.t; }).slice(0, RECENT_LIMIT);
+  if (rs.length) head.appendChild(h('span', 'st-sec-note', 'last ' + rs.length));
+  section.appendChild(head);
+
   if (!rs.length) {
     section.appendChild(h('p', 'st-none', 'No runs yet.'));
     return section;
   }
   var list = h('div', 'st-recent');
+  var lastKey = null;
   rs.forEach(function (r) {
+    var key = dayKeyOf(r.t);
+    if (key !== lastKey) {
+      list.appendChild(h('div', 'st-run-day', dayLabel(key, model.now)));
+      lastKey = key;
+    }
     var d = drillById(r.drillId);
     var row = h('div', 'st-run');
     row.appendChild(h('span', 'st-run-name', d.name));
-    var right = h('span', 'st-run-right');
     var unit = r.unit || d.unit || '';
-    right.appendChild(h('span', 'st-run-val', fmtNum(r.value) + (unit ? ' ' + unit : '')));
-    right.appendChild(h('span', 'st-run-when', relTime(r.t, model.now)));
-    row.appendChild(right);
+    row.appendChild(h('span', 'st-run-val', fmtNum(r.value) + (unit ? ' ' + unit : '')));
+    row.appendChild(h('span', 'st-run-when', relTime(r.t, model.now)));
     list.appendChild(row);
   });
   section.appendChild(list);
   return section;
 }
 
+/* ---------- empty ---------- */
+
 function buildEmpty(ctx) {
   var wrap = h('div', 'st-empty');
   wrap.appendChild(h('h2', 'st-h', 'Stats'));
-  wrap.appendChild(h('p', null, 'Nothing to show yet. As you complete drills, your totals, a per-drill table, and a chart of results over time will appear here.'));
+  wrap.appendChild(h('p', null, 'Nothing to show yet. As you complete drills, your totals, an activity calendar, a per-drill table, and a chart of results over time will appear here.'));
   var actions = h('div', 'row-actions');
   var go = h('button', 'btn-primary', 'Go to drills');
   go.type = 'button';
@@ -455,10 +836,16 @@ function paint(container, model, ctx) {
     container.appendChild(buildEmpty(ctx));
     return;
   }
-  container.appendChild(buildSummarySection(model));
-  container.appendChild(buildTableSection(model));
+  container.appendChild(buildHeader(model));
+  var top = h('div', 'st-top');
+  top.appendChild(buildCalendar(model));
+  top.appendChild(buildTotalsSection(model));
+  container.appendChild(top);
   container.appendChild(buildChartSection(model));
-  container.appendChild(buildRecentSection(model));
+  var cols = h('div', 'st-cols');
+  cols.appendChild(buildTableSection(model));
+  cols.appendChild(buildRecentSection(model));
+  container.appendChild(cols);
 }
 
 export function render(container, ctx) {

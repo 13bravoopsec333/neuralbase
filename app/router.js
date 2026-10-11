@@ -5,16 +5,18 @@
    imported, so a route whose module is not there yet shows a placeholder instead
    of firing a request that would 404. */
 
-const VIEWS = ['train', 'stats'];
+const VIEWS = ['train', 'stats', 'circuit'];
 
 const LABELS = {
   train: 'Drills',
   stats: 'Stats',
+  circuit: 'Circuit',
 };
 
 const NOTES = {
   train: 'The drill host and set controls land here.',
   stats: 'Your per-drill history and trend land here.',
+  circuit: 'An ordered list of drills you run back to back.',
 };
 
 const REGISTERED = Array.isArray(globalThis.CORTEX_VIEWS) ? globalThis.CORTEX_VIEWS.slice() : [];
