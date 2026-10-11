@@ -219,13 +219,18 @@ function injectStyles() {
     '.ci-chips .ci-seg-btn{flex:0 0 auto;border:1px solid var(--line2);border-radius:999px;padding:5px 11px}',
     '.ci-chips .ci-seg-btn[aria-pressed="true"]{border-color:' + ACC_E + ';background:' + ACC_S + ';color:' + ACC + '}',
     '.ci-switch .ci-seg-btn[aria-pressed="true"]{background:' + ACC + ';color:var(--bg)}',
+    /* A number past four values is a slider: a bar with an accent fill and the
+       value in the field's readout. accent-color fills the track natively, so no
+       gradient is needed and the theme still holds. */
+    '.ci-range-wrap{display:flex;align-items:center;width:100%;min-width:0}',
+    '.ci-range{width:100%;height:24px;margin:0;background:transparent;accent-color:' + ACC + ';cursor:pointer}',
     '.ci-add{width:100%}',
 
     /* ---------- stage: the duration-proportional timeline ---------- */
     /* The top padding clears the absolutely-positioned meta strip, so a short
        stage never lets the timeline ride up under it. Matches the shared
        .p2-stage-body on the drill screen. */
-    '.ci-stage-body{align-self:stretch;width:100%;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:var(--gap-4);padding:44px var(--gap-5) 76px}',
+    '.ci-stage-body{align-self:stretch;width:100%;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:var(--gap-4);padding:44px var(--gap-5) var(--gap-3)}',
     '.ci-total{display:flex;align-items:baseline;gap:var(--gap-3);flex-wrap:wrap}',
     '.ci-total-big{font-family:var(--mono);font-size:clamp(30px,5.5vw,44px);font-weight:650;letter-spacing:-.02em;color:' + ACC + ';line-height:1}',
     '.ci-total-cap{font-size:12px;color:var(--muted)}',
@@ -252,7 +257,7 @@ function injectStyles() {
     '.ci-empty{margin:0;color:var(--dim);font-size:12.5px;line-height:1.5}',
 
     /* focus-visible rings on every real control this view owns */
-    '.ci-drill:focus-visible,.ci-seg-btn:focus-visible,.ci-icon:focus-visible,.ci-set-sum:focus-visible,.ci-chip:focus-visible,.ci-add:focus-visible,.ci-res-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
+    '.ci-drill:focus-visible,.ci-seg-btn:focus-visible,.ci-range:focus-visible,.ci-icon:focus-visible,.ci-set-sum:focus-visible,.ci-chip:focus-visible,.ci-add:focus-visible,.ci-res-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
 
     /* Results: plain list, quiet, one action line. */
     '.ci-res{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:640px;margin-inline:auto;padding-top:var(--gap-5)}',
@@ -272,13 +277,17 @@ function injectStyles() {
     /* Focus stage: reuse focus.css. Only the progress readout needs a rule. */
     '.nb-focus-stage .ci-prog{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--muted);white-space:nowrap}',
 
-    '@media (max-width:560px){.ci-total-steps{display:none}.ci-seg-btn{font-size:11.5px;padding:6px 1px}.ci-stage-body{padding:44px var(--gap-4) 70px}}',
+    '@media (max-width:560px){.ci-total-steps{display:none}.ci-seg-btn{font-size:11.5px;padding:6px 1px}.ci-stage-body{padding:34px var(--gap-4) var(--gap-3);gap:var(--gap-3)}.ci-track{height:58px}}',
     '@media (max-width:380px){.ci-sb-name{display:none}.ci-total-big{font-size:28px}}',
     /* On phones the shell stacks. The hero comes first here too, the same order
        the drill screen uses: stage (with Start circuit), then the filmstrip to
-       add a step, then the step list to edit. Scoped to .ci-view, so the shared
-       shell keeps its own order for anything else. */
-    '@media (max-width:720px){.ci-view .p2-shell{grid-template-rows:minmax(320px,auto) auto auto}.ci-view .p2-stage{grid-row:1}.ci-view .p2-filmstrip{grid-row:2}.ci-view .p2-rail{grid-row:3;border-right:0;border-bottom:0;border-top:1px solid var(--line)}}',
+       add a step, then the step list to edit. Both rows are bounded so the
+       filmstrip stays visible and each pane scrolls inside its own row. The stage
+       floor keeps the timeline and its Start whole on a short viewport but yields
+       to 68% of the shell so a very short one still cannot push the filmstrip off.
+       Scoped to .ci-view, so the shared shell keeps its own order for anything
+       else. */
+    '@media (max-width:720px){.ci-view .p2-shell{grid-template-rows:minmax(min(282px,68%),1.4fr) auto minmax(0,0.6fr)}.ci-view .p2-stage{grid-row:1}.ci-view .p2-filmstrip{grid-row:2}.ci-view .p2-rail{grid-row:3;border-right:0;border-bottom:0;border-top:1px solid var(--line)}}',
     '@media (prefers-reduced-motion:reduce){.ci-seg-btn,.ci-icon,.ci-set-sum,.ci-seg-block,.ci-res-act{transition:none}}'
   ].join('');
   document.head.appendChild(s);
@@ -403,40 +412,93 @@ function buildSettingRow(step, entry) {
   var field = h('div', 'ci-field');
   var head = h('div', 'ci-field-head');
   head.appendChild(h('span', 'ci-field-name', entry.label));
-  head.appendChild(h('span', 'ci-field-val mono', optionReadout(entry, current)));
+  /* Held so a slider can follow the drag on the readout without a rebuild. */
+  var readout = h('span', 'ci-field-val mono', optionReadout(entry, current));
+  head.appendChild(readout);
   field.appendChild(head);
 
   var type = entry.type || 'number';
   if (type === 'toggle') field.appendChild(buildToggle(step, entry, current));
   else if (type === 'choice') field.appendChild(entry.multi ? buildMulti(step, entry, current) : buildChoice(step, entry, current));
-  else field.appendChild(buildNumber(step, entry, current));
+  else field.appendChild(buildNumber(step, entry, current, readout));
   return field;
 }
 
+/* One setting committed in place: the control updates its own state, so changing
+   a value never rebuilds the list or moves focus. Returns the stored value, which
+   the store may have snapped. */
 function commitSetting(step, entry, value, seg, multi) {
   step.options = step.options || {};
   step.options[entry.key] = value;
   var v = Circuit.validate(step);
   step.options = v ? v.options : step.options;
-  markPressed(seg, step.options[entry.key], multi);
+  if (seg) markPressed(seg, step.options[entry.key], multi);
   commitModel();
   say(entry.label + ' set to ' + optionReadout(entry, step.options[entry.key]) + '.');
+  return step.options[entry.key];
 }
 
-function buildNumber(step, entry, current) {
-  var seg = segGroup(entry, 'ci-seg-bar');
+/* A number on a segmented bar works while the whole set fits on one line. Past
+   four values it becomes a slider, the same rule the drill screen uses: a bar
+   with an accent fill and the value in the field's readout. */
+var SEG_MAX = 4;
+
+function numberValues(entry) {
   var count = Math.round((entry.max - entry.min) / entry.step) + 1;
-  for (var k = 0; k < count; k++) {
-    (function (value) {
-      var b = h('button', 'ci-seg-btn', String(value));
-      b.type = 'button';
-      b._v = value;
-      b.setAttribute('aria-pressed', value === current ? 'true' : 'false');
-      b.addEventListener('click', function () { commitSetting(step, entry, value, seg, false); });
-      seg.appendChild(b);
-    })(Math.round((entry.min + k * entry.step) * 1e10) / 1e10);
-  }
+  var out = [];
+  for (var k = 0; k < count; k++) out.push(Math.round((entry.min + k * entry.step) * 1e10) / 1e10);
+  return out;
+}
+
+/* A slider's raw string back to a spec value: snapped to the step grid and
+   rounded, so a 0.05 step does not leave float noise behind. */
+function sliderValue(raw, entry) {
+  var v = Number(raw);
+  if (!isFinite(v)) return entry.def;
+  var snapped = entry.min + Math.round((v - entry.min) / entry.step) * entry.step;
+  return Math.round(snapped * 1e10) / 1e10;
+}
+
+function buildNumber(step, entry, current, readout) {
+  var values = numberValues(entry);
+  if (values.length > SEG_MAX) return buildRange(step, entry, current, readout);
+  var seg = segGroup(entry, 'ci-seg-bar');
+  values.forEach(function (value) {
+    var b = h('button', 'ci-seg-btn', String(value));
+    b.type = 'button';
+    b._v = value;
+    b.setAttribute('aria-pressed', value === current ? 'true' : 'false');
+    b.addEventListener('click', function () { commitSetting(step, entry, value, seg, false); });
+    seg.appendChild(b);
+  });
   return seg;
+}
+
+/* A real range input. The readout follows the drag live and the value is
+   committed on release without rebuilding the node, so neither the drag nor the
+   focus is pulled out from under the pointer. */
+function buildRange(step, entry, current, readout) {
+  var wrap = h('div', 'ci-range-wrap');
+  var input = document.createElement('input');
+  input.type = 'range';
+  input.className = 'ci-range';
+  input.min = String(entry.min);
+  input.max = String(entry.max);
+  input.step = String(entry.step);
+  input.value = String(current);
+  input.setAttribute('aria-label', entry.label);
+  input.setAttribute('aria-valuetext', optionReadout(entry, current));
+  input.addEventListener('input', function () {
+    var text = optionReadout(entry, sliderValue(input.value, entry));
+    if (readout) readout.textContent = text;
+    input.setAttribute('aria-valuetext', text);
+  });
+  input.addEventListener('change', function () {
+    var stored = commitSetting(step, entry, sliderValue(input.value, entry), null, false);
+    if (readout) readout.textContent = optionReadout(entry, stored);
+  });
+  wrap.appendChild(input);
+  return wrap;
 }
 
 function buildToggle(step, entry, current) {
@@ -645,12 +707,6 @@ function buildStage() {
   var meta = h('div', 'p2-stage-meta', 'Timeline \u00b7 ' + steps.length + (steps.length === 1 ? ' step' : ' steps'));
   stage.appendChild(meta);
 
-  var start = h('button', 'btn-primary p2-start ci-start', 'Start circuit');
-  start.type = 'button';
-  start.disabled = !steps.length;
-  start.addEventListener('click', function () { startRun(); });
-  stage.appendChild(start);
-
   if (steps.length) {
     stage.appendChild(buildTimeline(steps));
   } else {
@@ -658,6 +714,15 @@ function buildStage() {
     empty.appendChild(h('p', 'ci-empty', 'Add a step to see the timeline.'));
     stage.appendChild(empty);
   }
+
+  /* The Start is the last item in the stage's centred column, the same place the
+     drill screen puts its own: with the timeline it starts, not floating at an
+     edge of the frame. */
+  var start = h('button', 'btn-primary p2-start ci-start', 'Start circuit');
+  start.type = 'button';
+  start.disabled = !steps.length;
+  start.addEventListener('click', function () { startRun(); });
+  stage.appendChild(start);
   return stage;
 }
 

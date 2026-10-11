@@ -458,11 +458,22 @@ function buildSetup(d) {
      different x. It is a .tr-mode-row, not a .tr-set-row, because it is not one
      of the drill's settings. */
   if (d.id === 'nback') rows.appendChild(buildModeBlock());
+  /* Spec order, with the settings this drill's current mode does not use left
+     out. The value stays stored, so switching mode back brings it back. */
   for (var i = 0; i < spec.length; i++) {
+    if (!optionVisible(d.id, spec[i])) continue;
     rows.appendChild(buildOptionRow(d.id, spec[i], opts[spec[i].key]));
   }
   panel.appendChild(rows);
   return panel;
+}
+
+/* A setting only some modes use is hidden, not disabled. The cue length governs
+   the rule cue, and only Dual n-back has a rule cue to govern, so the row is
+   noise in the other five modes. */
+function optionVisible(id, entry) {
+  if (id === 'nback' && entry.key === 'cueLength') return mode === 'dual';
+  return true;
 }
 
 /* The value readout beside a setting's label. */
@@ -480,27 +491,35 @@ function optionReadout(entry, current) {
   return String(current);
 }
 
-/* Store one value and repaint the panel. Changing a value never starts a drill. */
-function commitOption(id, entry, value) {
-  if (running) return;
+/* Store one value and repaint the panel. Changing a value never starts a drill.
+   `keep` skips the repaint for a control that is mid-interaction (a slider drag):
+   replacing the node under the pointer would drop the drag and the focus with it.
+   Returns the validated bag, so a caller can show what was actually stored. */
+function commitOption(id, entry, value, keep) {
+  if (running) return null;
   var bag = setOption(id, entry.key, value);
-  paintIdle();
-  setIdle(true);
-  paintAll();
+  if (!keep) {
+    paintIdle();
+    setIdle(true);
+    paintAll();
+  }
   say(entry.label + ' set to ' + optionReadout(entry, bag[entry.key]) + '.');
+  return bag;
 }
 
 function buildOptionRow(id, entry, current) {
   var row = h('div', 'tr-set-row');
   var head = h('div', 'tr-set-head');
   head.appendChild(h('span', 'tr-set-label', entry.label));
-  head.appendChild(h('span', 'tr-set-val mono', optionReadout(entry, current)));
+  /* Held so a slider can follow the drag on the readout without a repaint. */
+  var readout = h('span', 'tr-set-val mono', optionReadout(entry, current));
+  head.appendChild(readout);
   row.appendChild(head);
 
   var type = entry.type || 'number';
   if (type === 'toggle') row.appendChild(buildToggleRow(id, entry, current));
   else if (type === 'choice') row.appendChild(entry.multi ? buildMultiRow(id, entry, current) : buildChoiceRow(id, entry, current));
-  else row.appendChild(buildNumberRow(id, entry, current));
+  else row.appendChild(buildNumberRow(id, entry, current, readout));
   return row;
 }
 
@@ -514,21 +533,70 @@ function segGroup(entry, variant) {
   return seg;
 }
 
-function buildNumberRow(id, entry, current) {
-  var seg = segGroup(entry, 'tr-seg-bar');
-  /* Built from an index count rather than an accumulating loop, so a fractional
-     step still lands on every value without float drift. */
+/* A number on a segmented bar works while the whole set fits on one line. Past
+   four values it is a wall of buttons, so it becomes a slider: the same value, a
+   bar with an accent fill, and the number in the row's readout. */
+var SEG_MAX = 4;
+
+/* The values a number setting can take, from the index count rather than an
+   accumulating loop, so a fractional step lands on every value without drift. */
+function numberValues(entry) {
   var count = Math.round((entry.max - entry.min) / entry.step) + 1;
-  for (var k = 0; k < count; k++) {
-    (function (value) {
-      var b = h('button', 'tr-seg-btn', String(value));
-      b.type = 'button';
-      b.setAttribute('aria-pressed', value === current ? 'true' : 'false');
-      b.addEventListener('click', function () { commitOption(id, entry, value); });
-      seg.appendChild(b);
-    })(Math.round((entry.min + k * entry.step) * 1e10) / 1e10);
-  }
+  var out = [];
+  for (var k = 0; k < count; k++) out.push(Math.round((entry.min + k * entry.step) * 1e10) / 1e10);
+  return out;
+}
+
+/* A slider's raw string back to a spec value: snapped to the step grid and
+   rounded, so a 0.05 step does not leave float noise behind. */
+function sliderValue(raw, entry) {
+  var v = Number(raw);
+  if (!isFinite(v)) return entry.def;
+  var snapped = entry.min + Math.round((v - entry.min) / entry.step) * entry.step;
+  return Math.round(snapped * 1e10) / 1e10;
+}
+
+function buildNumberRow(id, entry, current, readout) {
+  var values = numberValues(entry);
+  if (values.length > SEG_MAX) return buildRangeRow(id, entry, current, readout);
+  var seg = segGroup(entry, 'tr-seg-bar');
+  values.forEach(function (value) {
+    var b = h('button', 'tr-seg-btn', String(value));
+    b.type = 'button';
+    b.setAttribute('aria-pressed', value === current ? 'true' : 'false');
+    b.addEventListener('click', function () { commitOption(id, entry, value); });
+    seg.appendChild(b);
+  });
   return seg;
+}
+
+/* A real range input, so the keyboard model is the platform's. The readout
+   follows the drag live and the value is committed on release without repainting,
+   so neither the drag nor the focus is pulled out from under the pointer. */
+function buildRangeRow(id, entry, current, readout) {
+  var wrap = h('div', 'tr-range-wrap');
+  var input = document.createElement('input');
+  input.type = 'range';
+  input.className = 'tr-range';
+  input.min = String(entry.min);
+  input.max = String(entry.max);
+  input.step = String(entry.step);
+  input.value = String(current);
+  input.setAttribute('aria-label', entry.label);
+  input.setAttribute('aria-valuetext', optionReadout(entry, current));
+  function preview() {
+    var text = optionReadout(entry, sliderValue(input.value, entry));
+    if (readout) readout.textContent = text;
+    input.setAttribute('aria-valuetext', text);
+  }
+  input.addEventListener('input', preview);
+  input.addEventListener('change', function () {
+    var bag = commitOption(id, entry, sliderValue(input.value, entry), true);
+    /* The store snaps the value, so the readout is taken from what was stored. */
+    if (readout) readout.textContent = optionReadout(entry, bag ? bag[entry.key] : sliderValue(input.value, entry));
+  });
+  wrap.appendChild(input);
+  return wrap;
 }
 
 function buildToggleRow(id, entry, current) {
@@ -706,6 +774,11 @@ function injectStyles() {
     '.tr-seg-bar{gap:2px;padding:2px;border:1px solid var(--line2);border-radius:9px;background:var(--panel)}',
     '.tr-seg-switch{gap:2px;padding:2px;border:1px solid var(--line2);border-radius:999px;background:var(--panel);align-self:flex-start}',
     '.tr-seg-chips{gap:6px;padding:0}',
+    /* A number past four values is a slider: a bar with an accent fill and the
+       value in the row's readout, instead of a wall of buttons. accent-color fills
+       the track natively, so no gradient is needed and the theme still holds. */
+    '.tr-range-wrap{display:flex;align-items:center;width:100%;min-width:0}',
+    '.tr-range{width:100%;height:24px;margin:0;background:transparent;accent-color:' + ACC + ';cursor:pointer}',
     '.tr-seg-btn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;padding:4px 9px;border-radius:6px;min-height:26px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.tr-seg-btn:not(:disabled):hover{color:var(--ink)}',
     '.tr-seg-btn[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
@@ -715,28 +788,33 @@ function injectStyles() {
     /* A multi-select reads as chips: a visible outline on every chip, the on ones filled. */
     '.tr-seg-chips .tr-seg-btn{border-color:var(--line2);border-radius:999px;padding:6px 11px}',
     '.tr-seg-chips .tr-seg-btn[aria-pressed="true"]{border-color:' + ACC_E + ';background:' + ACC_S + ';color:' + ACC + '}',
-    /* The mode control is a real segmented bar: a bordered track, one segment per
-       mode, the live mode filled with the accent. It sits in the same column as
-       the settings, its label on the line above. */
+    /* The mode control is a wrapping row of pills, one per mode: each its own
+       hairline box, no outer track. The live mode takes the accent fill. */
     '.tr-mode-block{display:flex;flex-direction:column;gap:6px}',
     '.tr-mode-row{display:flex;flex-direction:column;gap:6px}',
     '.tr-field{font-family:var(--sans);font-size:12.5px;font-weight:600;color:var(--ink)}',
-    '.tr-modeset{display:flex;flex-wrap:wrap;gap:2px;padding:2px;border:1px solid var(--line2);border-radius:9px;background:var(--panel)}',
-    '.tr-mode{display:inline-flex;align-items:center;background:transparent;border:1px solid transparent;padding:4px 9px;border-radius:6px;min-height:26px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
-    '.tr-mode:not(:disabled):hover{color:var(--ink)}',
-    '.tr-mode[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
+    '.tr-modeset{display:flex;flex-wrap:wrap;gap:6px;min-width:0}',
+    '.tr-mode{display:inline-flex;align-items:center;background:transparent;border:1px solid var(--line2);padding:6px 10px;border-radius:6px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
+    '.tr-mode:not(:disabled):hover{color:var(--ink);background:var(--hover)}',
+    '.tr-mode[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + ';font-weight:600}',
     '.tr-mode:disabled{opacity:.45;cursor:not-allowed}',
     '.tr-mode[aria-pressed="true"]:disabled{opacity:.7}',
     '.tr-blurb{font-size:12px;color:var(--dim);margin:0;line-height:1.45}',
-    /* Every control is a real button, so every one carries a visible focus ring. */
-    '.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-start:focus-visible,.rs-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
-    /* Start: the one primary action on the page, overlaid on the stage. */
+    /* Every control carries a visible focus ring: the buttons here, and the
+       slider, which the shell's own :focus-visible rule would cover anyway. */
+    '.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-range:focus-visible,.tr-start:focus-visible,.rs-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
+    /* Start: the one primary action on the page, the last item in the stage's
+       centred hero column. */
     '.tr-start{padding:12px 26px;font-size:15px;border-radius:10px;min-width:160px}',
     /* On phones the shared shell stacks rail-first, which puts every setting above
        the fold and the Start action below it. For the drill screen the hero comes
-       first instead: stage, then the filmstrip to switch, then the settings. Scoped
-       to .tr-view so the shared shell keeps its own order for the other screen. */
-    '@media (max-width:720px){.tr-view .p2-shell{grid-template-rows:minmax(320px,auto) auto auto}.tr-view .p2-stage{grid-row:1}.tr-view .p2-filmstrip{grid-row:2}.tr-view .p2-rail{grid-row:3;border-right:0;border-bottom:0;border-top:1px solid var(--line)}}',
+       first instead: stage, then the filmstrip to switch, then the settings. Both
+       rows are bounded so the filmstrip stays visible and the Start stays in the
+       hero, and each pane scrolls inside its own row. The stage floor keeps the
+       hero whole on a short viewport but yields to 60% of the shell so a very
+       short one still cannot push the filmstrip off. Scoped to .tr-view so the
+       shared shell keeps its own order for the other screen. */
+    '@media (max-width:720px){.tr-view .p2-shell{grid-template-rows:minmax(min(248px,60%),1.2fr) auto minmax(0,0.8fr)}.tr-view .p2-stage{grid-row:1}.tr-view .p2-filmstrip{grid-row:2}.tr-view .p2-rail{grid-row:3;border-right:0;border-bottom:0;border-top:1px solid var(--line)}}',
     /* Results. The score leads, set large in the mono face; everything under it is
        quiet. Plain text actions, no boxes, same language as the picker. */
     '.rs-view{display:flex;flex-direction:column;align-items:center;gap:var(--gap-4);width:100%;max-width:min(680px,100%);margin-inline:auto;text-align:center;padding:var(--gap-2) 0}',
@@ -962,7 +1040,14 @@ function pickMode(m) {
   if (running) return;
   mode = m.id;
   writeMode(mode);
+  /* The panel depends on the mode: Cue length belongs to Dual n-back alone, so it
+     has to be rebuilt, not just the buttons and the blurb. The clicked button goes
+     with the old panel, so focus is handed to the new one for the same mode. */
+  paintIdle();
+  setIdle(true);
   paintAll();
+  var b = ui.modeBtns && ui.modeBtns[m.id];
+  if (b && b.focus) { try { b.focus(); } catch (e) { /* degrade */ } }
   say('Mode set to ' + m.name + '.');
 }
 
@@ -1020,7 +1105,6 @@ function paintStage(d) {
   ui.stageBody.replaceChildren(
     art,
     h('h2', 'p2-stage-title', d.name),
-    h('p', 'p2-stage-hint', d.desc || ''),
     idle
   );
 }

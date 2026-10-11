@@ -441,17 +441,15 @@
     var live = el("div", "nx-sr");
     live.setAttribute("aria-live", "polite");
     live.setAttribute("aria-atomic", "true");
-    var cue = el("div", "nx-cue", "Press only on the digit " + targetDigit + ".");
+    var cue = el("div", "nx-cue", "");
     cue.setAttribute("aria-live", "polite");
     var bar = el("div", "drill-bar");
     var pressBtn = button("btn-primary nx-press", "Press on " + targetDigit);
     bar.appendChild(pressBtn);
     var meta = el("div", "nb-meta mono", sartMeta());
-    var note = el("div", "drill-note", "A steady stream of digits, one at a time. Press on " + targetDigit + " and hold back on everything else. Trains sustained attention.");
     wrap.appendChild(stage);
     wrap.appendChild(live);
     wrap.appendChild(cue);
-    wrap.appendChild(note);
     wrap.appendChild(bar);
     wrap.appendChild(meta);
     container.appendChild(wrap);
@@ -609,23 +607,16 @@
 
     var wrap = el("div", "drill drill-crt");
     var stage = el("div", "nx-lanes");
-    var cue = el("div", "nx-cue", "Wait for a light, then press it.");
+    var cue = el("div", "nx-cue", "");
     cue.setAttribute("aria-live", "polite");
-    var note = el("div", "drill-note", crtNote());
     var meta = el("div", "nb-meta mono", crtMeta());
     wrap.appendChild(stage);
     wrap.appendChild(cue);
-    wrap.appendChild(note);
     wrap.appendChild(meta);
     container.appendChild(wrap);
 
     function crtMeta() {
       return (endless ? String(i) : i + " / " + total) + " · " + choice + " lights · " + foreperiod + (catchTrials ? " · catch" : "");
-    }
-    function crtNote() {
-      if (choice >= 4) return "Four lights. Trains simple reaction speed.";
-      if (choice === 3) return "Three lights. Trains simple reaction speed.";
-      return "Two lights now. Move to three once your median reaction time drops under 350 ms.";
     }
 
     var unbindVis = bindVisibility(doc, clock);
@@ -651,7 +642,6 @@
         laneEls.push(b);
       });
       stage.style.gridTemplateColumns = "repeat(" + lanes.length + ",1fr)";
-      note.textContent = crtNote();
     }
 
     function reset() {

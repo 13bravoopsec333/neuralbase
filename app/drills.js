@@ -62,15 +62,6 @@
     arithmetic: "MATCH SUM",
     spatial: "MATCH PLACE"
   };
-  var NB_HINTS = {
-    dual: "Respond only when the current cue's rule is met n steps back. A match that violates the cue is a trap.",
-    visual: "Respond when the lit square sits in the same place as n steps back.",
-    letter: "Respond when the letter is the same as the letter n steps back.",
-    vowel: "Respond when the letter repeats the letter n steps back and that letter is a vowel. A repeated consonant is a trap.",
-    arithmetic: "Respond when the sum matches the sum from n steps back.",
-    spatial: "Respond when the shape sits in the same square as n steps back. The shape itself may change."
-  };
-
   /* Fixed rule per single-dimension mode. "spatial" is position plus a shape. */
   var NB_RULE = { visual: "position", letter: "letter", vowel: "vowel", arithmetic: "sum", spatial: "spatial" };
 
@@ -359,7 +350,7 @@
          button row center themselves. Panel padding is untouched. */
       ".drill-nback{align-items:center;text-align:center}",
       ".drill-nback .nb-grid{margin-inline:auto}",
-      ".drill-nback .nb-cue,.drill-nback .nb-letter,.drill-nback .nb-hint,.drill-nback .nb-meta{text-align:center}",
+      ".drill-nback .nb-cue,.drill-nback .nb-letter,.drill-nback .nb-meta{text-align:center}",
       ".drill-nback .nb-sum{justify-content:center}",
       ".drill-nback .drill-bar{justify-content:center}",
       /* An option button carries its shortcut, so a key player can see what
@@ -386,6 +377,22 @@
       ".drill-palace .pl-track{width:min(300px,100%);height:4px;border-radius:2px;background:var(--line2);overflow:hidden}",
       ".drill-palace .pl-fill{height:100%;width:100%;background:var(--lime);transform-origin:left center;transition:transform .1s linear}",
       ".drill-palace .pl-cue{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.04em}",
+      /* Focus presentation for the n-back. The stimulus is the hero and the grid
+         supports it. Scoped to the focus stage and more specific than the rules in
+         the frozen focus.css, so it wins there without editing that file. Any
+         non-focus host keeps the base sizes. The letter sits directly above the
+         grid inside one column, so the two read as a single instrument. */
+      ".nb-focus-stage .drill-nback .nb-stim{display:flex;flex-direction:column;align-items:center;gap:clamp(0px,0.8vmin,10px);width:100%}",
+      ".nb-focus-stage .drill-nback .nb-letter{font-size:clamp(104px,24vmin,240px);line-height:.9}",
+      ".nb-focus-stage .drill-nback .nb-grid{width:min(56vmin,320px);gap:clamp(8px,1.6vmin,16px)}",
+      ".nb-focus-stage .drill-nback .nb-sum{font-size:clamp(54px,13vmin,116px)}",
+      ".nb-focus-stage .drill-nback .nb-sum-op{font-size:.5em}",
+      /* Spatial has no letter, so the grid carries the whole stimulus and takes
+         the room a letter would otherwise hold. */
+      ".nb-focus-stage .drill-nback.nb-mode-spatial .nb-grid{width:min(72vmin,460px)}",
+      /* The shape in a lit cell is the spatial stimulus: size it to the cell, not
+         to a caption. It only ever holds text in spatial mode. */
+      ".nb-focus-stage .drill-nback .nb-cell .v{font-size:clamp(34px,9vmin,68px)}",
       "@media(prefers-reduced-motion:reduce){.drill-palace .pl-fill{transition:none}}"
     ].join("");
     (document.head || document.documentElement).appendChild(s);
@@ -822,7 +829,7 @@
       if (silent) silenceAudio();
     }
 
-    var wrap = el("div", "drill drill-nback");
+    var wrap = el("div", "drill drill-nback nb-mode-" + mode);
     var cueEl = el("div", "drill-state nb-cue", "");
     var grid = el("div", "nb-grid");
     var cells = [], cellVals = [];
@@ -846,7 +853,6 @@
     var sumOp = el("span", "nb-sum-op", "+");
     var sumB = el("span", "nb-sum-v", "");
     sumWrap.appendChild(sumA); sumWrap.appendChild(sumOp); sumWrap.appendChild(sumB);
-    var hint = el("div", "nb-hint", NB_HINTS[mode]);
     var bar = el("div", "drill-bar");
     var posBtn = button("btn-ghost", "Position match");
     var letBtn = button("btn-ghost", "Letter match");
@@ -855,13 +861,17 @@
     else bar.appendChild(oneBtn);
     var meta = el("div", "nb-meta mono", "n = " + level + " · " + trialCountText() + " · " + stimMs + " ms");
 
+    /* The stimulus block sits under the cue and holds the stimulus above the
+       grid, so the eye reads the item first and the grid answers it. Arithmetic
+       has no grid (the sum is the stimulus) and spatial has no letter (the shape
+       carries the position), so neither gets the other's element. */
+    var stimBlock = el("div", "nb-stim");
+    if (arith) stimBlock.appendChild(sumWrap);
+    else if (!spatial) stimBlock.appendChild(stim);
+    if (!arith) stimBlock.appendChild(grid);
     wrap.appendChild(cueEl);
-    /* Arithmetic has no grid (the sum is the stimulus) and spatial has no letter
-       (the shape carries the position), so neither gets the other's element. */
-    if (!arith) wrap.appendChild(grid);
-    if (arith) wrap.appendChild(sumWrap);
-    else if (!spatial) wrap.appendChild(stim);
-    wrap.appendChild(hint); wrap.appendChild(bar); wrap.appendChild(meta);
+    wrap.appendChild(stimBlock);
+    wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
 
     function onPos() { if (!stopped) pressedPos = true; }
@@ -1094,16 +1104,14 @@
       dots.push(dot);
       stage.appendChild(dot);
     }
-    var prompt = el("div", "drill-note", watchText());
+    /* The prompt carries the live question for the current response step. During
+       the stimulus window it stays empty: the stage is the thing to read then. */
+    var prompt = el("div", "drill-note", "");
     var bar = el("div", "drill-bar");
     var meta = el("div", "nb-meta mono", ufovMeta());
     wrap.appendChild(stage); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
 
-    function watchText() {
-      var edge = EDGE > 1 ? "the edge dots" : "the edge dot";
-      return CENTER ? "Watch the center shape and " + edge + "." : "Watch " + edge + ".";
-    }
     function ufovMeta() {
       return "exposure " + exposure + " ms · " + EDGE + (EDGE === 1 ? " dot" : " dots") + " · " + (endless ? String(i) : i + " / " + TRIALS);
     }
@@ -1159,7 +1167,7 @@
       if (stopped) return;
       if (i >= TRIALS) return finish();
       clearBar();
-      prompt.textContent = watchText();
+      prompt.textContent = "";
       var pool = [0, 1, 2, 3];
       for (var s = pool.length - 1; s > 0; s--) { var j = randInt(rng, s + 1); var t = pool[s]; pool[s] = pool[j]; pool[j] = t; }
       answer = { shape: randInt(rng, 3), positions: pool.slice(0, EDGE), pickShape: null, picks: [] };
@@ -1278,7 +1286,7 @@
     track.appendChild(fill);
     var cue = el("div", "pl-cue", "");
     study.appendChild(track); study.appendChild(cue);
-    var prompt = el("div", "drill-note", "Place each item at the next stop on the route.");
+    var prompt = el("div", "drill-note", "");
     var bar = el("div", "drill-bar");
     var meta = el("div", "nb-meta mono", palaceMeta());
     wrap.appendChild(stage); wrap.appendChild(study); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
@@ -1320,7 +1328,7 @@
       phase = "encode";
       study.hidden = false;
       stage.textContent = placed[idx];
-      prompt.textContent = "Stop " + (idx + 1) + " of " + ROUTE + ". Picture it here, then continue.";
+      prompt.textContent = "Stop " + (idx + 1) + " of " + ROUTE + ".";
       bar.innerHTML = "";
       var b = button("btn-primary", "Place");
       b.setAttribute("aria-label", "Place now, key Enter");
@@ -1528,10 +1536,9 @@
     injectStyles();
     var wrap = el("div", "drill drill-reasoning");
     var stem = el("div", "rr-stem");
-    var prompt = el("div", "drill-note", "Pick the option that shares the same relation.");
     var bar = el("div", "drill-bar");
     var meta = el("div", "nb-meta mono", metaText());
-    wrap.appendChild(stem); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
+    wrap.appendChild(stem); wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
 
     /* The trial count, the limit and the relation set, on screen, so the chosen
@@ -1711,7 +1718,7 @@
     function addForm() {
       screen = "add";
       stage.innerHTML = "";
-      prompt.textContent = "Add cards to study. They come back at growing intervals.";
+      prompt.textContent = "";
       buildAddBar();
       meta.textContent = cardMeta();
     }
@@ -1747,7 +1754,7 @@
         var graded = pressGuard();
         screen = "question";
         stage.textContent = card.front;
-        prompt.textContent = "Recall the answer, then check.";
+        prompt.textContent = "";
         bar.innerHTML = "";
         var reveal = button("btn-primary nb-opt", "Show answer");
         reveal.appendChild(el("span", "nb-key", "enter"));
@@ -1894,10 +1901,9 @@
     var stage = el("div", "ts-stage");
     var stim = el("div", "ts-stim");
     stage.appendChild(stim);
-    var prompt = el("div", "drill-note", "Answer by the rule shown.");
     var bar = el("div", "drill-bar");
     var meta = el("div", "nb-meta mono", metaText());
-    wrap.appendChild(ruleEl); wrap.appendChild(stage); wrap.appendChild(prompt); wrap.appendChild(bar); wrap.appendChild(meta);
+    wrap.appendChild(ruleEl); wrap.appendChild(stage); wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
 
     /* Trial count, switch rate and how many rules are live, on screen. */
@@ -1927,16 +1933,12 @@
       stim.className = "ts-stim " + (shape ? "s1" : "s0") + " " + (color ? "c1" : "c0");
       stim.textContent = DIMS.length === 3 ? String(number) : "";
       /* The cue stays up every trial, or only when the rule just changed. With
-         the cue off the prompt must not name the live rule either, or the
-         setting says off while the answer is still printed every trial. The
-         switch trial keeps its reveal: cue and prompt both name the rule. */
+         the cue off the rule is not named, so the setting does what it says and
+         the player reads the rule off the option labels. */
       var isSwitch = lastRule === null || rule !== lastRule;
       var showCue = cueVisible || isSwitch;
       ruleEl.textContent = "Rule: " + (rule === "color" ? "Color" : rule === "shape" ? "Shape" : "Number");
       ruleEl.hidden = !showCue;
-      prompt.textContent = showCue
-        ? (rule === "color" ? "Pick the color." : rule === "shape" ? "Pick the shape." : "Pick the number.")
-        : "Pick the matching option.";
       bar.innerHTML = "";
       var labels = rule === "color" ? ["Blue", "Orange"] : rule === "shape" ? ["Circle", "Square"] : ["1", "2"];
       var correct = rule === "color" ? color : rule === "shape" ? shape : number - 1;

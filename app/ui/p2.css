@@ -15,6 +15,29 @@
    other view keeps its measure. */
 .content:has(.view:not([hidden]) .p2-shell){max-width:none;margin-inline:0}
 
+/* The screen is a workspace, not a document: pin it to the viewport so the page
+   itself never scrolls, the rail scrolls on its own when its settings run long,
+   and the filmstrip stays above the fold. The topbar is a sibling of main, so the
+   pin goes on body and main takes what is left of the viewport. Scoped to the open
+   P2 view, so every other page keeps its own flow. The frame chain has to be
+   allowed to shrink, or the shell's min-content height pushes the page past the
+   viewport instead of the rail taking the scroll. */
+body:has(.view:not([hidden]) .p2-shell){
+  height:100vh;
+  height:100dvh;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+body:has(.view:not([hidden]) .p2-shell) > main{
+  flex:1 1 auto;
+  min-height:0;
+}
+body:has(.view:not([hidden]) .p2-shell) main .content,
+body:has(.view:not([hidden]) .p2-shell) main .content > .view{
+  min-height:0;
+}
+
 /* Two panes: a fixed-ish rail and a flexible stage. The rail spans both rows,
    the stage sits top right, the filmstrip along the bottom of the stage column. */
 .p2-shell{
@@ -49,7 +72,9 @@
   padding-bottom:var(--gap-3);
 }
 
-/* Right pane: the framed preview. */
+/* Right pane: the framed preview. A centred column, so the stage reads as one
+   hero group and the primary action sits with the identity instead of floating
+   off on its own. */
 .p2-stage{
   grid-column:2;
   grid-row:1;
@@ -61,9 +86,14 @@
   border-radius:var(--r);
   background:var(--panel);
   display:flex;
+  flex-direction:column;
   align-items:center;
   justify-content:center;
-  overflow:hidden;
+  /* safe centring, so a stage shorter than its content still begins at the top
+     instead of clipping the top out of reach once the stage scrolls. */
+  justify-content:safe center;
+  gap:var(--gap-4);
+  overflow:auto;
 }
 
 /* Corner crop marks. Two diagonal Ls, one from each pseudo-element. */
@@ -105,13 +135,13 @@
   color:var(--dim);
 }
 
-/* The primary action, overlaid on the stage. */
+/* The primary action, the last item in the stage's centred column. It is in the
+   flow, not overlaid: it sits with the identity, and it stays put when the rail's
+   content changes height. */
 .p2-start{
-  position:absolute;
-  bottom:var(--gap-4);
-  left:50%;
-  transform:translateX(-50%);
+  position:relative;
   z-index:2;
+  flex:none;
 }
 
 /* The stage's content: drill identity while idle, a result after a run. */
@@ -125,7 +155,7 @@
   max-width:560px;
   /* Top padding clears the absolutely-positioned meta strip, so a short stage
      never lets the body ride up under it. */
-  padding:44px var(--gap-5) 76px;
+  padding:44px var(--gap-5) var(--gap-3);
   text-align:center;
 }
 
@@ -144,7 +174,6 @@
 .p2-stage-art svg{width:44px;height:44px;display:block;overflow:visible}
 
 .p2-stage-title{margin:0;font-size:clamp(20px,2.4vw,28px);font-weight:650;letter-spacing:-.02em}
-.p2-stage-hint{margin:0;max-width:46ch;font-size:14px;line-height:1.5;color:var(--muted)}
 
 .p2-stage-idle{
   display:inline-flex;
@@ -214,22 +243,29 @@
 
 .p2-strip-sep{flex:none;width:1px;align-self:stretch;background:var(--line);margin:2px var(--gap-2)}
 
-/* One column under 720px: rail, then stage, then filmstrip. */
+/* One column under 720px: rail, then stage, then filmstrip. Every row is bounded
+   so the filmstrip is always visible and neither pane can push the page past the
+   viewport; both panes scroll inside their own row. */
 @media (max-width:720px){
   .p2-shell{
     grid-template-columns:1fr;
-    grid-template-rows:auto minmax(300px,1fr) auto;
-    flex:0 0 auto;
+    grid-template-rows:minmax(0,0.8fr) minmax(0,1fr) auto;
+    flex:1 1 auto;
   }
   .p2-rail{
     grid-column:1;
     grid-row:1;
     border-right:0;
     border-bottom:1px solid var(--line);
-    overflow-y:visible;
+    overflow-y:auto;
   }
-  .p2-stage{grid-column:1;grid-row:2}
+  .p2-stage{grid-column:1;grid-row:2;gap:var(--gap-3)}
   .p2-filmstrip{grid-column:1;grid-row:3}
+  /* The hero gets a smaller footprint on a phone, so the primary action still
+     fits beside the identity in a short stage row. */
+  .p2-stage-art{width:64px;height:64px}
+  .p2-stage-art svg{width:34px;height:34px}
+  .p2-stage-body{padding:34px var(--gap-4) var(--gap-2)}
 }
 
 @media (prefers-reduced-motion:reduce){
