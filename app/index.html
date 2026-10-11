@@ -6,6 +6,7 @@
 <title>Neuralbase</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="focus.css">
+<link rel="stylesheet" href="ui/p2.css">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <script type="importmap">
 { "imports": { "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm" } }
@@ -27,7 +28,7 @@
     <a href="#stats" data-view="stats">Stats</a>
   </nav>
   <div class="topbar-right">
-    <span class="account" id="accountName">Account</span>
+    <button class="account" id="accountName" type="button" aria-label="Account settings">Account</button>
     <button class="signout" id="signOutBtn" type="button">Sign out</button>
   </div>
 </header>
@@ -39,6 +40,7 @@
     <section class="view" id="view-train" tabindex="-1" aria-label="Drills" hidden></section>
     <section class="view" id="view-stats" tabindex="-1" aria-label="Stats" hidden></section>
     <section class="view" id="view-circuit" tabindex="-1" aria-label="Circuit" hidden></section>
+    <section class="view" id="view-settings" tabindex="-1" aria-label="Settings" hidden></section>
   </div>
 </main>
 
@@ -72,7 +74,7 @@
 
 <script>
   /* View modules that exist in app/views/. The router imports only names listed here. */
-  window.CORTEX_VIEWS = ["train", "stats", "circuit"];
+  window.CORTEX_VIEWS = ["train", "stats", "circuit", "settings"];
 </script>
 <script src="content.js"></script>
 <script src="store.js"></script>

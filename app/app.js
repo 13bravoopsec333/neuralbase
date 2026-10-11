@@ -87,9 +87,23 @@ async function boot() {
   const ctx = {
     user, profile, db, api, audio, themes, motion, navigate: () => {},
     signOut,
+    /* Returns { ok, error }. The caller decides what to show and when to
+       leave; a failed delete must not read as success and must not sign the
+       user out, or their data survives with no account to reach it. */
     deleteAccount: async function () {
-      try { await db.deleteAccount(); } catch (e) {}
-      try { await auth.signOut(); } catch (e) {}
+      let res = null;
+      try {
+        res = await db.deleteAccount();
+      } catch (e) {
+        res = { ok: false, error: (e && e.message) || 'unknown_error' };
+      }
+      if (!res || !res.ok) {
+        return { ok: false, error: (res && res.error) || 'delete_failed' };
+      }
+      /* Only now is the data gone. Sign out is best effort: SIGNED_OUT also
+         sends the shell to auth.html, but the caller redirects too. */
+      try { await auth.signOut(); } catch (e) { /* data is already gone */ }
+      return { ok: true };
     },
   };
 
@@ -137,6 +151,12 @@ async function boot() {
       if (a.getAttribute('data-view') === name) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
     });
+    /* Settings is not a nav link, so the account button carries the current state
+       instead: it reads as active exactly while Settings is the open view. */
+    if (nameEl) {
+      if (name === 'settings') nameEl.setAttribute('aria-current', 'page');
+      else nameEl.removeAttribute('aria-current');
+    }
   }
   function go(name) {
     setCurrent(name);
@@ -149,6 +169,14 @@ async function boot() {
       go(a.getAttribute('data-view'));
     });
   });
+  /* The account name opens Settings. It is a button, not a nav item, so it is
+     wired here and never appears in the top nav. */
+  if (nameEl) {
+    nameEl.addEventListener('click', function (event) {
+      event.preventDefault();
+      go('settings');
+    });
+  }
   window.addEventListener('hashchange', function () {
     const name = String(location.hash || '').replace(/^#/, '');
     if (name) go(name);

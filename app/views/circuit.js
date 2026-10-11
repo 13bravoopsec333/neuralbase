@@ -1,20 +1,29 @@
-/* Neuralbase view: Circuit.
+/* Neuralbase view: Circuit, in the P2 preview-first layout.
 
-   A third view next to Drills and Stats. The builder is an ordered list of drill
-   steps: each step picks a drill, sets a wall-clock cap (Off, 30, 60, 90, 120
-   seconds), and carries its own validated settings. Start runs the steps in
-   order in the full-screen focus stage, advancing on the drill's own completion
-   or when the cap runs out.
+   The shell is a narrow left rail and a big stage (see app/ui/p2.css for the
+   shared .p2-shell geometry). The rail is the ordered step list: each step picks
+   a drill, sets a wall-clock cap (Off, 30, 60, 90, 120 seconds), and carries its
+   own validated settings under a settings disclosure. The stage is the hero: it
+   draws the circuit as a duration-proportional timeline with the total run time,
+   and the primary Start circuit action floats over it. Along the bottom of the
+   stage a filmstrip of the nine drills appends one as a new step.
 
-   Runs and the session are saved through ctx.db the same way Train saves them,
-   so Stats and the streak read a circuit exactly like a normal set. The model
-   itself lives in app/lib/circuit.js under cortex.circuits, local only.
+   Start runs the steps in order in the full-screen focus stage, advancing on the
+   drill's own completion or when the cap runs out. Runs and the session are saved
+   through ctx.db the same way Train saves them, so Stats and the streak read a
+   circuit exactly like a normal set. The model lives in app/lib/circuit.js under
+   cortex.circuits, local only.
 
-   Scoped styles, design tokens only, both themes, no gradients, no shadows. */
+   Scoped styles, design tokens only, both themes, no gradients, no shadows.
+   The .p2-* classes are the shared shell contract; this file defines only .ci-*. */
 
 import * as Circuit from '../lib/circuit.js';
 
 var CACHE_KEY = 'cortex.cache.data';
+
+/* A step appended from the filmstrip or Add step starts at the model's default
+   cap, 90 seconds. */
+var STEP_SECONDS = 90;
 
 /* Drills whose trials come from a seedable stream, so a fresh seed means a fresh
    sequence for them. Copied from Train: the same map, the same reasoning. */
@@ -34,6 +43,33 @@ function h(tag, cls, text) {
   if (cls) n.className = cls;
   if (text != null) n.textContent = text;
   return n;
+}
+
+function svgEl(tag, attrs) {
+  var n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  if (attrs) {
+    for (var k in attrs) {
+      if (Object.prototype.hasOwnProperty.call(attrs, k)) n.setAttribute(k, attrs[k]);
+    }
+  }
+  return n;
+}
+
+/* The three step operations, drawn in currentColor so every theme picks them up. */
+var ICON_PATHS = {
+  up: 'M8 13V3M4 7l4-4 4 4',
+  down: 'M8 3v10M4 9l4 4 4-4',
+  remove: 'M4 4l8 8M12 4l-8 8'
+};
+
+function iconSvg(kind) {
+  var svg = svgEl('svg', {
+    viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor',
+    'stroke-width': '1.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+    'aria-hidden': 'true', focusable: 'false'
+  });
+  svg.appendChild(svgEl('path', { d: ICON_PATHS[kind] }));
+  return svg;
 }
 
 function drillById(id) {
@@ -134,45 +170,90 @@ function injectStyles() {
   var ACC_S = 'var(--accent-soft,var(--lime-soft))';
   var ACC_E = 'var(--accent-edge,var(--lime-edge))';
   s.textContent = [
-    '.ci-wrap{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:none;margin-inline:0;padding-top:var(--gap-5)}',
-    '.ci-lede{margin:0;color:var(--dim);font-size:13px;line-height:1.5;max-width:70ch}',
-    '.ci-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}',
-    '.ci-step{display:flex;flex-direction:column;gap:10px;padding:14px 0;border-top:1px solid var(--line2)}',
-    '.ci-step:first-child{border-top:0}',
-    '.ci-step-main{display:grid;grid-template-columns:max-content minmax(0,1fr) max-content max-content;gap:10px 14px;align-items:center}',
-    '.ci-pos{font-family:var(--mono);font-size:12px;color:var(--dim);min-width:1.5em;text-align:right}',
-    '.ci-drill{appearance:none;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;color:var(--ink);font-family:var(--sans);font-size:13px;font-weight:500;padding:7px 10px;min-height:34px;min-width:0;max-width:100%;cursor:pointer}',
+    /* The view frame. The shell (app/ui/p2.css) owns .p2-shell, .p2-rail, .p2-stage,
+       .p2-stage-meta, .p2-start, .p2-filmstrip and .p2-chip; everything here is .ci-*. */
+    '.ci-view{width:100%;max-width:none;margin-inline:0;justify-content:flex-start;padding-top:var(--gap-4)}',
+    '.ci-wrap{width:100%;max-width:none;margin-inline:0;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}',
+
+    /* ---------- rail: the ordered step list ---------- */
+    '.ci-rail-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3)}',
+    '.ci-rail-title{margin:0;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}',
+    '.ci-rail-count{font-family:var(--mono);font-size:11.5px;color:var(--dim)}',
+    '.ci-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}',
+    '.ci-step{border:1px solid var(--line2);border-radius:var(--r);background:var(--panel);padding:11px;display:flex;flex-direction:column;gap:10px;min-width:0}',
+    '.ci-step-top{display:flex;align-items:center;gap:8px;min-width:0}',
+    '.ci-grip{flex:none;width:10px;height:16px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:2px;color:var(--line2)}',
+    '.ci-grip i{display:block;width:3px;height:3px;border-radius:50%;background:currentColor}',
+    '.ci-n{flex:none;width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line2)}',
+    '.ci-drill{width:100%;min-width:0;max-width:100%;appearance:none;-webkit-appearance:none;background:transparent;border:1px solid transparent;border-radius:6px;color:var(--ink);font-family:var(--sans);font-size:12.5px;font-weight:600;padding:5px 6px;cursor:pointer}',
     '.ci-drill:hover{border-color:var(--line2)}',
-    '.ci-seg{display:flex;flex-wrap:wrap;gap:2px;padding:3px;border:1px solid var(--line2);border-radius:10px;background:var(--panel2);min-width:0}',
-    '.ci-seg-btn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;padding:4px 9px;border-radius:7px;min-height:28px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
-    '.ci-seg-btn:not(:disabled):hover{color:var(--ink)}',
-    '.ci-seg-btn[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
-    '.ci-rowacts{display:flex;gap:4px;align-items:center;flex:none}',
-    '.ci-act{background:none;border:1px solid transparent;border-radius:8px;padding:6px 8px;min-height:32px;font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:color .15s ease,border-color .15s ease}',
-    '.ci-act:not(:disabled):hover{color:var(--ink);border-color:var(--line2)}',
-    '.ci-act:disabled{opacity:.4;cursor:not-allowed}',
-    '.ci-act-rm:hover{color:var(--warn);border-color:var(--warn)}',
-    '.ci-set{border:0;padding:0;margin:0}',
-    '.ci-set-sum{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;padding:2px 0}',
+    '.ci-ops{margin-left:auto;display:flex;gap:4px;flex:none}',
+    '.ci-icon{width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid var(--line2);border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;transition:color .12s ease,border-color .12s ease,background-color .12s ease}',
+    '.ci-icon:hover:not(:disabled){color:var(--ink);background:var(--hover)}',
+    '.ci-icon:disabled{opacity:.35;cursor:not-allowed}',
+    '.ci-icon svg{width:13px;height:13px;display:block}',
+    '.ci-icon-rm:hover:not(:disabled){color:var(--warn);border-color:var(--warn)}',
+    '.ci-dur{display:flex;align-items:center;gap:9px;min-width:0}',
+    '.ci-dur-lbl{flex:none;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}',
+
+    /* segmented controls (duration, and every choice setting) */
+    '.ci-seg{display:flex;flex:1 1 auto;min-width:0;border:1px solid var(--line2);border-radius:6px;overflow:hidden}',
+    '.ci-seg-btn{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;padding:6px 2px;background:transparent;border:0;border-right:1px solid var(--line2);color:var(--muted);font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;cursor:pointer;transition:background-color .12s ease,color .12s ease}',
+    '.ci-seg-btn:last-child{border-right:0}',
+    '.ci-seg-btn:hover{background:var(--hover);color:var(--ink)}',
+    '.ci-seg-btn[aria-pressed="true"]{background:' + ACC_S + ';color:' + ACC + ';font-weight:600}',
+
+    /* settings disclosure */
+    '.ci-set{border-top:1px solid var(--line2);padding-top:9px}',
+    '.ci-set-sum{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:11.5px;font-weight:600;color:var(--muted);transition:color .12s ease}',
     '.ci-set-sum::-webkit-details-marker{display:none}',
-    '.ci-set-sum::before{content:"+";font-family:var(--mono)}',
-    '.ci-set[open] .ci-set-sum::before{content:"-" }',
-    '.ci-set-body{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 12px;align-items:center;padding:10px 0 2px;max-width:640px}',
-    '.ci-set-row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:center}',
-    '.ci-set-head{display:flex;align-items:center;gap:8px;min-width:0;justify-content:flex-end}',
-    '.ci-set-label{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;text-align:right;justify-self:end}',
-    '.ci-set-val{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
-    '.ci-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}',
-    '.ci-chips .ci-seg-btn{border-color:var(--line2);border-radius:999px;padding:4px 12px}',
+    '.ci-set-sum::before{content:"+";font-family:var(--mono);font-size:13px;line-height:1}',
+    '.ci-set[open] .ci-set-sum::before{content:"-"}',
+    '.ci-set[open] .ci-set-sum{color:' + ACC + '}',
+    '.ci-set-body{display:flex;flex-direction:column;gap:var(--gap-3);margin-top:11px}',
+    '.ci-field{display:flex;flex-direction:column;gap:7px;min-width:0}',
+    '.ci-field-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3)}',
+    '.ci-field-name{font-family:var(--sans);font-size:12.5px;font-weight:600;color:var(--ink)}',
+    '.ci-field-val{font-family:var(--mono);font-size:12px;color:' + ACC + '}',
+    '.ci-chips{display:flex;flex-wrap:wrap;gap:6px}',
+    '.ci-chips .ci-seg-btn{flex:0 0 auto;border:1px solid var(--line2);border-radius:999px;padding:5px 11px}',
     '.ci-chips .ci-seg-btn[aria-pressed="true"]{border-color:' + ACC_E + ';background:' + ACC_S + ';color:' + ACC + '}',
-    '.ci-switch{padding:3px;border:1px solid var(--line2);border-radius:999px;background:var(--panel2);display:flex;gap:2px}',
-    '.ci-switch .ci-seg-btn{min-width:52px}',
-    '.ci-switch .ci-seg-btn[aria-pressed="true"]{color:var(--bg);background:' + ACC + ';border-color:' + ACC + '}',
-    '.ci-bar{display:flex;flex-wrap:wrap;gap:var(--gap-3);align-items:center;margin-top:var(--gap-2)}',
-    '.ci-hint{margin:0;color:var(--dim);font-size:13px;line-height:1.5}',
-    '.ci-empty{padding:var(--gap-4) 0;border-top:1px solid var(--line2);color:var(--dim);font-size:13px}',
-    /* focus-visible rings on every real control */
-    '.ci-drill:focus-visible,.ci-seg-btn:focus-visible,.ci-act:focus-visible,.ci-set-sum:focus-visible,.ci-start:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible,.ci-res-act:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
+    '.ci-switch .ci-seg-btn[aria-pressed="true"]{background:' + ACC + ';color:var(--bg)}',
+    '.ci-add{width:100%}',
+
+    /* ---------- stage: the duration-proportional timeline ---------- */
+    /* The top padding clears the absolutely-positioned meta strip, so a short
+       stage never lets the timeline ride up under it. Matches the shared
+       .p2-stage-body on the drill screen. */
+    '.ci-stage-body{align-self:stretch;width:100%;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:var(--gap-4);padding:44px var(--gap-5) 76px}',
+    '.ci-total{display:flex;align-items:baseline;gap:var(--gap-3);flex-wrap:wrap}',
+    '.ci-total-big{font-family:var(--mono);font-size:clamp(30px,5.5vw,44px);font-weight:650;letter-spacing:-.02em;color:' + ACC + ';line-height:1}',
+    '.ci-total-cap{font-size:12px;color:var(--muted)}',
+    '.ci-total-steps{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--dim)}',
+    '.ci-track{position:relative;display:flex;height:78px;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;background:var(--panel2)}',
+    '.ci-seg-block{flex:0 0 var(--w,25%);min-width:0;border-right:1px solid var(--line2);display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 14px;overflow:hidden;transition:filter .12s ease}',
+    '.ci-seg-block:last-of-type{border-right:0}',
+    '.ci-seg-block:hover{filter:brightness(1.15)}',
+    '.ci-sb-top{display:flex;align-items:baseline;gap:8px;min-width:0}',
+    '.ci-sb-n{font-family:var(--mono);font-size:11px;color:var(--dim)}',
+    '.ci-sb-name{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.ci-sb-dur{font-family:var(--mono);font-size:11.5px;color:var(--muted)}',
+    '.ci-playhead{position:absolute;top:0;bottom:0;left:0;width:2px;background:' + ACC + '}',
+    '.ci-ruler{position:relative;height:24px;margin:0 2px}',
+    '.ci-tick{position:absolute;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:3px}',
+    '.ci-tick i{display:block;width:1px;height:6px;background:var(--line2)}',
+    '.ci-tick-major i{height:9px;background:var(--muted)}',
+    '.ci-tick b{font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--dim);white-space:nowrap}',
+    '.ci-note{margin:0;font-size:11.5px;color:var(--dim)}',
+
+    /* ---------- the filmstrip: .p2-chip is the shell's tile, .p2-chip-art and
+       .p2-chip-name are its parts. Nothing circuit-specific is needed here. ---------- */
+
+    '.ci-empty{margin:0;color:var(--dim);font-size:12.5px;line-height:1.5}',
+
+    /* focus-visible rings on every real control this view owns */
+    '.ci-drill:focus-visible,.ci-seg-btn:focus-visible,.ci-icon:focus-visible,.ci-set-sum:focus-visible,.ci-chip:focus-visible,.ci-add:focus-visible,.ci-res-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
+
     /* Results: plain list, quiet, one action line. */
     '.ci-res{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:640px;margin-inline:auto;padding-top:var(--gap-5)}',
     '.ci-res-title{margin:0;font-size:20px;font-weight:600;letter-spacing:-.015em}',
@@ -187,10 +268,18 @@ function injectStyles() {
     '.ci-res-act{background:none;border:0;padding:6px 0;font-family:var(--sans);font-size:15px;font-weight:600;color:var(--muted);cursor:pointer;transition:color .15s ease}',
     '.ci-res-act:hover{color:var(--ink)}',
     '.ci-res-again{color:' + ACC + '}',
+
     /* Focus stage: reuse focus.css. Only the progress readout needs a rule. */
     '.nb-focus-stage .ci-prog{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--muted);white-space:nowrap}',
-    '@media (max-width:560px){.ci-step-main{grid-template-columns:max-content minmax(0,1fr)}.ci-seg{grid-column:1 / -1}.ci-rowacts{grid-column:1 / -1;justify-content:flex-start}.ci-set-body{grid-template-columns:minmax(0,1fr)}}',
-    '@media (prefers-reduced-motion:reduce){.ci-seg-btn,.ci-act,.ci-res-act{transition:none}}'
+
+    '@media (max-width:560px){.ci-total-steps{display:none}.ci-seg-btn{font-size:11.5px;padding:6px 1px}.ci-stage-body{padding:44px var(--gap-4) 70px}}',
+    '@media (max-width:380px){.ci-sb-name{display:none}.ci-total-big{font-size:28px}}',
+    /* On phones the shell stacks. The hero comes first here too, the same order
+       the drill screen uses: stage (with Start circuit), then the filmstrip to
+       add a step, then the step list to edit. Scoped to .ci-view, so the shared
+       shell keeps its own order for anything else. */
+    '@media (max-width:720px){.ci-view .p2-shell{grid-template-rows:minmax(320px,auto) auto auto}.ci-view .p2-stage{grid-row:1}.ci-view .p2-filmstrip{grid-row:2}.ci-view .p2-rail{grid-row:3;border-right:0;border-bottom:0;border-top:1px solid var(--line)}}',
+    '@media (prefers-reduced-motion:reduce){.ci-seg-btn,.ci-icon,.ci-set-sum,.ci-seg-block,.ci-res-act{transition:none}}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -306,21 +395,22 @@ function segGroup(entry, variant) {
   return seg;
 }
 
-/* One setting row. The control updates its own pressed state, so changing a
+/* One setting: label and value on a line, the control under it, so the narrow
+   rail stays readable. The control updates its own pressed state, so changing a
    value never rebuilds the list or moves focus. */
 function buildSettingRow(step, entry) {
   var current = step.options ? step.options[entry.key] : undefined;
-  var row = h('div', 'ci-set-row');
-  var head = h('div', 'ci-set-head');
-  head.appendChild(h('span', 'ci-set-label', entry.label));
-  head.appendChild(h('span', 'ci-set-val mono', optionReadout(entry, current)));
-  row.appendChild(head);
+  var field = h('div', 'ci-field');
+  var head = h('div', 'ci-field-head');
+  head.appendChild(h('span', 'ci-field-name', entry.label));
+  head.appendChild(h('span', 'ci-field-val mono', optionReadout(entry, current)));
+  field.appendChild(head);
 
   var type = entry.type || 'number';
-  if (type === 'toggle') row.appendChild(buildToggle(step, entry, current));
-  else if (type === 'choice') row.appendChild(entry.multi ? buildMulti(step, entry, current) : buildChoice(step, entry, current));
-  else row.appendChild(buildNumber(step, entry, current));
-  return row;
+  if (type === 'toggle') field.appendChild(buildToggle(step, entry, current));
+  else if (type === 'choice') field.appendChild(entry.multi ? buildMulti(step, entry, current) : buildChoice(step, entry, current));
+  else field.appendChild(buildNumber(step, entry, current));
+  return field;
 }
 
 function commitSetting(step, entry, value, seg, multi) {
@@ -402,13 +492,13 @@ function buildMulti(step, entry, current) {
 
 function buildSettings(step, index) {
   var det = h('details', 'ci-set');
-  var sum = h('summary', 'ci-set-sum', 'Settings');
+  var sum = h('summary', 'ci-set-sum', 'settings');
   sum.setAttribute('aria-label', 'Settings for step ' + (index + 1));
   det.appendChild(sum);
   var body = h('div', 'ci-set-body');
   var spec = Circuit.optionSpecFor(step.drillId);
   if (!spec.length) {
-    body.appendChild(h('p', 'ci-hint', 'This drill has no settings.'));
+    body.appendChild(h('p', 'ci-empty', 'This drill has no settings.'));
   } else {
     for (var i = 0; i < spec.length; i++) body.appendChild(buildSettingRow(step, spec[i]));
   }
@@ -432,74 +522,220 @@ function removeStep(index) {
   say('Step removed.');
 }
 
-function addStep() {
-  activeCircuit().steps.push({ drillId: firstDrillId(), seconds: 90, options: {} });
+/* Append one step for a drill, at the default cap. Shared by Add step and the
+   filmstrip, so the two entry points cannot drift apart. */
+function appendStep(drillId) {
+  activeCircuit().steps.push({ drillId: drillId, seconds: STEP_SECONDS, options: {} });
   commitModel();
   showBuilder();
-  say('Step added.');
+  say(drillById(drillId).name + ' added as a step.');
+}
+
+function addStep() { appendStep(firstDrillId()); }
+
+function iconBtn(kind, disabled, label, onClick, extra) {
+  var b = h('button', 'ci-icon' + (extra ? ' ' + extra : ''));
+  b.type = 'button';
+  b.setAttribute('aria-label', label);
+  if (disabled) b.disabled = true;
+  b.appendChild(iconSvg(kind));
+  b.addEventListener('click', onClick);
+  return b;
 }
 
 function buildStepRow(step, index, count) {
   var li = h('li', 'ci-step');
 
-  var main = h('div', 'ci-step-main');
-  main.appendChild(h('span', 'ci-pos mono', String(index + 1)));
-  main.appendChild(buildDrillChooser(step, index));
-  main.appendChild(buildDuration(step));
+  var top = h('div', 'ci-step-top');
+  var grip = h('span', 'ci-grip');
+  grip.setAttribute('aria-hidden', 'true');
+  for (var g = 0; g < 6; g++) grip.appendChild(h('i'));
+  top.appendChild(grip);
+  top.appendChild(h('span', 'ci-n mono', String(index + 1)));
 
-  var acts = h('div', 'ci-rowacts');
-  var up = h('button', 'ci-act', 'Up');
-  up.type = 'button';
-  up.setAttribute('aria-label', 'Move step ' + (index + 1) + ' up');
-  up.disabled = index === 0;
-  up.addEventListener('click', function () { moveStep(index, index - 1); });
-  var down = h('button', 'ci-act', 'Down');
-  down.type = 'button';
-  down.setAttribute('aria-label', 'Move step ' + (index + 1) + ' down');
-  down.disabled = index === count - 1;
-  down.addEventListener('click', function () { moveStep(index, index + 1); });
-  var rm = h('button', 'ci-act ci-act-rm', 'Remove');
-  rm.type = 'button';
-  rm.setAttribute('aria-label', 'Remove step ' + (index + 1));
-  rm.addEventListener('click', function () { removeStep(index); });
-  acts.appendChild(up);
-  acts.appendChild(down);
-  acts.appendChild(rm);
-  main.appendChild(acts);
+  var ops = h('div', 'ci-ops');
+  ops.appendChild(iconBtn('up', index === 0, 'Move step ' + (index + 1) + ' up', function () { moveStep(index, index - 1); }));
+  ops.appendChild(iconBtn('down', index === count - 1, 'Move step ' + (index + 1) + ' down', function () { moveStep(index, index + 1); }));
+  ops.appendChild(iconBtn('remove', false, 'Remove step ' + (index + 1), function () { removeStep(index); }, 'ci-icon-rm'));
+  top.appendChild(ops);
+  li.appendChild(top);
 
-  li.appendChild(main);
+  /* The drill chooser gets its own full-width row, so the step's drill name is
+     readable rather than clipped inside the header row. */
+  li.appendChild(buildDrillChooser(step, index));
+
+  var dur = h('div', 'ci-dur');
+  dur.appendChild(h('span', 'ci-dur-lbl', 'Run'));
+  dur.appendChild(buildDuration(step));
+  li.appendChild(dur);
+
   li.appendChild(buildSettings(step, index));
   return li;
+}
+
+/* ---------- the stage: total time and the proportional timeline ---------- */
+
+/* A step set to Off has no fixed length, so it has no share of the scale. It is
+   drawn at a nominal width so it stays visible and labelled "open", and the
+   numeric total counts only the fixed caps. */
+var OPEN_WEIGHT = 60;
+
+function buildTimeline(steps) {
+  var totalFixed = 0, sumW = 0, open = 0, weights = [];
+  for (var i = 0; i < steps.length; i++) {
+    var sec = steps[i].seconds;
+    var w;
+    if (sec > 0) { w = sec; totalFixed += sec; } else { w = OPEN_WEIGHT; open++; }
+    weights.push(w);
+    sumW += w;
+  }
+
+  var tl = h('div', 'ci-stage-body');
+
+  var total = h('div', 'ci-total');
+  total.appendChild(h('span', 'ci-total-big mono', totalFixed > 0 ? fmtClock(totalFixed * 1000) : 'Open'));
+  total.appendChild(h('span', 'ci-total-cap', open > 0 ? 'total run time, plus open steps' : 'total run time'));
+  var fixed = [];
+  for (var p = 0; p < steps.length; p++) if (steps[p].seconds > 0) fixed.push(String(steps[p].seconds));
+  var breakdown = fixed.length ? fixed.join(' + ') + ' s' : '';
+  if (open) breakdown += (breakdown ? ' + ' : '') + open + ' open';
+  total.appendChild(h('span', 'ci-total-steps mono', breakdown));
+  tl.appendChild(total);
+
+  var track = h('div', 'ci-track');
+  for (var j = 0; j < steps.length; j++) {
+    var block = h('div', 'ci-seg-block');
+    block.setAttribute('style', '--w:' + (sumW ? (weights[j] / sumW) * 100 : 0) + '%');
+    var bTop = h('span', 'ci-sb-top');
+    bTop.appendChild(h('span', 'ci-sb-n mono', String(j + 1)));
+    bTop.appendChild(h('span', 'ci-sb-name', drillById(steps[j].drillId).name));
+    block.appendChild(bTop);
+    block.appendChild(h('span', 'ci-sb-dur mono', steps[j].seconds > 0 ? steps[j].seconds + ' s' : 'open'));
+    track.appendChild(block);
+  }
+  var playhead = h('span', 'ci-playhead');
+  playhead.setAttribute('aria-hidden', 'true');
+  track.appendChild(playhead);
+  tl.appendChild(track);
+
+  var ruler = h('div', 'ci-ruler');
+  ruler.setAttribute('aria-hidden', 'true');
+  var fracs = [0, 0.25, 0.5, 0.75, 1];
+  for (var f = 0; f < fracs.length; f++) {
+    var tick = h('span', 'ci-tick' + (f === 0 || f === 2 || f === 4 ? ' ci-tick-major' : ''));
+    tick.setAttribute('style', 'left:' + (fracs[f] * 100) + '%');
+    tick.appendChild(h('i'));
+    if (open === 0 || f === 0 || f === 4) tick.appendChild(h('b', null, String(Math.round(totalFixed * fracs[f]))));
+    ruler.appendChild(tick);
+  }
+  tl.appendChild(ruler);
+
+  tl.appendChild(h('p', 'ci-note', open > 0
+    ? 'Each block is as wide as it runs. Open steps run to completion.'
+    : 'Each block is as wide as it runs. Seconds along the scale.'));
+
+  return tl;
+}
+
+function buildStage() {
+  var steps = activeCircuit().steps;
+  var stage = h('section', 'p2-stage');
+  stage.setAttribute('aria-label', 'Circuit stage');
+
+  var meta = h('div', 'p2-stage-meta', 'Timeline \u00b7 ' + steps.length + (steps.length === 1 ? ' step' : ' steps'));
+  stage.appendChild(meta);
+
+  var start = h('button', 'btn-primary p2-start ci-start', 'Start circuit');
+  start.type = 'button';
+  start.disabled = !steps.length;
+  start.addEventListener('click', function () { startRun(); });
+  stage.appendChild(start);
+
+  if (steps.length) {
+    stage.appendChild(buildTimeline(steps));
+  } else {
+    var empty = h('div', 'ci-stage-body');
+    empty.appendChild(h('p', 'ci-empty', 'Add a step to see the timeline.'));
+    stage.appendChild(empty);
+  }
+  return stage;
+}
+
+/* ---------- the filmstrip: every drill, one click to append a step ---------- */
+
+function buildFilmstrip() {
+  var strip = h('div', 'p2-filmstrip');
+  strip.setAttribute('aria-label', 'Add a drill as a step');
+  var D = (globalThis.Content && globalThis.Content.DRILLS) || [];
+  var byId = {};
+  for (var b = 0; b < D.length; b++) byId[D[b].id] = D[b];
+  var seen = {};
+  var groups = [];
+  DRILL_GROUPS.forEach(function (g) {
+    var ids = g.ids.filter(function (id) { return byId[id] && !seen[id]; });
+    ids.forEach(function (id) { seen[id] = 1; });
+    if (ids.length) groups.push(ids);
+  });
+  var rest = D.map(function (p) { return p.id; }).filter(function (id) { return !seen[id]; });
+  if (rest.length) groups.push(rest);
+
+  groups.forEach(function (ids, gi) {
+    if (gi > 0) {
+      var sep = h('span', 'p2-strip-sep');
+      sep.setAttribute('aria-hidden', 'true');
+      strip.appendChild(sep);
+    }
+    ids.forEach(function (id) {
+      var d = byId[id];
+      var chip = h('button', 'p2-chip ci-chip');
+      chip.type = 'button';
+      chip.setAttribute('aria-label', 'Add ' + d.name + ' as a step');
+      var art = h('span', 'p2-chip-art');
+      art.setAttribute('aria-hidden', 'true');
+      if (d.icon) art.innerHTML = d.icon;
+      chip.appendChild(art);
+      chip.appendChild(h('span', 'p2-chip-name', d.name));
+      chip.addEventListener('click', function () { appendStep(id); });
+      strip.appendChild(chip);
+    });
+  });
+  return strip;
+}
+
+function buildRail() {
+  var steps = activeCircuit().steps;
+  var rail = h('aside', 'p2-rail');
+  rail.setAttribute('aria-label', 'Circuit steps');
+
+  var head = h('div', 'ci-rail-head');
+  head.appendChild(h('p', 'ci-rail-title', 'Steps'));
+  head.appendChild(h('span', 'ci-rail-count mono', String(steps.length)));
+  rail.appendChild(head);
+
+  if (!steps.length) {
+    rail.appendChild(h('p', 'ci-empty', 'No steps yet. Add a step to start building your circuit.'));
+  } else {
+    var list = h('ol', 'ci-steps');
+    for (var i = 0; i < steps.length; i++) list.appendChild(buildStepRow(steps[i], i, steps.length));
+    rail.appendChild(list);
+  }
+
+  var add = h('button', 'btn-ghost ci-add', 'Add step');
+  add.type = 'button';
+  add.addEventListener('click', addStep);
+  rail.appendChild(add);
+  return rail;
 }
 
 function showBuilder() {
   if (!ui.root) return;
   ui.root.replaceChildren();
 
-  ui.root.appendChild(h('p', 'ci-lede', 'Build an ordered list of drills, set how long each one runs, then start the circuit.'));
-
-  var steps = activeCircuit().steps;
-  if (!steps.length) {
-    ui.root.appendChild(h('p', 'ci-empty', 'No steps yet. Add a step to start building your circuit.'));
-  } else {
-    var list = h('ol', 'ci-list');
-    for (var i = 0; i < steps.length; i++) list.appendChild(buildStepRow(steps[i], i, steps.length));
-    ui.root.appendChild(list);
-  }
-
-  var bar = h('div', 'ci-bar');
-  var add = h('button', 'btn-ghost ci-add', 'Add step');
-  add.type = 'button';
-  add.addEventListener('click', addStep);
-  var start = h('button', 'btn-primary ci-start', 'Start circuit');
-  start.type = 'button';
-  start.disabled = !steps.length;
-  start.addEventListener('click', function () { startRun(); });
-  bar.appendChild(add);
-  bar.appendChild(start);
-  ui.root.appendChild(bar);
-
-  if (!steps.length) ui.root.appendChild(h('p', 'ci-hint', 'Add at least one step to start a circuit.'));
+  var shell = h('div', 'p2-shell');
+  shell.appendChild(buildRail());
+  shell.appendChild(buildStage());
+  shell.appendChild(buildFilmstrip());
+  ui.root.appendChild(shell);
 
   var live = h('div', 'sr');
   live.setAttribute('aria-live', 'polite');
@@ -565,7 +801,10 @@ function clearCap() {
 
 function startCap(seconds) {
   clearCap();
-  if (!seconds) return;
+  /* A finished circuit must never arm a new cap: the last step can complete
+     synchronously inside start(), and finishRun does not bump run.gen, so the
+     frame that launched it can still be live. */
+  if (!seconds || run.finishing) return;
   run.cap = { remaining: seconds * 1000, last: Date.now(), timer: 0, done: false };
   run.cap.timer = setInterval(capTick, 200);
 }
@@ -574,7 +813,9 @@ function startCap(seconds) {
    step is never cut short by the browser throttling the interval. */
 function capTick() {
   var c = run.cap;
-  if (!c || c.done) return;
+  if (!c || c.done || run.finishing) return;
+  /* A stale interval must never score a step the circuit has already left. */
+  if (!run.steps[run.index]) { clearCap(); return; }
   var now = Date.now();
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') { c.last = now; return; }
   c.remaining -= (now - c.last);
@@ -659,7 +900,7 @@ function runStep() {
       finishStep('done', rec);
     }
   });
-  if (gen !== run.gen) return;
+  if (gen !== run.gen || run.finishing) return;
   startCap(step.seconds);
   paintProgress();
 }
@@ -843,7 +1084,7 @@ export async function render(container, ctx) {
   ctxRef = ctx;
   injectStyles();
 
-  container.classList.add('view', 'view-mid-wide', 'ci-view');
+  container.classList.add('view', 'ci-view');
   container.setAttribute('aria-label', 'Circuit');
   container.replaceChildren();
 

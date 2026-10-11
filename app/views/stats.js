@@ -296,6 +296,9 @@ function injectStyles() {
   s.id = 'nb-stats-styles';
   s.textContent = [
     '.st-view{display:flex;flex-direction:column;gap:var(--gap-6,32px);width:100%;max-width:1120px;margin-inline:auto;flex:1 1 auto;min-height:0;justify-content:flex-start;padding-block:20px 44px}',
+    /* extra air between the top band and the chart, and between the chart and the
+       lower band, on top of the view gap, so the three bands read as separate */
+    '.st-view>.st-section,.st-view>.st-cols{margin-top:var(--gap-5,24px)}',
 
     /* page head */
     '.st-head{display:flex;flex-direction:column;gap:6px;padding-bottom:var(--gap-4,16px);border-bottom:1px solid var(--line2)}',
@@ -311,16 +314,17 @@ function injectStyles() {
     /* top band: calendar beside the totals */
     '.st-top{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:var(--gap-6,32px);align-items:start}',
 
-    /* totals */
+    /* totals: one rule per edge. The section head's own rule is the block's top
+       edge, every row draws a bottom rule, and the last row closes the block, so
+       nothing doubles up. */
     '.st-totals{display:flex;flex-direction:column}',
-    '.st-stat{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3,12px);padding:13px 0;border-bottom:1px solid var(--line);min-width:0}',
-    '.st-stat:first-child{border-top:1px solid var(--line2)}',
+    '.st-stat{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3,12px);padding:var(--gap-4,16px) 0;border-bottom:1px solid var(--line);min-width:0}',
     '.st-stat-label{font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}',
     '.st-stat-value{font-family:var(--mono,ui-monospace,monospace);font-variant-numeric:tabular-nums;font-size:30px;font-weight:600;line-height:1;color:var(--ink)}',
     '.st-stat-unit{font-size:13px;font-weight:500;color:var(--muted);margin-left:5px}',
 
     /* calendar */
-    '.st-cal{display:flex;flex-direction:column;gap:var(--gap-3,12px);border:1px solid var(--line);border-radius:var(--r,8px);background:var(--panel);padding:var(--gap-4,16px);max-width:620px}',
+    '.st-cal{display:flex;flex-direction:column;gap:var(--gap-4,16px);border:1px solid var(--line);border-radius:var(--r,8px);background:var(--panel);padding:var(--gap-4,16px);max-width:620px}',
     '.st-cal-top{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--gap-3,12px);flex-wrap:wrap}',
     '.st-cal-title{display:flex;flex-direction:column;gap:4px;min-width:0}',
     '.st-cal-month{margin:0;font-size:19px;font-weight:600;letter-spacing:-.015em;color:var(--ink)}',
@@ -456,6 +460,7 @@ function injectStyles() {
     '@media (max-width:900px){.st-top,.st-cols{grid-template-columns:minmax(0,1fr)}}',
     '@media (max-width:600px){',
     '.st-view{gap:var(--gap-5,24px);padding-block:16px 32px}',
+    '.st-view>.st-section,.st-view>.st-cols{margin-top:var(--gap-4,16px)}',
     '.st-title{font-size:21px}',
     '.st-stat-value{font-size:24px}',
     '.st-cal{padding:var(--gap-3,12px)}',

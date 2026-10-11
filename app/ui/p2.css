@@ -1,0 +1,238 @@
+/* P2 shared shell: preview-first with a filmstrip.
+
+   The rail holds the controls, the framed stage is the hero, and a strip along
+   the bottom switches between items. The Drills and Circuit screens both build
+   against these class names, so they are the contract between the two lanes.
+
+   Tokens only, from styles.css, so every theme works. No gradients, no shadows,
+   no purple. Icons and marks use currentColor. */
+
+/* The shell is a two-pane workspace, not a column of running text. The view
+   frame in styles.css caps .content at a reading width, which squeezes the stage
+   into a narrow box on a wide screen. Lift the cap only while a P2 screen is the
+   open view: the router keeps every visited view in the DOM (just hidden), so the
+   rule has to look for the shell inside the visible section, not anywhere. Every
+   other view keeps its measure. */
+.content:has(.view:not([hidden]) .p2-shell){max-width:none;margin-inline:0}
+
+/* Two panes: a fixed-ish rail and a flexible stage. The rail spans both rows,
+   the stage sits top right, the filmstrip along the bottom of the stage column. */
+.p2-shell{
+  display:grid;
+  grid-template-columns:clamp(280px,26vw,320px) minmax(0,1fr);
+  grid-template-rows:minmax(0,1fr) auto;
+  flex:1 1 auto;
+  width:100%;
+  min-height:0;
+}
+
+/* Left pane. Scrolls on its own when the settings run past the viewport. */
+.p2-rail{
+  grid-column:1;
+  grid-row:1 / 3;
+  min-width:0;
+  min-height:0;
+  overflow-y:auto;
+  border-right:1px solid var(--line);
+  background:var(--panel2);
+  padding:var(--gap-4);
+  display:flex;
+  flex-direction:column;
+  gap:var(--gap-4);
+}
+
+/* The rail's first block is its head: what the rail below is about. A hairline
+   under it separates the label from the controls, the same on both screens. */
+.p2-rail-head,
+.ci-rail-head{
+  border-bottom:1px solid var(--line);
+  padding-bottom:var(--gap-3);
+}
+
+/* Right pane: the framed preview. */
+.p2-stage{
+  grid-column:2;
+  grid-row:1;
+  position:relative;
+  min-width:0;
+  min-height:0;
+  margin:var(--gap-4);
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  background:var(--panel);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+
+/* Corner crop marks. Two diagonal Ls, one from each pseudo-element. */
+.p2-stage::before,
+.p2-stage::after{
+  content:"";
+  position:absolute;
+  width:10px;
+  height:10px;
+  pointer-events:none;
+}
+.p2-stage::before{
+  top:8px;
+  left:8px;
+  border-top:1px solid var(--line2);
+  border-left:1px solid var(--line2);
+}
+.p2-stage::after{
+  right:8px;
+  bottom:8px;
+  border-right:1px solid var(--line2);
+  border-bottom:1px solid var(--line2);
+}
+
+/* Small meta strip, pinned top left of the stage. */
+.p2-stage-meta{
+  position:absolute;
+  top:var(--gap-3);
+  left:calc(var(--gap-3) + 12px);
+  z-index:1;
+  max-width:calc(100% - 64px);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--dim);
+}
+
+/* The primary action, overlaid on the stage. */
+.p2-start{
+  position:absolute;
+  bottom:var(--gap-4);
+  left:50%;
+  transform:translateX(-50%);
+  z-index:2;
+}
+
+/* The stage's content: drill identity while idle, a result after a run. */
+.p2-stage-body{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:var(--gap-4);
+  width:100%;
+  max-width:560px;
+  /* Top padding clears the absolutely-positioned meta strip, so a short stage
+     never lets the body ride up under it. */
+  padding:44px var(--gap-5) 76px;
+  text-align:center;
+}
+
+.p2-stage-art{
+  width:84px;
+  height:84px;
+  flex:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid var(--line2);
+  border-radius:14px;
+  background:var(--panel2);
+  color:var(--ink);
+}
+.p2-stage-art svg{width:44px;height:44px;display:block;overflow:visible}
+
+.p2-stage-title{margin:0;font-size:clamp(20px,2.4vw,28px);font-weight:650;letter-spacing:-.02em}
+.p2-stage-hint{margin:0;max-width:46ch;font-size:14px;line-height:1.5;color:var(--muted)}
+
+.p2-stage-idle{
+  display:inline-flex;
+  align-items:center;
+  gap:var(--gap-2);
+  font-size:11px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.p2-stage-dot{
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--lime);
+  animation:p2-breathe 2.6s ease-in-out infinite;
+}
+@keyframes p2-breathe{0%,100%{opacity:.35}50%{opacity:1}}
+
+/* Bottom strip: horizontal, scrolls sideways, chips never wrap. */
+.p2-filmstrip{
+  grid-column:2;
+  grid-row:2;
+  display:flex;
+  align-items:stretch;
+  gap:var(--gap-2);
+  border-top:1px solid var(--line);
+  background:var(--panel);
+  padding:var(--gap-3) var(--gap-4);
+  overflow-x:auto;
+  overscroll-behavior-x:contain;
+}
+
+.p2-chip{
+  flex:none;
+  display:flex;
+  align-items:center;
+  gap:var(--gap-2);
+  max-width:190px;
+  padding:var(--gap-2) var(--gap-3);
+  background:var(--panel2);
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  color:var(--muted);
+  font-family:var(--sans);
+  font-size:12.5px;
+  font-weight:500;
+  line-height:1.3;
+  white-space:nowrap;
+  transition:color .15s ease,background-color .15s ease,border-color .15s ease;
+}
+.p2-chip:hover{color:var(--ink);border-color:var(--line2)}
+.p2-chip[aria-pressed="true"]{color:var(--lime);background:var(--lime-soft);border-color:var(--lime-edge)}
+
+.p2-chip-art{
+  width:20px;
+  height:20px;
+  flex:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--muted);
+}
+.p2-chip-art svg{width:100%;height:100%;display:block;overflow:visible}
+.p2-chip[aria-pressed="true"] .p2-chip-art{color:var(--lime)}
+.p2-chip-name{min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+.p2-strip-sep{flex:none;width:1px;align-self:stretch;background:var(--line);margin:2px var(--gap-2)}
+
+/* One column under 720px: rail, then stage, then filmstrip. */
+@media (max-width:720px){
+  .p2-shell{
+    grid-template-columns:1fr;
+    grid-template-rows:auto minmax(300px,1fr) auto;
+    flex:0 0 auto;
+  }
+  .p2-rail{
+    grid-column:1;
+    grid-row:1;
+    border-right:0;
+    border-bottom:1px solid var(--line);
+    overflow-y:visible;
+  }
+  .p2-stage{grid-column:1;grid-row:2}
+  .p2-filmstrip{grid-column:1;grid-row:3}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .p2-stage-dot{animation:none}
+  .p2-chip{transition:none}
+}
