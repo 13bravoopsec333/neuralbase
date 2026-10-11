@@ -120,7 +120,7 @@ var ui = {};
 /* The runner. One step at a time; a fresh container and a fresh seed per step. */
 var run = {
   on: false, scrim: null, stage: null, holder: null, progEl: null,
-  index: 0, steps: [], outcomes: [], handle: null,
+  index: 0, steps: [], outcomes: [], handle: null, gen: 0,
   cap: null, sessionDrills: [], keyHandler: null, finishing: false
 };
 
@@ -159,6 +159,7 @@ function injectStyles() {
     '.ci-set[open] .ci-set-sum::before{content:"-" }',
     '.ci-set-body{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 12px;align-items:center;padding:10px 0 2px;max-width:640px}',
     '.ci-set-row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:center}',
+    '.ci-set-head{display:flex;align-items:center;gap:8px;min-width:0;justify-content:flex-end}',
     '.ci-set-label{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;text-align:right;justify-self:end}',
     '.ci-set-val{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
     '.ci-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}',
@@ -626,6 +627,10 @@ function runStep() {
   var mount = h('div', 'drill-mount');
   run.holder.appendChild(mount);
 
+  /* A generation token: a drill that completes synchronously inside start()
+     would otherwise advance the circuit and then have this frame assign a stale
+     handle and start a stale cap on top of the next step. */
+  var gen = ++run.gen;
   var seed = newSeed();
   var Drills = globalThis.Drills;
   if (!Drills || typeof Drills.start !== 'function') {
@@ -645,6 +650,7 @@ function runStep() {
       if (ctxRef && ctxRef.db && ctxRef.db.saveCards) ctxRef.db.saveCards(cards);
     },
     onComplete: function (rec) {
+      if (gen !== run.gen) return;
       if (rec) {
         rec.meta = rec.meta || {};
         rec.meta.seed = seed;
@@ -653,6 +659,7 @@ function runStep() {
       finishStep('done', rec);
     }
   });
+  if (gen !== run.gen) return;
   startCap(step.seconds);
   paintProgress();
 }

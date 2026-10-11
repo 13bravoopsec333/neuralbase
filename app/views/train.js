@@ -9,11 +9,12 @@ var QUEUE_KEY = 'cortex.train.queue';
 var MODE_KEY = 'cortex.train.mode';
 var SEED_KEY = 'cortex.train.seed';
 
-/* Drills whose trials come from a seedable stream, so a seed means something
-   for them. Spaced Retrieval is a due-card queue, Simple Reaction draws its own
-   targets, and Mental Arithmetic steps its own level, so the seed is not passed
-   to those. */
-var SEEDED = { nback: 1, ufov: 1, palace: 1, reasoning: 1, switching: 1, sart: 1 };
+/* Every drill draws its trial stream from the seed train hands over. The six in
+   this file and the three in drills-extra.js all build their stream from
+   opts.seed (rngFrom, or rngFor for sart, crt and math), and Spaced Retrieval's
+   shuffled order draws from it too. A run records meta.seed, so the seed has to
+   reach every drill or the record is a promise the run cannot keep. */
+var SEEDED = { nback: 1, ufov: 1, palace: 1, reasoning: 1, switching: 1, sart: 1, spaced: 1, crt: 1, math: 1 };
 
 function h(tag, cls, text) {
   var n = document.createElement(tag);
