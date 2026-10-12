@@ -143,30 +143,13 @@ async function boot() {
   ctx.navigate = router.navigate;
 
   /* The top bar links are plain anchors. A click is handled here so the view
-     swaps without a page load; the hash is kept in step so a refresh or a back
-     gesture lands on the same view. The active link carries aria-current. */
+     swaps without a page load. The router owns the hash and the nav's current
+     state, so whatever view is shown is what the URL and the nav say. */
   const navLinks = Array.prototype.slice.call(document.querySelectorAll('[data-view]'));
-  function setCurrent(name) {
-    navLinks.forEach(function (a) {
-      if (a.getAttribute('data-view') === name) a.setAttribute('aria-current', 'page');
-      else a.removeAttribute('aria-current');
-    });
-    /* Settings is not a nav link, so the account button carries the current state
-       instead: it reads as active exactly while Settings is the open view. */
-    if (nameEl) {
-      if (name === 'settings') nameEl.setAttribute('aria-current', 'page');
-      else nameEl.removeAttribute('aria-current');
-    }
-  }
-  function go(name) {
-    setCurrent(name);
-    try { history.replaceState(null, '', '#' + name); } catch (e) { /* best effort */ }
-    return router.navigate(name);
-  }
   navLinks.forEach(function (a) {
     a.addEventListener('click', function (event) {
       event.preventDefault();
-      go(a.getAttribute('data-view'));
+      router.navigate(a.getAttribute('data-view'));
     });
   });
   /* The account name opens Settings. It is a button, not a nav item, so it is
@@ -174,16 +157,17 @@ async function boot() {
   if (nameEl) {
     nameEl.addEventListener('click', function (event) {
       event.preventDefault();
-      go('settings');
+      router.navigate('settings');
     });
   }
   window.addEventListener('hashchange', function () {
     const name = String(location.hash || '').replace(/^#/, '');
-    if (name) go(name);
+    if (name) router.navigate(name);
   });
 
-  const initial = String(location.hash || '').replace(/^#/, '') || 'train';
-  await go(initial);
+  /* An empty or unknown hash resolves to Drills inside the router. */
+  const initial = String(location.hash || '').replace(/^#/, '');
+  await router.navigate(initial);
 
   /* ---------- react to later auth changes ---------- */
   auth.onAuthChange((event, s) => {

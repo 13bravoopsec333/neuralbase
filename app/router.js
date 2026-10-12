@@ -5,13 +5,14 @@
    imported, so a route whose module is not there yet shows a placeholder instead
    of firing a request that would 404. */
 
-const VIEWS = ['train', 'stats', 'circuit', 'settings'];
+const VIEWS = ['train', 'stats', 'circuit', 'settings', 'summary'];
 
 const LABELS = {
   train: 'Drills',
   stats: 'Stats',
   circuit: 'Circuit',
   settings: 'Settings',
+  summary: 'Summary',
 };
 
 const NOTES = {
@@ -19,6 +20,7 @@ const NOTES = {
   stats: 'Your per-drill history and trend land here.',
   circuit: 'An ordered list of drills you run back to back.',
   settings: 'Your account, appearance and session.',
+  summary: 'The readout for the run you just finished.',
 };
 
 const REGISTERED = Array.isArray(globalThis.CORTEX_VIEWS) ? globalThis.CORTEX_VIEWS.slice() : [];
@@ -110,9 +112,43 @@ function teardown(name) {
   }
 }
 
+/* The URL reflects the shown view. replaceState, not pushState: a view handoff
+   (Circuit finishing into Summary) is the same place, not a new one, so it must
+   not stack an entry and back still leaves from where the person came. */
+function syncHash(name) {
+  try {
+    if (typeof globalThis !== 'undefined' && globalThis.history && globalThis.history.replaceState) {
+      globalThis.history.replaceState(null, '', '#' + name);
+    }
+  } catch (e) { /* best effort */ }
+}
+
+/* The top nav's current state, kept in step with the shown view. A view with a
+   tab carries aria-current on that tab; Summary has no tab, so no tab is current
+   (the page carries its own way back), and Settings marks the account button. */
+function syncNav(name) {
+  if (typeof document === 'undefined') return;
+  const links = document.querySelectorAll('[data-view]');
+  for (let i = 0; i < links.length; i += 1) {
+    const a = links[i];
+    if (a.getAttribute('data-view') === name) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  }
+  const account = document.getElementById('accountName');
+  if (account) {
+    if (name === 'settings') account.setAttribute('aria-current', 'page');
+    else account.removeAttribute('aria-current');
+  }
+}
+
 export async function navigate(view) {
   const name = VIEWS.indexOf(view) !== -1 ? view : 'train';
   showLoader();
+
+  /* Whatever view ends up shown, the URL and the nav say so. Done before the
+     render so a view that throws still leaves the address bar honest. */
+  syncHash(name);
+  syncNav(name);
 
   /* Whatever is on screen goes away before the next view is built, so a drill
      cannot keep playing into a detached tree. */

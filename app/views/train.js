@@ -1,7 +1,14 @@
 /* Neuralbase view: Train.
    Runs one drill at a time, records runs and sessions through ctx.db (idempotent client_id
    writes with demo fallback), and keeps a local cache for instant paint. Gating via Engine.
-   Mounts its own DOM into the container. Reads cloud data; never touches index.html ids. */
+   Mounts its own DOM into the container. Reads cloud data; never touches index.html ids.
+
+   A finished set hands one payload to the Summary end screen through
+   app/lib/lastrun.js and navigates there, so this view keeps no results surface
+   of its own: there is exactly one place a finished run is read. */
+
+import * as lastrun from '../lib/lastrun.js';
+import { navigate } from '../router.js';
 
 var CACHE_KEY = 'cortex.cache.data';
 var SELECT_KEY = 'cortex.train.select';
@@ -219,9 +226,12 @@ var seed = null;
    trial stream a running drill already committed to, so it is locked for the
    life of the set and unlocked at the finish. */
 var running = false;
-/* The run that was just recorded, kept so the results view can show it and the
-   delta against the best that stood before it. Cleared when a set is abandoned. */
+/* The run that was just recorded, kept so the end screen can be handed its parts,
+   value and unit. Cleared when a set is abandoned. */
 var lastRun = null;
+/* When the current set started, so the end screen can report the real elapsed
+   time instead of a fabricated one. Set once, on the first drill of a set. */
+var setStart = 0;
 
 /* ---------- focus mode ----------
    A running drill gets the whole screen. app/focus.css was written for this and
@@ -431,6 +441,7 @@ function paintIdle() {
   ui.modesBlock = null;
   ui.modeBtns = {};
   ui.modeBlurb = null;
+  ui.modeVal = null;
   /* The mount's content is a .drill node: that is the node the focus stage adopts
      when a set starts and the node the exit flow moves back, so the mount keeps that
      contract. Idle, the node holds the settings panel instead of a drill. */
@@ -592,15 +603,38 @@ function buildRangeRow(id, entry, current, readout) {
     if (readout) readout.textContent = optionReadout(entry, bag ? bag[entry.key] : sliderValue(input.value, entry));
   });
   wrap.appendChild(input);
+
+  /* A tick per value and the range ends, so the slider reads as a scale with a
+     known span instead of a bare handle. The lit ticks fill up to the current
+     value; the live number stays in the row's readout. */
+  var values = numberValues(entry);
+  var scale = h('div', 'tr-scale');
+  scale.setAttribute('aria-hidden', 'true');
+  values.forEach(function (v) {
+    var tick = h('i');
+    if (v <= Number(current)) tick.className = 'on';
+    scale.appendChild(tick);
+  });
+  wrap.appendChild(scale);
+  var ends = h('div', 'tr-scale-ends');
+  ends.setAttribute('aria-hidden', 'true');
+  ends.appendChild(h('span', null, String(entry.min)));
+  ends.appendChild(h('span', null, String(entry.max)));
+  wrap.appendChild(ends);
   return wrap;
 }
 
 function buildToggleRow(id, entry, current) {
   var seg = segGroup(entry, 'tr-seg-switch');
   [[false, 'Off'], [true, 'On']].forEach(function (pair) {
-    var b = h('button', 'tr-seg-btn', pair[1]);
+    var b = h('button', 'tr-seg-btn');
     b.type = 'button';
     b.setAttribute('aria-pressed', current === pair[0] ? 'true' : 'false');
+    /* The LED is the switch's tell: a bare Off / On reads as two buttons, the
+       lamp reads as one control with a live side. No text, so the button's own
+       name is still just Off or On. */
+    b.appendChild(h('span', 'led'));
+    b.appendChild(h('span', 'tr-seg-txt', pair[1]));
     b.addEventListener('click', function () { commitOption(id, entry, pair[0]); });
     seg.appendChild(b);
   });
@@ -653,8 +687,13 @@ function buildModeBlock() {
      line in a wrapping flex row inflates the row's max-content, which would push
      the whole panel wide of its real content. */
   var block = h('div', 'tr-mode-block');
-  var row = h('div', 'tr-mode-row');
-  row.appendChild(h('span', 'tr-field', 'Variant'));
+  var head = h('div', 'tr-mode-head');
+  head.appendChild(h('span', 'tr-field', 'Variant'));
+  /* The current variant next to its label, the same label / readout pairing as
+     every other setting, so the choice is legible without reading the chips. */
+  var readout = h('span', 'tr-set-val mono', '');
+  head.appendChild(readout);
+  block.appendChild(head);
   var set = h('div', 'tr-modeset');
   set.setAttribute('role', 'group');
   set.setAttribute('aria-label', 'N-back variant');
@@ -665,20 +704,23 @@ function buildModeBlock() {
       b.type = 'button';
       b.setAttribute('data-mode', m.id);
       b.setAttribute('aria-pressed', 'false');
-      b.appendChild(h('span', null, m.name));
+      /* A lamp plus the name: the lamp marks the live chip, the name is the
+         button's own label, so its accessible name stays the variant. */
+      b.appendChild(h('span', 'm'));
+      b.appendChild(h('span', 'tr-mode-name', m.name));
       b.addEventListener('click', function () { pickMode(m); });
       btns[m.id] = b;
       set.appendChild(b);
     })(MODES[i]);
   }
-  row.appendChild(set);
+  block.appendChild(set);
   var blurb = h('p', 'tr-blurb', '');
-  block.appendChild(row);
   block.appendChild(blurb);
   /* paintModes reads these, so the panel owns them while it is on screen. */
   ui.modesBlock = block;
   ui.modeBtns = btns;
   ui.modeBlurb = blurb;
+  ui.modeVal = readout;
   return block;
 }
 
@@ -743,107 +785,100 @@ function injectStyles() {
        frame and the stage keeps its full height. The shell grid itself lives in
        ui/p2.css, shared with the Circuit screen. */
     '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0;justify-content:flex-start;padding-top:var(--gap-4)}',
-    /* The rail head: which drill the settings below belong to. */
-    '.p2-rail-head{display:flex;flex-direction:column;gap:4px}',
-    '.p2-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}',
-    '.p2-rail-drill{font-size:15px;font-weight:650;letter-spacing:-.01em;color:var(--ink)}',
-    '.p2-set-block{display:flex;flex-direction:column;gap:var(--gap-3);min-height:0}',
-    '.p2-block-title{margin:0;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}',
+    /* The rail head: which drill the settings below belong to. A small-caps
+       eyebrow, the drill name, then the family in mono, the identity block of the
+       instrument reference. */
+    '.p2-rail-head{display:flex;flex-direction:column;gap:3px}',
+    '.p2-eyebrow{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}',
+    '.p2-rail-drill{font-size:18px;font-weight:650;letter-spacing:-.01em;color:var(--ink)}',
+    '.p2-rail-sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}',
+    /* The rail pins: head, then a scrolling settings pane, then the foot. Start
+       lives in the foot, so it cannot drift as a drill's settings grow; the
+       settings scroll under it instead. */
+    '.tr-view .p2-rail{overflow:hidden}',
+    '.tr-view .p2-rail-head{flex:none}',
+    '.p2-set-block{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden}',
+    '.p2-rail-foot{flex:none;border-top:1px solid var(--line2);padding-top:var(--gap-4)}',
     /* The idle mount holds the settings panel; a run adopts its .drill node into
        the focus stage, so the mount never has to grow to fill anything. */
     '.tr-view .drill-mount{display:block;width:100%;min-height:0}',
     '.tr-view .drill{width:100%}',
-    /* Settings, in the rail: one row per setting, label and value on a line with
-       the control under them. Left aligned, so the rail reads as a form column
-       rather than a centred block. Every control reserves its box, so the active
-       state changes colour and border only and never the metrics. */
-    '.tr-setup{display:flex;flex-direction:column;gap:var(--gap-4);width:100%}',
-    '.tr-set-rows{display:flex;flex-direction:column;gap:var(--gap-4)}',
-    '.tr-set-row{display:flex;flex-direction:column;gap:6px;min-width:0}',
+    /* Settings: one field per setting, a small-caps label with the mono value
+       beside it, the control under them, a hairline between fields. The rows carry
+       the padding, so each rule spans the rail's full width. */
+    '.tr-setup{display:flex;flex-direction:column;width:100%}',
+    '.tr-set-rows{display:flex;flex-direction:column;gap:0}',
+    '.tr-set-row{display:flex;flex-direction:column;gap:9px;min-width:0;padding:14px 0;border-bottom:1px solid var(--line)}',
     '.tr-set-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3)}',
-    '.tr-set-label{font-family:var(--sans);font-size:12.5px;font-weight:600;color:var(--ink)}',
-    '.tr-set-val{font-family:var(--mono);font-size:12px;color:' + ACC + ';white-space:nowrap}',
-    /* A setting is a real control. A single-select is a segmented bar on a bordered
-       track, a toggle is a pill switch, a multi-select is a row of on/off chips.
-       The rail is narrow, so the tracks wrap their options rather than clipping. */
+    '.tr-set-label{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}',
+    '.tr-set-val{font-family:var(--mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}',
+    /* Every setting is a real control. A single-select is a segmented bar on one
+       hairline track, a toggle is a rocker switch with a lamp, a multi-select is a
+       row of on/off chips. Every control reserves its box, so a state change
+       repaints colour and border only and never the metrics. */
     '.tr-seg{display:flex;flex-wrap:wrap;gap:6px;min-width:0}',
-    '.tr-seg-bar{gap:2px;padding:2px;border:1px solid var(--line2);border-radius:9px;background:var(--panel)}',
-    '.tr-seg-switch{gap:2px;padding:2px;border:1px solid var(--line2);border-radius:999px;background:var(--panel);align-self:flex-start}',
-    '.tr-seg-chips{gap:6px;padding:0}',
-    /* A number past four values is a slider: a bar with an accent fill and the
-       value in the row's readout, instead of a wall of buttons. accent-color fills
-       the track natively, so no gradient is needed and the theme still holds. */
-    '.tr-range-wrap{display:flex;align-items:center;width:100%;min-width:0}',
-    '.tr-range{width:100%;height:24px;margin:0;background:transparent;accent-color:' + ACC + ';cursor:pointer}',
-    '.tr-seg-btn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;padding:4px 9px;border-radius:6px;min-height:26px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
+    '.tr-seg-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:transparent;border:1px solid transparent;padding:5px 10px;border-radius:2px;min-height:32px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.35;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.tr-seg-btn:not(:disabled):hover{color:var(--ink)}',
-    '.tr-seg-btn[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + '}',
-    /* The toggle reads as a switch. Both sides carry the track's pill radius, so
-       the live accent thumb is the same shape as the track and the two sides are
-       one control: same radius, same size, no shift on press. */
-    '.tr-seg-switch .tr-seg-btn{min-width:50px;border-radius:999px}',
-    '.tr-seg-switch .tr-seg-btn[aria-pressed="true"]{color:var(--bg);background:' + ACC + ';border-color:' + ACC + '}',
+    '.tr-seg-btn[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + '}',
+    '.tr-seg-bar{flex-wrap:nowrap;gap:0;border:1px solid var(--line2);border-radius:2px;background:var(--panel);overflow:hidden}',
+    '.tr-seg-bar .tr-seg-btn{flex:1 1 0;min-width:0;border:0;border-left:1px solid var(--line2);border-radius:0}',
+    '.tr-seg-bar .tr-seg-btn:first-child{border-left:0}',
+    '.tr-seg-bar .tr-seg-btn[aria-pressed="true"]{outline:1px solid ' + ACC_E + ';outline-offset:-1px}',
+    /* The toggle reads as one rocker with a lamp per side, so it is a switch and
+       not two buttons: same track, same lamp shape, no shift on press. */
+    '.tr-seg-switch{border:1px solid var(--line2);border-radius:2px;background:var(--panel);overflow:hidden;align-self:stretch}',
+    '.tr-seg-switch .tr-seg-btn{flex:1 1 0;min-width:0;border:0;border-left:1px solid var(--line2);border-radius:0;font-size:11px;font-weight:600;letter-spacing:.13em;text-transform:uppercase}',
+    '.tr-seg-switch .tr-seg-btn:first-child{border-left:0}',
+    '.tr-seg-switch .led{width:7px;height:7px;flex:none;border:1px solid var(--dim);background:transparent}',
+    '.tr-seg-switch .tr-seg-btn[aria-pressed="true"]{outline:1px solid ' + ACC_E + ';outline-offset:-1px}',
+    '.tr-seg-switch .tr-seg-btn[aria-pressed="true"] .led{background:' + ACC + ';border-color:' + ACC + '}',
     /* A multi-select reads as chips: a visible outline on every chip, the on ones filled. */
-    '.tr-seg-chips .tr-seg-btn{border-color:var(--line2);border-radius:999px;padding:6px 11px}',
-    '.tr-seg-chips .tr-seg-btn[aria-pressed="true"]{border-color:' + ACC_E + ';background:' + ACC_S + ';color:' + ACC + '}',
-    /* The mode control is a wrapping row of pills, one per variant: each its own
-       hairline box, no outer track. The live mode takes the accent fill. */
-    '.tr-mode-block{display:flex;flex-direction:column;gap:6px}',
-    '.tr-mode-row{display:flex;flex-direction:column;gap:6px}',
-    '.tr-field{font-family:var(--sans);font-size:12.5px;font-weight:600;color:var(--ink)}',
-    '.tr-modeset{display:flex;flex-wrap:wrap;gap:6px;min-width:0}',
-    '.tr-mode{display:inline-flex;align-items:center;background:transparent;border:1px solid var(--line2);padding:6px 10px;border-radius:6px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;line-height:1.4;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
-    '.tr-mode:not(:disabled):hover{color:var(--ink);background:var(--hover)}',
+    '.tr-seg-chips{gap:6px;padding:0}',
+    '.tr-seg-chips .tr-seg-btn{border-color:var(--line2);border-radius:2px;padding:6px 11px;background:var(--panel)}',
+    '.tr-seg-chips .tr-seg-btn[aria-pressed="true"]{border-color:' + ACC_E + '}',
+    /* A number past four values is a slider: a thin track, an accent thumb, a tick
+       per value and the range ends, so the span is legible at a glance. */
+    '.tr-range-wrap{display:flex;flex-direction:column;gap:7px;width:100%;min-width:0}',
+    '.tr-range{-webkit-appearance:none;appearance:none;width:100%;height:18px;margin:0;background:transparent;cursor:pointer}',
+    '.tr-range::-webkit-slider-runnable-track{height:2px;background:var(--line2)}',
+    '.tr-range::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:18px;margin-top:-8px;background:' + ACC + ';border:0;border-radius:1px}',
+    '.tr-range::-moz-range-track{height:2px;background:var(--line2)}',
+    '.tr-range::-moz-range-thumb{width:10px;height:18px;background:' + ACC + ';border:0;border-radius:1px}',
+    '.tr-scale{display:flex;align-items:flex-end;justify-content:space-between;padding:0 5px}',
+    '.tr-scale i{display:block;width:1px;height:5px;background:var(--line2)}',
+    '.tr-scale i.on{background:' + ACC + ';height:8px}',
+    '.tr-scale-ends{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--dim)}',
+    /* The variant control: a two-column bank of chips, each its own hairline box
+       with a lamp, the live one filled. Its label and value sit on the row head
+       exactly like every other setting. */
+    '.tr-mode-block{display:flex;flex-direction:column;gap:9px;padding:14px 0;border-bottom:1px solid var(--line)}',
+    '.tr-mode-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3)}',
+    '.tr-field{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}',
+    '.tr-modeset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;min-width:0}',
+    '.tr-mode{display:flex;align-items:center;gap:8px;min-width:0;background:var(--panel);border:1px solid var(--line2);padding:8px 9px;min-height:34px;border-radius:2px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;line-height:1.35;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
+    '.tr-mode .m{width:7px;height:7px;flex:none;border:1px solid var(--dim)}',
+    '.tr-mode-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.tr-mode:not(:disabled):hover{border-color:var(--dim);color:var(--ink)}',
     '.tr-mode[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + ';border-color:' + ACC_E + ';font-weight:600}',
+    '.tr-mode[aria-pressed="true"] .m{background:' + ACC + ';border-color:' + ACC + '}',
     '.tr-mode:disabled{opacity:.45;cursor:not-allowed}',
     '.tr-mode[aria-pressed="true"]:disabled{opacity:.7}',
-    '.tr-blurb{font-size:12px;color:var(--dim);margin:0;line-height:1.45}',
-    /* Every control carries a visible focus ring: the buttons here, and the
-       slider, which the shell's own :focus-visible rule would cover anyway. */
-    '.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-range:focus-visible,.tr-start:focus-visible,.rs-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
-    /* Start: the one primary action on the page, the last item in the stage's
-       centred hero column. */
-    '.tr-start{padding:12px 26px;font-size:15px;border-radius:10px;min-width:160px}',
-    /* On phones the shared shell stacks rail-first, which puts every setting above
-       the fold and the Start action below it. For the drill screen the hero comes
-       first instead: stage, then the filmstrip to switch, then the settings. Both
-       rows are bounded so the filmstrip stays visible and the Start stays in the
-       hero, and each pane scrolls inside its own row. The stage floor keeps the
-       hero whole on a short viewport but yields to 60% of the shell so a very
-       short one still cannot push the filmstrip off. Scoped to .tr-view so the
-       shared shell keeps its own order for the other screen. */
-    '@media (max-width:720px){.tr-view .p2-shell{grid-template-rows:minmax(min(248px,60%),1.2fr) auto minmax(0,0.8fr)}.tr-view .p2-stage{grid-row:1}.tr-view .p2-filmstrip{grid-row:2}.tr-view .p2-rail{grid-row:3;border-right:0;border-bottom:0;border-top:1px solid var(--line)}}',
-    /* Results. The score leads, set large in the mono face; everything under it is
-       quiet. Plain text actions, no boxes, same language as the picker. */
-    '.rs-view{display:flex;flex-direction:column;align-items:center;gap:var(--gap-4);width:100%;max-width:min(680px,100%);margin-inline:auto;text-align:center;padding:var(--gap-2) 0}',
-    '.rs-name{margin:0;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}',
-    '.rs-score{display:flex;align-items:baseline;justify-content:center;gap:12px;line-height:1}',
-    '.rs-value{font-size:clamp(56px,15vw,120px);font-weight:600;letter-spacing:-.04em;color:var(--ink);font-variant-numeric:tabular-nums}',
-    '.rs-unit{font-size:clamp(18px,3vw,26px);color:var(--muted)}',
-    '.rs-acc{margin:0;font-size:14px;color:var(--muted)}',
-    '.rs-acc .mono{color:var(--ink)}',
-    /* The outcome breakdown: plain label and value pairs on a hairline, so the
-       hits, misses and timing a drill reports actually reach the reader. No card,
-       no shadow. */
-    '.rs-break{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 18px;margin:0;padding-top:var(--gap-3);border-top:1px solid var(--line2);width:100%;max-width:460px}',
-    '.rs-break-item{display:inline-flex;align-items:baseline;gap:6px;font-size:12px;line-height:1.5}',
-    '.rs-break-k{color:var(--dim)}',
-    '.rs-break-v{color:var(--ink)}',
-    '.rs-delta{margin:0;font-size:14px;color:var(--muted)}',
-    '.rs-delta-v{color:var(--ink)}',
-    '.rs-pr .rs-delta-v{color:' + ACC + '}',
-    '.rs-delta-tag{color:var(--dim)}',
-    '.rs-first{color:var(--muted)}',
-    '.rs-chart-wrap{width:100%;display:flex;flex-direction:column;align-items:center;gap:6px}',
-    '.rs-chart{display:flex;align-items:flex-end;justify-content:center;gap:6px;width:100%;max-width:360px;height:64px}',
-    '.rs-bar{flex:1 1 0;max-width:26px;min-width:6px;border-radius:3px 3px 0 0;background:var(--line2)}',
-    '.rs-bar-last{background:' + ACC + '}',
-    '.rs-chart-cap{margin:0;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}',
-    '.rs-actions{display:flex;gap:var(--gap-5);align-items:center;justify-content:center;flex-wrap:wrap;margin-top:var(--gap-2)}',
-    '.rs-act{background:none;border:0;padding:6px 2px;font-family:var(--sans);font-size:15px;font-weight:600;color:var(--muted);cursor:pointer;transition:color .15s ease,opacity .15s ease}',
-    '.rs-act:hover{color:var(--ink)}',
-    '.rs-again{color:' + ACC + '}',
-    '.rs-again:hover{color:' + ACC + ';opacity:.85}',
+    '.tr-blurb{font-size:11.5px;color:var(--dim);margin:0;line-height:1.5}',
+    /* Every control carries a visible focus ring. */
+    '.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-range:focus-visible,.tr-start:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
+    /* A pressed segment carries its own 1px outline, which out-specifies the
+       focus rule above. Keep the full focus ring visible on the active value. */
+    '.tr-seg-bar .tr-seg-btn[aria-pressed="true"]:focus-visible,.tr-seg-switch .tr-seg-btn[aria-pressed="true"]:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
+    /* Start: the one primary action, full width at the foot of the rail, with the
+       machined corner radius so it belongs to the controls above it. */
+    '.tr-start{width:100%;padding:12px 18px;font-size:14px;border-radius:2px;min-width:0;letter-spacing:.01em}',
+    /* On phones the drill screen stacks hero first, then the settings rail, then
+       the filmstrip along the bottom. The rail gets the larger row so its own
+       scrolling pane has real height, and its foot still pins Start just above the
+       filmstrip. The rail head is dropped on a phone: the hero above already names
+       the drill, and the height it frees is the settings' to use. Scoped to
+       .tr-view so the shared shell keeps its own order for the other screen. */
+    '@media (max-width:720px){.tr-view .p2-shell{grid-template-rows:minmax(0,0.85fr) minmax(0,1.15fr) auto}.tr-view .p2-stage{grid-row:1}.tr-view .p2-rail{grid-row:2;border-right:0;border-bottom:0;border-top:1px solid var(--line)}.tr-view .p2-rail-head{display:none}.tr-view .p2-filmstrip{grid-row:3}}',
     /* The focus stage. focus.css sizes the stage; these rules lift its width cap
        and trim its gutter so a running drill is edge to edge. Later in the
        document than focus.css, so an equal-specificity rule here wins. */
@@ -864,7 +899,7 @@ function injectStyles() {
     '.nb-focus-stage dialog .nb-dialog-end{background:transparent;border:1px solid var(--line2);color:var(--ink)}',
     '.nb-focus-stage dialog .nb-dialog-end:hover{border-color:var(--warn);color:var(--warn)}',
     /* Reduced motion: no transitions on any of the chrome. */
-    '@media (prefers-reduced-motion:reduce){.tr-seg-btn,.tr-mode,.rs-act,.nb-focus-stage dialog button{transition:none}}'
+    '@media (prefers-reduced-motion:reduce){.tr-seg-btn,.tr-mode,.nb-focus-stage dialog button{transition:none}}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -972,24 +1007,31 @@ function buildDOM(container) {
   railHead.appendChild(h('span', 'p2-eyebrow', 'Selected drill'));
   var railDrill = h('span', 'p2-rail-drill', '');
   railHead.appendChild(railDrill);
+  var railSub = h('span', 'p2-rail-sub', '');
+  railHead.appendChild(railSub);
   rail.appendChild(railHead);
 
   var setBlock = h('div', 'p2-set-block');
-  setBlock.appendChild(h('p', 'p2-block-title', 'Settings'));
   var mount = h('div', 'drill-mount tr-idle');
   setBlock.appendChild(mount);
   rail.appendChild(setBlock);
 
-  /* The stage: the framed preview that holds the drill's identity and the one
-     primary action, overlaid. Its body is swapped for the result after a run. */
+  /* The foot is pinned below the scrolling settings, so Start keeps the same
+     place and size no matter how many settings a drill carries. */
+  var foot = h('div', 'p2-rail-foot');
+  var start = h('button', 'btn-primary tr-start', 'Start');
+  start.type = 'button';
+  foot.appendChild(start);
+  rail.appendChild(foot);
+
+  /* The stage: the framed preview that holds the drill's identity. Its body is
+     swapped for the result after a run. Start lives in the rail foot, so the
+     stage is identity alone and its height never tracks the rail's content. */
   var stage = h('div', 'p2-stage');
   var meta = h('div', 'p2-stage-meta', '');
   stage.appendChild(meta);
   var body = h('div', 'p2-stage-body');
   stage.appendChild(body);
-  var start = h('button', 'btn-primary tr-start p2-start', 'Start');
-  start.type = 'button';
-  stage.appendChild(start);
 
   var live = h('div', 'sr');
   live.setAttribute('aria-live', 'polite');
@@ -1002,9 +1044,9 @@ function buildDOM(container) {
   container.appendChild(live);
 
   ui = {
-    railDrill: railDrill, mount: mount, stageBody: body, stageMeta: meta,
+    railDrill: railDrill, railSub: railSub, mount: mount, stageBody: body, stageMeta: meta,
     live: live, startBtn: start, pickBtns: pickBtns,
-    modesBlock: null, modeBtns: {}, modeBlurb: null,
+    modesBlock: null, modeBtns: {}, modeBlurb: null, modeVal: null,
     container: container
   };
   start.addEventListener('click', function () {
@@ -1077,9 +1119,10 @@ function paintModes(d) {
   });
   var cur = null;
   MODES.forEach(function (m) { if (m.id === mode) cur = m; });
-  /* The mode blurb carries the current mode's description, which a bare row of
-     six buttons does not. While a set runs the picker is disabled, so it says
-     why: a disabled control with no reason reads as broken. */
+  /* The current variant beside the label, and the mode blurb below. While a set
+     runs the picker is disabled, so it says why: a disabled control with no
+     reason reads as broken. */
+  if (ui.modeVal) ui.modeVal.textContent = cur ? cur.name : '';
   if (ui.modeBlurb) {
     ui.modeBlurb.textContent = running
       ? 'Locked while a set runs.'
@@ -1109,6 +1152,7 @@ function paintStage(d) {
 function paintAll() {
   var d = drillById(currentDrill);
   if (ui.railDrill) ui.railDrill.textContent = d.name;
+  if (ui.railSub) ui.railSub.textContent = groupLabelFor(d.id);
   paintStage(d);
 
   /* Roving tabindex: the selected chip is the filmstrip's one tab stop, and its
@@ -1149,6 +1193,7 @@ function nextDrill() {
   /* The set is live. The mode locks here and stays locked until finishSession
      unlocks it, so the running drill keeps the stream it started with. */
   var firstOfSet = !running;
+  if (firstOfSet) setStart = Date.now();
   running = true;
   setIdle(false);
   if (ui.startBtn) { ui.startBtn.disabled = false; ui.startBtn.textContent = 'Restart'; }
@@ -1212,14 +1257,16 @@ function recordRun(rec) {
     prevBest = agg.best;
   }
   Store.record(state, rec);
-  /* Held for the results view: the value, its unit, the accuracy the drill
-     reported, and the best that stood before this run. prevBest is null on a
-     first run, which is what makes the results say so instead of showing zero. */
+  /* Held for the end screen: the run's value, its unit, the accuracy it reported,
+     and its own per-part breakdown. The parts are passed to Summary untouched, so
+     the end screen reads the run's real labels, outcomes and times. prevBest is
+     null on a first run, which is what lets the best-run announcement say none. */
   lastRun = {
     drillId: rec.drillId,
     value: rec.value,
     unit: rec.unit || (d && d.unit) || '',
     meta: rec.meta || {},
+    parts: Array.isArray(rec.parts) ? rec.parts : [],
     isPR: isPR,
     prevBest: prevBest
   };
@@ -1269,155 +1316,115 @@ function finishSession() {
   }
   sessionDrills = [];
   /* The set is over, so the rail goes back to the settings panel. A finished
-     drill leaves its last frame in the mount, and the result belongs on the
-     stage, not beside a dead drill. */
+     drill leaves its last frame in the mount, and the rail must not sit beside a
+     dead drill while the end screen loads. */
   paintIdle();
   setIdle(true);
   paintAll();
-  /* The set is done. Show the result in the drill area, so the numbers get the
-     screen before the picker comes back. A set that recorded no run shows
-     nothing. */
-  if (lastRun) showResults(lastRun);
+  /* The set is done. Hand the run to the Summary end screen and go there: this
+     view keeps exactly one results surface, and it is not in this view. A set
+     that recorded no run hands nothing off and stays put. */
+  if (lastRun) {
+    lastrun.put(buildPayload(lastRun));
+    goSummary();
+  }
 }
 
-/* One decimal at most, so a mono readout stays short. */
-function fmtNum(v) {
-  if (typeof v !== 'number' || !isFinite(v)) return '';
-  return String(Math.round(v * 100) / 100);
+/* ---------- the end screen handoff ---------- */
+
+/* The variant a run actually used, when it has one: only n-back carries a mode,
+   and its short name reads best ("dual" -> "Dual"), the same rule Circuit uses. */
+function variantLabel(mode) {
+  if (typeof mode !== 'string' || !mode) return '';
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
-/* A small bar chart of this drill's last few runs, drawn from the stored records
-   (the run just finished is already in state). The latest bar carries the accent.
-   No axis, no labels on the bars: the caption and the score carry the meaning. */
-function buildChart(drillId) {
-  var wrap = h('div', 'rs-chart-wrap');
-  var chart = h('div', 'rs-chart');
-  var runs = (state && state.records ? state.records : []).filter(function (r) {
-    return r && r.drillId === drillId;
-  });
-  var vals = runs.slice(-8).map(function (r) { return Number(r.value); }).filter(function (v) { return isFinite(v); });
-  if (vals.length) {
-    var max = 0;
-    for (var i = 0; i < vals.length; i++) if (Math.abs(vals[i]) > max) max = Math.abs(vals[i]);
-    if (!max) max = 1;
-    for (var j = 0; j < vals.length; j++) {
-      var bar = h('div', 'rs-bar' + (j === vals.length - 1 ? ' rs-bar-last' : ''));
-      bar.style.height = Math.max(6, Math.round((Math.abs(vals[j]) / max) * 100)) + '%';
-      chart.appendChild(bar);
+/* A plain line naming the settings the run actually ran with, in spec order, read
+   off the same option spec the panel and the drill both use. A toggle that was
+   off is left out: it shaped nothing. Every other setting shows its own label and
+   its real value, so nothing here is invented. */
+function settingsLine(drillId, mode) {
+  var bits = [];
+  var variant = variantLabel(mode);
+  if (variant) bits.push(variant);
+  var spec = optionSpecFor(drillId);
+  var opts = optionsFor(drillId);
+  for (var i = 0; i < spec.length; i++) {
+    var e = spec[i];
+    if (!optionVisible(drillId, e)) continue;
+    var v = opts[e.key];
+    if ((e.type || 'number') === 'toggle') {
+      if (v === true) bits.push(e.label);
+      continue;
     }
-    chart.setAttribute('role', 'img');
-    chart.setAttribute('aria-label', 'Last ' + vals.length + ' runs: ' + vals.map(fmtNum).join(', '));
-  } else {
-    chart.setAttribute('role', 'img');
-    chart.setAttribute('aria-label', 'No runs recorded yet.');
+    bits.push(e.label + ' ' + optionReadout(e, v));
   }
-  wrap.appendChild(chart);
-  wrap.appendChild(h('p', 'rs-chart-cap', vals.length > 1 ? 'Last ' + vals.length + ' runs' : 'Your runs'));
-  return wrap;
+  return bits.join(' \u00b7 ');
 }
 
-/* The outcome fields a drill may report, in the order they read best. Only the
-   ones present in the saved meta are drawn, so a drill that reports a subset
-   shows that subset and nothing else. rtMedian is milliseconds. */
-var BREAK_FIELDS = [
-  ['hits', 'hits', ''],
-  ['misses', 'misses', ''],
-  ['omissions', 'omissions', ''],
-  ['commissions', 'commissions', ''],
-  ['falseAlarms', 'false alarms', ''],
-  ['rtMedian', 'median press', ' ms']
-];
-function buildBreakdown(meta) {
-  var wrap = h('div', 'rs-break');
-  var shown = 0;
-  for (var i = 0; i < BREAK_FIELDS.length; i++) {
-    var key = BREAK_FIELDS[i][0];
-    var v = meta[key];
-    if (typeof v !== 'number' || !isFinite(v)) continue;
-    var item = h('span', 'rs-break-item');
-    item.appendChild(h('span', 'rs-break-k', BREAK_FIELDS[i][1]));
-    item.appendChild(h('span', 'rs-break-v mono', fmtNum(v) + BREAK_FIELDS[i][2]));
-    wrap.appendChild(item);
-    shown++;
-  }
-  return shown ? wrap : null;
+/* The median of the measured part times, so a run's middle response reads at a
+   glance. Even counts average the two middles, the same rule Circuit uses. */
+function medianMs(values) {
+  var vs = values.slice().sort(function (a, b) { return a - b; });
+  if (!vs.length) return null;
+  var mid = Math.floor(vs.length / 2);
+  if (vs.length % 2) return vs[mid];
+  return Math.round((vs[mid - 1] + vs[mid]) / 2);
 }
 
-/* The results view, in the drill area. The score leads, set large in the mono
-   face with its unit; accuracy appears only where the drill reports one; the
-   delta is against the best that stood before this run, and a first run says so.
-   Two plain text actions: run the same drill again, or pick another. */
-function showResults(run) {
-  if (!ui.stageBody || !run) return;
+/* One payload for the Summary end screen, filled from the run the view already
+   holds. The parts go through untouched, so the end screen reads the run's own
+   per-part labels, outcomes and times. The totals are counted off those parts,
+   never guessed: correct and wrong are the scored outcomes, and the median
+   response is the middle of the measured times. accuracy is the run's own, or
+   null when the drill reports none. durationMs is the set's real elapsed time,
+   taken from the moment it started. history is this drill's recent runs, oldest
+   first, which is how the end screen reads a trend. */
+function buildPayload(run) {
   var d = drillById(run.drillId);
-  var unit = run.unit || d.unit || '';
   var meta = run.meta || {};
-
-  var view = h('div', 'rs-view');
-  view.setAttribute('aria-label', d.name + ' result');
-  view.appendChild(h('p', 'rs-name', d.name));
-
-  var score = h('div', 'rs-score');
-  score.appendChild(h('span', 'rs-value mono', fmtNum(run.value)));
-  if (unit) score.appendChild(h('span', 'rs-unit mono', unit));
-  view.appendChild(score);
-
-  if (typeof meta.accuracy === 'number' && isFinite(meta.accuracy)) {
-    var acc = h('p', 'rs-acc');
-    acc.appendChild(document.createTextNode('Accuracy '));
-    acc.appendChild(h('span', 'mono', Math.round(meta.accuracy * 100) + '%'));
-    view.appendChild(acc);
+  var parts = Array.isArray(run.parts) ? run.parts : [];
+  var correct = 0, wrong = 0, times = [];
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    var ok = p ? p.ok : null;
+    if (ok === true) correct++;
+    else if (ok === false) wrong++;
+    var ms = p ? p.ms : null;
+    if (typeof ms === 'number' && isFinite(ms)) times.push(ms);
   }
-
-  var breakdown = buildBreakdown(meta);
-  if (breakdown) view.appendChild(breakdown);
-
-  var delta = h('p', 'rs-delta');
-  if (run.prevBest == null) {
-    delta.className = 'rs-delta rs-first';
-    delta.textContent = 'First run. This sets your baseline.';
-  } else {
-    var diff = run.value - run.prevBest;
-    delta.appendChild(document.createTextNode('vs your best '));
-    delta.appendChild(h('span', 'rs-delta-v mono', (diff > 0 ? '+' : '') + fmtNum(diff) + (unit ? ' ' + unit : '')));
-    delta.appendChild(h('span', 'rs-delta-tag', ' ' + (run.isPR ? 'new best' : (diff === 0 ? 'matched your best' : 'off your best'))));
-    if (run.isPR) delta.classList.add('rs-pr');
+  var Store = globalThis.Store;
+  var history = [];
+  if (Store && typeof Store.forDrill === 'function' && state) {
+    history = Store.forDrill(state, run.drillId).slice(-8).map(function (r) {
+      return { value: r.value, t: r.t };
+    });
   }
-  view.appendChild(delta);
-
-  view.appendChild(buildChart(run.drillId));
-
-  var actions = h('div', 'rs-actions');
-  var again = h('button', 'rs-act rs-again', 'Run again');
-  again.type = 'button';
-  var another = h('button', 'rs-act rs-another', 'Pick another');
-  another.type = 'button';
-  actions.appendChild(again);
-  actions.appendChild(another);
-  view.appendChild(actions);
-
-  again.addEventListener('click', function () {
-    if (ctxRef && ctxRef.audio && ctxRef.audio.resume) { try { ctxRef.audio.resume(); } catch (e) { /* degrade */ } }
-    lastRun = null;
-    startDrill();
-  });
-  another.addEventListener('click', returnToPicker);
-
-  ui.stageBody.replaceChildren(view);
-  setIdle(false);
-  try { again.focus(); } catch (e) { /* degrade */ }
-  say(d.name + ' finished. ' + fmtNum(run.value) + (unit ? ' ' + unit : '') + '.');
+  return {
+    kind: 'drill',
+    title: d.name,
+    subtitle: settingsLine(run.drillId, meta.mode),
+    value: run.value,
+    unit: run.unit || d.unit || '',
+    accuracy: (typeof meta.accuracy === 'number' && isFinite(meta.accuracy)) ? meta.accuracy : null,
+    durationMs: setStart ? Math.max(0, Date.now() - setStart) : null,
+    parts: parts,
+    totals: {
+      parts: parts.length,
+      correct: correct,
+      wrong: wrong,
+      medianMs: medianMs(times)
+    },
+    history: history,
+    back: { view: 'train', label: 'Back to Drills' }
+  };
 }
 
-/* Back to the setup panel for the current drill. */
-function returnToPicker() {
-  lastRun = null;
-  paintIdle();
-  setIdle(true);
-  paintAll();
-  var b = ui.pickBtns && ui.pickBtns[currentDrill];
-  if (b && b.focus) { try { b.focus(); } catch (e) { /* degrade */ } }
-  say(drillById(currentDrill).name + ' selected. Press Start when ready.');
+/* Leave for the end screen. The app injects its router as ctx.navigate; the direct
+   import is the fallback so a caller that did not thread it still lands there. */
+function goSummary() {
+  if (ctxRef && typeof ctxRef.navigate === 'function') { ctxRef.navigate('summary'); return; }
+  try { navigate('summary'); } catch (e) { /* degrade */ }
 }
 
 /* The router calls this when leaving Train. A drill owns timers, bound keys and

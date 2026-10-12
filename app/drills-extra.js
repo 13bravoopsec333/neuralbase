@@ -421,6 +421,9 @@
     var clock = makeClock();
     var stopped = false, done = false;
     var i = 0, trials = [], timerId = 0;
+    /* One entry per digit for the end screen: the digit shown, whether holding or
+       pressing was right, and the press time when the digit was a target. */
+    var parts = [];
     /* Validated by drillOptions: 20 to 60 on a ten step grid. Default 30. Endless
        removes the ceiling: the stream never ends on its own. */
     var endless = !!(opts.options && opts.options.endless);
@@ -472,11 +475,13 @@
       resolved = true;
       clock.clear(timerId);
       var target = curDigit === targetDigit;
+      var pressRt = target && typeof rt === "number" ? Math.max(1, Math.round(rt)) : null;
       trials.push({
         digit: curDigit,
         pressed: true,
-        rt: target && typeof rt === "number" ? Math.max(1, Math.round(rt)) : null
+        rt: pressRt
       });
+      parts.push({ label: String(curDigit), ok: target, ms: pressRt });
       if (target) {
         stage.className = "nx-digit mono ok";
         cue.textContent = "on target";
@@ -495,6 +500,7 @@
       clock.clear(timerId);
       var target = curDigit === targetDigit;
       trials.push({ digit: curDigit, pressed: false, rt: null });
+      parts.push({ label: String(curDigit), ok: !target, ms: null });
       if (target) {
         stage.className = "nx-digit mono warn";
         cue.textContent = "the " + targetDigit + " went by";
@@ -557,7 +563,8 @@
             commissions: sc.commissions,
             accuracy: sc.accuracy,
             rtMedian: sc.rtMedian
-          }
+          },
+          parts: parts
         };
         if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec);
       }
@@ -605,6 +612,10 @@
     var shownAt = 0, litIdx = -1, targetLane = 0, resolved = true, timerId = 0;
     var isCatch = false;
     var lanes = [], laneEls = [];
+    /* One entry per trial for the end screen: the lane and whether it was lit,
+       whether the answer was right, and the measured time on a real press. */
+    var parts = [];
+    var curLabel = "";
 
     var wrap = el("div", "drill drill-crt");
     var stage = el("div", "nx-lanes");
@@ -672,6 +683,7 @@
         resolved = true;
         clock.clear(timerId);
         misses++;
+        parts.push({ label: curLabel, ok: false, ms: null });
         cue.textContent = "no light there";
         playSfx("incorrect");
         meta.textContent = crtMeta();
@@ -689,6 +701,7 @@
         paintLit();
         cue.textContent = "hit";
         playSfx("correct");
+        parts.push({ label: curLabel, ok: true, ms: rt });
         choice = pickChoice(median(rts), maxLights);
         layout();
       } else {
@@ -698,6 +711,7 @@
         laneEls[pos].className = "nx-lane miss";
         cue.textContent = "wrong button";
         playSfx("incorrect");
+        parts.push({ label: curLabel, ok: false, ms: rt });
       }
       meta.textContent = crtMeta();
       afterAnswer();
@@ -711,6 +725,7 @@
       paintLit();
       cue.textContent = "too slow";
       playSfx("incorrect");
+      parts.push({ label: curLabel, ok: false, ms: null });
       meta.textContent = crtMeta();
       afterAnswer();
     }
@@ -721,6 +736,7 @@
       catchHits++;
       cue.textContent = "held";
       playSfx("tap");
+      parts.push({ label: curLabel, ok: true, ms: null });
       meta.textContent = crtMeta();
       afterAnswer();
     }
@@ -736,12 +752,14 @@
       shownAt = Date.now();
       if (isCatch) {
         litIdx = -1;
+        curLabel = "Catch · no light";
         cue.textContent = "hold";
         meta.textContent = crtMeta();
         timerId = clock.set(catchTimeout, CRT_WINDOW);
       } else {
         targetLane = randInt(rng, lanes.length);
         litIdx = targetLane;
+        curLabel = lanes[targetLane] + " · lit";
         paintLit();
         cue.textContent = "go";
         meta.textContent = crtMeta();
@@ -787,7 +805,8 @@
             choice: choices,
             foreperiod: foreperiod,
             catchTrials: catchTrials
-          }
+          },
+          parts: parts
         };
         if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec);
       }
@@ -839,6 +858,9 @@
     var problemMs = timePerProblem > 0 ? timePerProblem * 1000 : 0;
     var cur = null, shownAt = 0, resolved = true, timerId = 0;
     var times = [];
+    /* One entry per problem for the end screen: the problem itself, whether it
+       was answered right, and the measured time it took. */
+    var parts = [];
 
     /* Trial count, running score, the clock and the live operations, on screen. */
     function metaText() {
@@ -878,7 +900,9 @@
       resolved = true;
       clock.clear(timerId);
       var ok = checkAnswer(input.value, cur.expected);
-      times.push(Date.now() - shownAt - clock.hiddenMs());
+      var elapsed = Date.now() - shownAt - clock.hiddenMs();
+      times.push(elapsed);
+      parts.push({ label: cur.text, ok: ok, ms: elapsed });
       if (ok) {
         correct++;
         playSfx("correct");
@@ -896,6 +920,7 @@
       resolved = true;
       clock.clear(timerId);
       times.push(problemMs);
+      parts.push({ label: cur.text, ok: false, ms: problemMs });
       playSfx("incorrect");
       i++;
       meta.textContent = metaText();
@@ -946,7 +971,8 @@
             ops: ops.slice(),
             digits: digits,
             timePerProblem: timePerProblem
-          }
+          },
+          parts: parts
         };
         if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec);
       }

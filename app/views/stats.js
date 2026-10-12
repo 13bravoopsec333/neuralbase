@@ -339,7 +339,6 @@ function injectStyles() {
     '.st-cal-icon:focus-visible,.st-cal-today:focus-visible{outline:2px solid var(--accent,var(--lime));outline-offset:2px}',
     '.st-cal-wd{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}',
     '.st-cal-wd span{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim);text-align:center}',
-    '.st-cal-wd .st-we{opacity:.55}',
     '.st-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}',
     '.st-cal-cell{position:relative;height:36px;border:1px solid var(--line);border-radius:5px;background:var(--panel2);padding:4px 6px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;transition:border-color .12s ease}',
     '.st-cal-cell:hover{border-color:var(--line2)}',
@@ -370,14 +369,16 @@ function injectStyles() {
     '.st-cal-empty{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}',
 
     /* chart. Two pickers, two weights: the measure is quiet text chips, the
-       drill selector is a row of bordered tiles so each task reads as its own
-       button instead of a bare word in a list. */
+       drill selector is a grid of bordered tiles so each task reads as its own
+       button instead of a bare word in a list. The grid takes its own full-width
+       row and holds three columns, which divides the nine drills into three
+       complete rows; a flex row instead broke 8+1 and left a single tile alone. */
     '.st-chips{display:flex;flex-wrap:wrap;gap:4px 16px}',
     '.st-chip{background:none;border:0;padding:2px 0;font:inherit;font-size:13px;color:var(--muted);cursor:pointer;transition:color .12s ease}',
     '.st-chip:hover{color:var(--ink)}',
     '.st-chip[aria-pressed="true"]{color:var(--accent,var(--lime))}',
     '.st-chip:focus-visible{outline:2px solid var(--accent,var(--lime));outline-offset:2px;border-radius:4px}',
-    '.st-drills{display:flex;flex-wrap:wrap;gap:var(--gap-2,8px);margin-top:2px}',
+    '.st-drills{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap-2,8px);margin-top:2px;flex:1 1 100%}',
     '.st-drill{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:var(--r,8px);background:var(--panel2);padding:5px 11px;min-height:30px;font-family:var(--sans,system-ui,sans-serif);font-size:12.5px;font-weight:500;line-height:1.3;color:var(--muted);cursor:pointer;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.st-drill:hover{color:var(--ink);border-color:var(--line2)}',
     '.st-drill[aria-pressed="true"]{color:var(--accent,var(--lime));font-weight:600;background:var(--accent-soft,rgba(184,224,74,.12));border-color:var(--accent-edge,rgba(184,224,74,.30))}',
@@ -467,6 +468,7 @@ function injectStyles() {
     '@media (max-width:900px){.st-top,.st-cols{grid-template-columns:minmax(0,1fr)}}',
     '@media (max-width:600px){',
     '.st-view{gap:var(--gap-5,24px);padding-block:16px 32px}',
+    '.st-drills{grid-template-columns:minmax(0,1fr)}',
     '.st-view>.st-section,.st-view>.st-cols{margin-top:var(--gap-4,16px)}',
     '.st-title{font-size:21px}',
     '.st-stat-value{font-size:24px}',
@@ -527,8 +529,8 @@ function buildTotalsSection(model) {
   var list = h('div', 'st-totals');
   list.appendChild(statItem('runs', 'Runs', String(model.records.length)));
   list.appendChild(statItem('days', 'Days', String(activeDays)));
-  list.appendChild(statItem('streak', 'Current streak', String(streak), 'days'));
-  list.appendChild(statItem('longest', 'Longest streak', String(longest), 'days'));
+  list.appendChild(statItem('streak', 'Current streak', String(streak), streak === 1 ? 'day' : 'days'));
+  list.appendChild(statItem('longest', 'Longest streak', String(longest), longest === 1 ? 'day' : 'days'));
   list.appendChild(statItem('drills', 'Drills trained', String(model.trainedCount)));
   section.appendChild(list);
   return section;
@@ -604,7 +606,7 @@ function buildCalendar(model) {
 
     var wd = h('div', 'st-cal-wd');
     wd.setAttribute('aria-hidden', 'true');
-    for (var wi = 0; wi < CAL_HEADS.length; wi++) wd.appendChild(h('span', wi >= 5 ? 'st-we' : null, CAL_HEADS[wi]));
+    for (var wi = 0; wi < CAL_HEADS.length; wi++) wd.appendChild(h('span', null, CAL_HEADS[wi]));
     section.appendChild(wd);
 
     var grid = h('div', 'st-cal-grid');
@@ -755,7 +757,10 @@ function chartInto(host, drill, model, mode) {
     w = Math.max(300, Math.min(w, 1400));
     usedW = w;
     var compact = w < 560;
-    var hh = compact ? Math.round(w * 0.64) : Math.round(w * 0.42);
+    /* A wide chart at a fixed ratio grew taller than the data deserves, leaving a
+       tall empty box above a six point line. Cap the height and floor it instead
+       of scaling without limit. */
+    var hh = Math.max(150, Math.min(Math.round(w * 0.32), 300));
     var c = buildChart(series, w, hh, 0, {
       padL: compact ? 30 : 42, padR: 14, padT: 20, padB: 26
     });
@@ -768,10 +773,12 @@ function chartInto(host, drill, model, mode) {
       'aria-label': drill.name + ' results over time, ' + c.points.length +
         (c.points.length === 1 ? ' point' : ' points')
     });
-    /* Three hairline guides behind the line, so the eye can read a value off the
-       height without a full grid. */
-    var mid = (c.vmin + c.vmax) / 2;
-    var guides = [c.vmax, mid, c.vmin];
+    /* Hairline guides behind the line, so the eye can read a value off the
+       height without a full grid. A series with one value gets a single guide at
+       the middle and one label; drawing max, mid and min would stack three lines
+       on the same pixel and print the same number twice. */
+    var flatV = Math.abs(c.vmax - c.vmin) < 1e-9;
+    var guides = flatV ? [c.vmax] : [c.vmax, (c.vmin + c.vmax) / 2, c.vmin];
     for (var g = 0; g < guides.length; g++) {
       var gy = round2(c.h - c.padB - (guides[g] - c.vmin) / (c.vmax - c.vmin || 1) * (c.h - c.padT - c.padB));
       svg.appendChild(svgEl('line', { x1: c.padL, y1: gy, x2: c.w - c.padR, y2: gy, class: 'st-grid' }));
@@ -779,10 +786,20 @@ function chartInto(host, drill, model, mode) {
     svg.appendChild(svgEl('line', { x1: c.padL, y1: c.h - c.padB, x2: c.w - c.padR, y2: c.h - c.padB, class: 'st-axis' }));
     svg.appendChild(svgEl('line', { x1: c.padL, y1: c.padT, x2: c.padL, y2: c.h - c.padB, class: 'st-axis' }));
     /* Bare value ticks. The unit is not glued to a number; it is the axis label. */
-    appendTick(svg, c.padL - 6, c.padT + 4, fmtNum(c.vmax), 'end', 'st-tick-val');
-    appendTick(svg, c.padL - 6, c.h - c.padB + 4, fmtNum(c.vmin), 'end');
-    appendTick(svg, c.padL, c.h - c.padB + 15, dateLabel(c.tmin), 'start');
-    appendTick(svg, c.w - c.padR, c.h - c.padB + 15, dateLabel(c.tmax), 'end');
+    if (flatV) {
+      appendTick(svg, c.padL - 6, (c.padT + c.h - c.padB) / 2 + 4, fmtNum(c.vmax), 'end', 'st-tick-val');
+    } else {
+      appendTick(svg, c.padL - 6, c.padT + 4, fmtNum(c.vmax), 'end', 'st-tick-val');
+      appendTick(svg, c.padL - 6, c.h - c.padB + 4, fmtNum(c.vmin), 'end');
+    }
+    /* One date for a lone point, two for a span; a single point has no span to
+       label at both ends. */
+    if (c.tmax === c.tmin) {
+      appendTick(svg, (c.padL + c.w - c.padR) / 2, c.h - c.padB + 15, dateLabel(c.tmin), 'middle');
+    } else {
+      appendTick(svg, c.padL, c.h - c.padB + 15, dateLabel(c.tmin), 'start');
+      appendTick(svg, c.w - c.padR, c.h - c.padB + 15, dateLabel(c.tmax), 'end');
+    }
     if (drill.unit) {
       var u = svgEl('text', { x: c.padL, y: c.padT - 8, class: 'st-tick st-axis-unit', 'text-anchor': 'start' });
       u.textContent = drill.unit;

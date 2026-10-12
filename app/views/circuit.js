@@ -19,6 +19,10 @@
    circuit exactly like a normal set. The model lives in app/lib/circuit.js under
    cortex.circuits, local only.
 
+   When the run ends this view hands one payload to the Summary end screen through
+   app/lib/lastrun.js and navigates there. It keeps no results surface of its own,
+   so there is exactly one place a finished run is read.
+
    One trap worth naming: Circuit.save() normalizes, and normalize rebuilds every
    step object. A row's captured step is therefore stale the moment anything is
    committed, so every edit re-resolves the live step by index (see stepAt).
@@ -27,6 +31,8 @@
    The .p2-* classes are the shared shell contract; this file defines only .ci-*. */
 
 import * as Circuit from '../lib/circuit.js';
+import * as lastrun from '../lib/lastrun.js';
+import { navigate } from '../router.js';
 
 var CACHE_KEY = 'cortex.cache.data';
 
@@ -102,11 +108,6 @@ function fmtClock(ms) {
   var m = Math.floor(s / 60);
   var r = s % 60;
   return m + ':' + (r < 10 ? '0' : '') + r;
-}
-
-function fmtNum(v) {
-  if (typeof v !== 'number' || !isFinite(v)) return '';
-  return String(Math.round(v * 100) / 100);
 }
 
 function dirMap() {
@@ -265,6 +266,13 @@ function injectStyles() {
     '.ci-playhead{position:absolute;top:0;bottom:0;left:0;width:2px;background:' + ACC + '}',
     '.ci-ruler{position:relative;height:24px;margin:0 2px}',
     '.ci-tick{position:absolute;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:3px}',
+    /* The end ticks would centre their labels past the ruler edge and overflow
+       it. Pin the end boxes inside the ruler and pull the tick mark back to the
+       true position instead. */
+    '.ci-tick-first{transform:translateX(0)}',
+    '.ci-tick-first i{align-self:flex-start}',
+    '.ci-tick-last{transform:translateX(-100%)}',
+    '.ci-tick-last i{align-self:flex-end}',
     '.ci-tick i{display:block;width:1px;height:6px;background:var(--line2)}',
     '.ci-tick-major i{height:9px;background:var(--muted)}',
     '.ci-tick b{font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--dim);white-space:nowrap}',
@@ -272,30 +280,7 @@ function injectStyles() {
     '.ci-empty{margin:0;color:var(--dim);font-size:12.5px;line-height:1.5}',
 
     /* focus-visible rings on every real control this view owns */
-    '.ci-drill:focus-visible,.ci-seg-btn:focus-visible,.ci-range:focus-visible,.ci-icon:focus-visible,.ci-set-sum:focus-visible,.ci-chip:focus-visible,.ci-add:focus-visible,.ci-res-act:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
-
-    /* Results: the circuit's own summary, rendered in the stage, then one line
-       per step, then the actions. Token-only, no shadows. */
-    '.ci-res-stage{display:block;overflow-y:auto;padding:var(--gap-5) var(--gap-5) var(--gap-4)}',
-    '.ci-res{display:flex;flex-direction:column;gap:var(--gap-3);width:100%;max-width:640px;margin-inline:auto}',
-    '.ci-res-title{margin:0;font-size:20px;font-weight:600;letter-spacing:-.015em}',
-    '.ci-res-totals{display:flex;align-items:baseline;gap:var(--gap-3);flex-wrap:wrap;padding-bottom:var(--gap-2);border-bottom:1px solid var(--line2)}',
-    '.ci-res-big{font-family:var(--mono);font-size:clamp(24px,3.4vw,32px);font-weight:650;letter-spacing:-.02em;color:' + ACC + ';line-height:1}',
-    '.ci-res-total-cap{font-size:12px;color:var(--muted)}',
-    '.ci-res-total-steps{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--dim)}',
-    '.ci-res-overall{margin:0;font-size:13px;color:var(--muted)}',
-    '.ci-res-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}',
-    '.ci-res-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;padding:10px 0;border-top:1px solid var(--line2);font-size:14px}',
-    '.ci-res-item:first-child{border-top:0}',
-    '.ci-res-n{flex:none;width:18px;font-family:var(--mono);font-size:11px;color:var(--dim)}',
-    '.ci-res-name{color:var(--ink)}',
-    '.ci-res-dur{font-family:var(--mono);font-size:12px;color:var(--dim)}',
-    '.ci-res-out{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}',
-    '.ci-res-out.mono{color:var(--ink)}',
-    '.ci-res-actions{display:flex;gap:var(--gap-5);flex-wrap:wrap;margin-top:var(--gap-2)}',
-    '.ci-res-act{background:none;border:0;padding:6px 0;font-family:var(--sans);font-size:15px;font-weight:600;color:var(--muted);cursor:pointer;transition:color .15s ease}',
-    '.ci-res-act:hover{color:var(--ink)}',
-    '.ci-res-again{color:' + ACC + '}',
+    '.ci-drill:focus-visible,.ci-seg-btn:focus-visible,.ci-range:focus-visible,.ci-icon:focus-visible,.ci-set-sum:focus-visible,.ci-chip:focus-visible,.ci-add:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
 
     /* Focus stage: reuse focus.css. Only the progress readout needs a rule. */
     '.nb-focus-stage .ci-prog{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--muted);white-space:nowrap}',
@@ -310,7 +295,7 @@ function injectStyles() {
        row of its own. Scoped to .ci-view, so the shared shell keeps its own order
        for anything else. */
     '@media (max-width:720px){.ci-view .p2-shell{grid-template-rows:minmax(min(260px,62%),1.3fr) minmax(0,1fr)}.ci-view .p2-stage{grid-row:1}.ci-view .p2-rail{grid-row:2;border-right:0;border-top:1px solid var(--line)}}',
-    '@media (prefers-reduced-motion:reduce){.ci-seg-btn,.ci-icon,.ci-set-sum,.ci-seg-block,.ci-res-act{transition:none}}'
+    '@media (prefers-reduced-motion:reduce){.ci-seg-btn,.ci-icon,.ci-set-sum,.ci-seg-block{transition:none}}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -758,7 +743,7 @@ function buildTimeline(steps) {
   ruler.setAttribute('aria-hidden', 'true');
   var fracs = [0, 0.25, 0.5, 0.75, 1];
   for (var f = 0; f < fracs.length; f++) {
-    var tick = h('span', 'ci-tick' + (f === 0 || f === 2 || f === 4 ? ' ci-tick-major' : ''));
+    var tick = h('span', 'ci-tick' + (f === 0 || f === 2 || f === 4 ? ' ci-tick-major' : '') + (f === 0 ? ' ci-tick-first' : (f === fracs.length - 1 ? ' ci-tick-last' : '')));
     tick.setAttribute('style', 'left:' + (fracs[f] * 100) + '%');
     tick.appendChild(h('i'));
     if (open === 0 || f === 0 || f === 4) tick.appendChild(h('b', null, String(Math.round(totalFixed * fracs[f]))));
@@ -985,23 +970,19 @@ function stopHandle() {
 }
 
 /* ponytail: a capped or skipped step that never finished naturally records no
-   run, because the drill registry exposes no partial completion. It is marked in
-   the results and left out of the session, so nothing is invented. If a drill
-   ever reports partials, record them here instead. */
+   run, because the drill registry exposes no partial completion. It is handed to
+   the end screen as ok: null with no time and left out of the session, so nothing
+   is invented. If a drill ever reports partials, record them here instead. */
 function finishStep(kind, rec) {
   stopHandle();
   clearCap();
   var step = run.steps[run.index];
   var outcome = {
-    step: step, drillId: step.drillId, kind: kind, rec: rec || null,
-    seconds: step.seconds,
+    drillId: step.drillId, mode: step.mode, kind: kind,
     elapsed: run.stepStart ? Math.max(0, Date.now() - run.stepStart) : 0
   };
   if (kind === 'done') {
-    var summary = recordRun(rec);
-    outcome.value = summary.value;
-    outcome.unit = summary.unit;
-    outcome.isPR = summary.isPR;
+    recordRun(rec);
     run.sessionDrills.push(step.drillId);
   }
   run.outcomes.push(outcome);
@@ -1160,104 +1141,79 @@ function finishRun() {
   var outcomes = run.outcomes.slice();
   var planned = run.steps.length;
   run.sessionDrills = [];
-  showResults(outcomes, planned);
+  run.outcomes = [];
+  lastrun.put(buildPayload(outcomes, planned));
+  goSummary();
 }
 
-/* ---------- results ---------- */
+/* ---------- the end screen handoff ---------- */
 
-/* Elapsed time, rounded to the nearest second: a 30 s cap ran for 30 s, not the
-   0:31 a countdown's ceiling would print. */
-function fmtElapsed(ms) {
-  var s = Math.max(0, Math.round((ms || 0) / 1000));
-  var m = Math.floor(s / 60);
-  var r = s % 60;
-  return m + ':' + (r < 10 ? '0' : '') + r;
+/* The variant a step ran, when it has one. Only the n-back step carries a mode,
+   and its mode id is the short name the end screen reads best ("dual" -> "Dual").
+   A step with no mode shows no variant, never a made-up one. */
+function variantLabel(mode) {
+  if (typeof mode !== 'string' || !mode) return '';
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
-/* The whole circuit, not just a list: circuit totals, then one honest line per
-   step. A step the cap cut short records no run (the drill registry reports no
-   partial), so it says so instead of printing a number nobody measured.
+function stepLabel(o) {
+  var name = drillById(o.drillId).name;
+  var v = variantLabel(o.mode);
+  return v ? name + ' \u00b7 ' + v : name;
+}
 
-   It renders in the stage, so the shell (and the page pin that keeps the screen
-   from scrolling) stays up and the rail is still there to run the circuit again
-   or edit it. Editing a duration from the rail repaints the timeline back over
-   the summary, which is the builder again. */
-function showResults(outcomes, planned) {
-  if (!ui.root) return;
-  /* The shell has to be up for the summary to land in the stage. */
-  if (!ui.root.querySelector('.p2-shell') || !ui.stage || !ui.stage.parentNode) showBuilder();
+/* The median of the measured step times, so a circuit's middle step reads at a
+   glance. Even counts average the two middles, the same rule Store.median uses. */
+function medianMs(values) {
+  var vs = values.slice().sort(function (a, b) { return a - b; });
+  if (!vs.length) return null;
+  var mid = Math.floor(vs.length / 2);
+  if (vs.length % 2) return vs[mid];
+  return Math.round((vs[mid - 1] + vs[mid]) / 2);
+}
 
-  var done = 0, timedOut = 0, skipped = 0, totalMs = 0;
-  for (var c = 0; c < outcomes.length; c++) {
-    if (outcomes[c].kind === 'done') done++;
-    else if (outcomes[c].kind === 'timeout') timedOut++;
-    else skipped++;
-    totalMs += outcomes[c].elapsed || 0;
-  }
-  var plannedCount = (typeof planned === 'number' && planned > outcomes.length) ? planned : outcomes.length;
-
-  var stage = h('section', 'p2-stage ci-res-stage');
-  stage.setAttribute('aria-label', 'Circuit result');
-  stage.appendChild(h('div', 'p2-stage-meta', 'Results \u00b7 ' + outcomes.length + ' of ' + plannedCount + (plannedCount === 1 ? ' step' : ' steps')));
-
-  var view = h('div', 'ci-res');
-  view.appendChild(h('h2', 'ci-res-title', 'Circuit complete'));
-
-  var totals = h('div', 'ci-res-totals');
-  totals.appendChild(h('span', 'ci-res-big mono', fmtElapsed(totalMs)));
-  totals.appendChild(h('span', 'ci-res-total-cap', 'total time'));
-  totals.appendChild(h('span', 'ci-res-total-steps mono',
-    outcomes.length + ' of ' + plannedCount + (plannedCount === 1 ? ' step run' : ' steps run')));
-  view.appendChild(totals);
-
-  var parts = [];
-  if (done) parts.push(done + ' completed');
-  if (timedOut) parts.push(timedOut + ' timed out');
-  if (skipped) parts.push(skipped + ' skipped');
-  view.appendChild(h('p', 'ci-res-overall', parts.length ? parts.join(', ') : 'No steps ran'));
-
-  var list = h('ul', 'ci-res-list');
+/* One payload for the Summary end screen, filled from what the runner already
+   holds: one part per step that ran, in order, each with its real measured time,
+   and whether it produced a scored run. A step the cap cut short recorded no run
+   (the drill registry reports no partial), so it is ok: null with no time: never a
+   failure, never a number nobody measured. accuracy is null because a circuit of
+   different drills has no single accuracy, and history is empty because nothing
+   records past circuit runs. A value that was never measured is left null. */
+function buildPayload(outcomes, planned) {
+  var parts = [], times = [], done = 0, totalMs = 0;
   for (var i = 0; i < outcomes.length; i++) {
     var o = outcomes[i];
-    var li = h('li', 'ci-res-item');
-    li.appendChild(h('span', 'ci-res-n mono', String(i + 1)));
-    li.appendChild(h('span', 'ci-res-name', drillById(o.drillId).name));
-    li.appendChild(h('span', 'ci-res-dur mono', fmtElapsed(o.elapsed)));
-    if (o.kind === 'done') {
-      li.appendChild(h('span', 'ci-res-out mono', fmtNum(o.value) + (o.unit ? ' ' + o.unit : '')));
-      if (o.isPR) li.appendChild(h('span', 'ci-res-dur', 'new best'));
-    } else if (o.kind === 'timeout') {
-      li.appendChild(h('span', 'ci-res-out', 'timed out, no run recorded'));
-    } else {
-      li.appendChild(h('span', 'ci-res-out', 'skipped, no run recorded'));
-    }
-    list.appendChild(li);
+    var scored = o.kind === 'done';
+    var ms = scored ? (o.elapsed || 0) : null;
+    parts.push({ label: stepLabel(o), ok: scored ? true : null, ms: ms });
+    totalMs += o.elapsed || 0;
+    if (scored) { done++; times.push(ms); }
   }
-  view.appendChild(list);
+  var ran = outcomes.length;
+  var plannedCount = (typeof planned === 'number' && planned > ran) ? planned : ran;
+  var subtitle = ran === plannedCount
+    ? ran + (ran === 1 ? ' step' : ' steps')
+    : ran + ' of ' + plannedCount + ' steps';
+  return {
+    kind: 'circuit',
+    title: 'Circuit',
+    subtitle: subtitle,
+    value: ran,
+    unit: 'steps',
+    accuracy: null,
+    durationMs: totalMs,
+    parts: parts,
+    totals: { parts: ran, correct: done, wrong: 0, medianMs: medianMs(times) },
+    history: [],
+    back: { view: 'circuit', label: 'Back to Circuit' }
+  };
+}
 
-  var actions = h('div', 'ci-res-actions');
-  var again = h('button', 'ci-res-act ci-res-again', 'Run again');
-  again.type = 'button';
-  again.addEventListener('click', function () { showBuilder(); startRun(); });
-  var back = h('button', 'ci-res-act', 'Back to builder');
-  back.type = 'button';
-  back.addEventListener('click', function () { showBuilder(); });
-  actions.appendChild(again);
-  actions.appendChild(back);
-  view.appendChild(actions);
-
-  stage.appendChild(view);
-  swapNode(ui.stage, stage);
-  ui.stage = stage;
-
-  if (!ui.live || !ui.live.parentNode) {
-    ui.live = h('div', 'sr');
-    ui.live.setAttribute('aria-live', 'polite');
-    ui.root.appendChild(ui.live);
-  }
-
-  say('Circuit finished. ' + done + ' of ' + plannedCount + ' steps completed.');
-  try { again.focus(); } catch (e) { /* degrade */ }
+/* Leave for the end screen. The app injects its router as ctx.navigate; the direct
+   import is the fallback so a caller that did not thread it still lands there. */
+function goSummary() {
+  if (ctxRef && typeof ctxRef.navigate === 'function') { ctxRef.navigate('summary'); return; }
+  try { navigate('summary'); } catch (e) { /* degrade */ }
 }
 
 /* ---------- lifecycle ---------- */

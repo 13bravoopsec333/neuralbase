@@ -579,7 +579,7 @@
     nback: [
       { key: "startLevel", label: "N level", type: "number", min: 1, max: 15, step: 1, def: 2 },
       { key: "trials", label: "Trials", type: "number", min: 12, max: 30, step: 6, def: 18 },
-      { key: "cueLength", label: "Cue length", type: "number", min: 1, max: 10, step: 1, def: 6 },
+      { key: "cueLength", label: "Trials per cue", type: "number", min: 1, max: 10, step: 1, def: 6 },
       { key: "stimulusMs", label: "Stimulus time", type: "choice", options: [{ value: 1500, label: "1.5 s" }, { value: 2000, label: "2 s" }, { value: 3000, label: "3 s" }], def: 2000 },
       { key: "endless", label: "Endless", type: "toggle", def: false }
     ],
@@ -626,15 +626,15 @@
     crt: [
       { key: "trials", label: "Trials", type: "number", min: 10, max: 40, step: 10, def: 20 },
       { key: "choices", label: "Lights", type: "number", min: 2, max: 4, step: 1, def: 2 },
-      { key: "foreperiod", label: "Foreperiod", type: "choice", options: [{ value: "fixed", label: "Fixed" }, { value: "random", label: "Random" }], def: "random" },
-      { key: "catchTrials", label: "Catch trials", type: "toggle", def: false },
+      { key: "foreperiod", label: "Light delay", type: "choice", options: [{ value: "fixed", label: "Fixed" }, { value: "random", label: "Random" }], def: "random" },
+      { key: "catchTrials", label: "No-light trials", type: "toggle", def: false },
       { key: "endless", label: "Endless", type: "toggle", def: false }
     ],
     math: [
       { key: "ops", label: "Operations", type: "choice", multi: true, options: [{ value: "+", label: "Add" }, { value: "-", label: "Sub" }, { value: "*", label: "Mul" }, { value: "/", label: "Div" }], def: ["+", "-", "*", "/"] },
-      { key: "digits", label: "Digit Max", type: "number", min: 1, max: 5, step: 1, def: 2 },
+      { key: "digits", label: "Max digits", type: "number", min: 1, max: 5, step: 1, def: 2 },
       { key: "timePerProblem", label: "Time per problem", type: "choice", options: [{ value: 0, label: "Off" }, { value: 5, label: "5 s" }, { value: 10, label: "10 s" }, { value: 15, label: "15 s" }], def: 0 },
-      { key: "startLevel", label: "Starting level", type: "number", min: 1, max: 3, step: 1, def: 1 },
+      { key: "startLevel", label: "Starting difficulty", type: "number", min: 1, max: 3, step: 1, def: 1 },
       { key: "endless", label: "Endless", type: "toggle", def: false }
     ]
   };
@@ -817,6 +817,17 @@
     var hits = 0, falseAlarms = 0;
     var scorable = 0;
     var perTrial = [];
+    /* One entry per trial for the end screen: the block it belonged to, its
+       number inside that block, whether the trial was answered right, and the
+       measured response time. A warm-up trial carries ok: null. */
+    var parts = [];
+    var blockNo = 1;
+    /* The trial's number inside its block, reset when a block closes. */
+    var blockTrial = 1;
+    /* The clock the response time is read against: when the trial's stimulus
+       appeared and when the first press landed. No press leaves respondedAt 0,
+       so the part reports no time rather than a fabricated one. */
+    var trialShownAt = 0, respondedAt = 0;
     var cur = null;
     var queue = [];
     /* Every stimulus the drill has shown, so the next chunk can be told the item
@@ -896,10 +907,14 @@
     wrap.appendChild(bar); wrap.appendChild(meta);
     container.appendChild(wrap);
 
-    function onPos() { if (!stopped) pressedPos = true; }
-    function onLet() { if (!stopped) pressedLet = true; }
+    /* The first press of the trial stamps the clock, so the part can report how
+       long the response took. A later press in the same trial does not move it. */
+    function markResponse() { if (!respondedAt) respondedAt = performance.now(); }
+    function onPos() { if (stopped) return; markResponse(); pressedPos = true; }
+    function onLet() { if (stopped) return; markResponse(); pressedLet = true; }
     function onOne() {
       if (stopped) return;
+      markResponse();
       pressedPos = true;
       pressedLet = true;
     }
@@ -1007,6 +1022,8 @@
       pressedPos = false; pressedLet = false;
       i++;
       paint();
+      trialShownAt = performance.now();
+      respondedAt = 0;
       playLetter(cur.letter);
       blankTimers.clear();
       /* The blank always runs at the stimulus time. The trial window keeps its
@@ -1025,18 +1042,30 @@
       if (o.falseAlarm) falseAlarms++;
       perTrial.push({ correct: o.ok, postSwitch: curPostSwitch });
       playSfx(o.ok ? "correct" : "incorrect");
-      /* Only trials that carried a real comparison move the level. A warm-up
-         trial has no answer, so scoring it would only ever reward not pressing. */
-      if (cur.index >= level) {
+      /* Only trials that carried a real comparison are scored. A warm-up trial
+         has no answer, so scoring it would only ever reward not pressing: it is
+         reported with ok: null. The response time is the first press against the
+         stimulus, and a trial with no press reports no time. */
+      var scored = cur.index >= level;
+      parts.push({
+        label: "Block " + blockNo + " · " + blockTrial,
+        ok: scored ? o.ok : null,
+        ms: respondedAt ? Math.max(1, Math.round(respondedAt - trialShownAt)) : null
+      });
+      if (scored) {
         if (o.ok) { blockCorrect++; correctTrials++; }
         blockCount++;
         scorable++;
       }
       if (blockCount >= BLOCK) {
+        blockNo++;
+        blockTrial = 1;
         level = nextLevel(level, blockCorrect, blockCount);
         if (level > maxLevel) maxLevel = level;
         blockCorrect = 0; blockCount = 0;
         queue = [];
+      } else {
+        blockTrial++;
       }
       beginTrial();
     }
@@ -1046,13 +1075,15 @@
        nothing, inflated both. scorable is zero only if the set ended before
        any real trial, and the guards keep that off the page as NaN. */
     function nbackRecord() {
+      /* Every trial already pushed its own part, so the record is read off the
+         counters with no flush and a second call is a no-op. */
       var acc = scorable > 0 ? correctTrials / scorable : 0;
       var dp = dPrime(hits, falseAlarms, scorable);
       var rs = ruleShiftAccuracy(perTrial);
       var meta = { mode: mode, accuracy: acc, hits: hits, falseAlarms: falseAlarms, ruleShiftAccuracy: rs, dPrime: dp };
       /* A partial endless run reports the trials it actually scored. */
       if (endless) meta.trials = scorable;
-      return { drillId: "nback", value: maxLevel, unit: "n", t: Date.now(), meta: meta };
+      return { drillId: "nback", value: maxLevel, unit: "n", t: Date.now(), meta: meta, parts: parts };
     }
 
     function finish() {
@@ -1123,6 +1154,12 @@
     var exposure = (opts.options && typeof opts.options.startExposure === "number") ? opts.options.startExposure : 200;
     var i = 0, correctCount = 0, stopped = false, timer = 0, resolved = false;
     var answer = { shape: null, positions: [], pickShape: null, picks: [] };
+    /* One entry per trial for the end screen: the exposure it was played at,
+       whether it was answered right, and the time the answers took. The clock
+       runs from the first question to the last pick; a trial whose window ran out
+       with no pick reports no time rather than a fabricated one. */
+    var parts = [];
+    var askAt = 0, respondAt = 0;
 
     var wrap = el("div", "drill drill-ufov");
     var stage = el("div", "uf-stage");
@@ -1202,12 +1239,14 @@
     function picked(n, next) {
       if (stopped || taken) return;
       taken = true;
+      respondAt = performance.now();
       clearDeadline();
       var b = bar.children[n];
       if (b) b.classList.add("nb-pick");
       timers.set(next, PICK_HOLD_MS);
     }
     function showShapeOptions() {
+      if (!askAt) askAt = performance.now();
       clearBar(); prompt.textContent = "Which shape was in the center?";
       taken = false;
       SHAPES.forEach(function (s, idx) {
@@ -1219,6 +1258,7 @@
       armDeadline();
     }
     function showPosOptions(step) {
+      if (!askAt) askAt = performance.now();
       clearBar();
       prompt.textContent = EDGE > 1 ? "Where was dot " + (step + 1) + " of " + EDGE + "?" : "Where was the dot?";
       taken = false;
@@ -1252,6 +1292,7 @@
       answer = { shape: randInt(rng, 3), positions: pool.slice(0, EDGE), pickShape: null, picks: [] };
       resolved = false;
       taken = false;
+      askAt = 0; respondAt = 0;
       if (shape) shape.className = "uf-shape s" + answer.shape;
       dots.forEach(function (el, k) { el.className = "uf-dot p" + answer.positions[k]; });
       stage.classList.add("show");
@@ -1266,6 +1307,11 @@
       clearDeadline();
       var ok = !failed && (!CENTER || answer.pickShape === answer.shape) && sameSet(answer.picks, answer.positions);
       if (ok) correctCount++;
+      /* A pick stamps the clock, so a trial that was answered reports the time
+         from the first question to the last pick. A window that ran out with no
+         pick has nothing to time and stays null. */
+      var rt = respondAt ? Math.max(1, Math.round(respondAt - askAt)) : null;
+      parts.push({ label: "Exposure " + exposure + " ms", ok: ok, ms: rt });
       exposure = adaptExposure(exposure, ok);
       i++;
       meta.textContent = ufovMeta();
@@ -1286,7 +1332,7 @@
       summary.appendChild(el("div", "drill-state", "Set complete"));
       summary.appendChild(el("div", "drill-note", "Threshold exposure " + exposure + " ms · accuracy " + Math.round(acc * 100) + "%"));
       container.appendChild(summary);
-      var rec = { drillId: "ufov", value: exposure, unit: "ms", t: Date.now(), meta: { accuracy: acc, edgeTargets: EDGE, centerShape: CENTER, timePressure: timePressure } };
+      var rec = { drillId: "ufov", value: exposure, unit: "ms", t: Date.now(), meta: { accuracy: acc, edgeTargets: EDGE, centerShape: CENTER, timePressure: timePressure }, parts: parts };
       if (opts.onComplete) { if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec); }
     }
     /* Digits take the visible options in order, so the printed key and the button
@@ -1357,6 +1403,12 @@
     /* Validated by drillOptions: in-order or any-order. */
     var RECALL_ORDER = (opts.options && opts.options.recallOrder) || "in-order";
     var placed = [], recalled = [], idx = 0, stopped = false, order = [];
+    /* One entry per stop for the end screen: the stop number and the item that
+       belonged there, whether it was recalled, and how long the recall took. */
+    var parts = [];
+    /* When the current recall question appeared. Recall keeps no countdown, but
+       the answer time is still measurable at the pick. */
+    var askAt = 0;
     /* The study clock needs two timers at once, the advance and the repaint,
        which makeTimers holds one of. So these two keep their own ids and stop()
        clears both by hand. */
@@ -1484,8 +1536,14 @@
         stage.textContent = "Stop " + (stopIndex + 1);
         prompt.textContent = "What was here?";
         bar.innerHTML = "";
+        askAt = performance.now();
         opts3.forEach(function (w, n) {
-          bar.appendChild(optionButton(w, n, function () { recalled[stopIndex] = w; step++; ask(); }));
+          bar.appendChild(optionButton(w, n, function () {
+            recalled[stopIndex] = w;
+            parts.push({ label: "Stop " + (stopIndex + 1) + " · " + correct, ok: w === correct, ms: Math.max(1, Math.round(performance.now() - askAt)) });
+            step++;
+            ask();
+          }));
         });
       }
       ask();
@@ -1502,7 +1560,7 @@
       summary.appendChild(el("div", "drill-state", "Set complete"));
       summary.appendChild(el("div", "drill-note", sc.recalled + " of " + placed.length + " recalled" + (RECALL_ORDER === "any-order" ? " in any order" : " in order")));
       container.appendChild(summary);
-      if (opts.onComplete) opts.onComplete({ drillId: "palace", value: sc.recalled, unit: "items", t: Date.now(), meta: { longest: sc.longest, route: placed.length, itemSet: ITEM_SET, recallOrder: RECALL_ORDER } });
+      if (opts.onComplete) opts.onComplete({ drillId: "palace", value: sc.recalled, unit: "items", t: Date.now(), meta: { longest: sc.longest, route: placed.length, itemSet: ITEM_SET, recallOrder: RECALL_ORDER }, parts: parts });
     }
     /* Enter places the current item and moves on. Digits answer the recall. */
     var unbindKey = bindKey(doc, function (e) {
@@ -1624,6 +1682,13 @@
        click would. Named off opts on purpose: opts is the drill's parameter and
        holds onComplete, so shadowing it silently drops the run record. */
     var optionList = [];
+    /* One entry per item for the end screen: the stem that was shown, whether
+       the picked option was right, and the time the answer took. A timed-out item
+       has no press to time, so it reports no time rather than the expired limit. */
+    var parts = [];
+    var curItem = null;
+    /* When the current item's options appeared, read against the pick. */
+    var shownAt = 0;
 
     injectStyles();
     var wrap = el("div", "drill drill-reasoning");
@@ -1657,6 +1722,8 @@
     function limitFired() {
       limitTimer = 0; limitDeadline = 0; pausedAt = 0;
       if (stopped) return;
+      /* The item the limit caught is a played part: unanswered, so wrong. */
+      if (curItem) parts.push({ label: itemLabel(curItem), ok: false, ms: null });
       i++;
       meta.textContent = metaText();
       trial();
@@ -1686,10 +1753,13 @@
       for (var k = x.length - 1; k > 0; k--) { var j = randInt(rng, k + 1); var t = x[k]; x[k] = x[j]; x[j] = t; }
       return x;
     }
+    /* The item as one line, for the end screen: the stem a player saw. */
+    function itemLabel(item) { return item.a + " : " + item.b + " :: " + item.c + " : ?"; }
     function trial() {
       if (stopped) return;
       if (i >= TRIALS) return finish();
       var item = pick(rng, itemPool());
+      curItem = item;
       var gen = ++trialGen;
       stem.innerHTML = '<span class="rr-a">' + item.a + '</span> : <span class="rr-b">' + item.b + '</span> :: <span class="rr-c">' + item.c + '</span> : <span class="rr-q">?</span>';
       bar.innerHTML = "";
@@ -1703,11 +1773,13 @@
           if (gen !== trialGen) return;
           clearLimit();
           if (w === item.correct) correctCount++;
+          parts.push({ label: itemLabel(item), ok: w === item.correct, ms: Math.max(1, Math.round(performance.now() - shownAt)) });
           i++;
           meta.textContent = metaText();
           trial();
         }));
       });
+      shownAt = performance.now();
       armLimit();
     }
     function finish() {
@@ -1722,7 +1794,7 @@
       summary.appendChild(el("div", "drill-state", "Set complete"));
       summary.appendChild(el("div", "drill-note", correctCount + " of " + total + " correct"));
       container.appendChild(summary);
-      var rec = { drillId: "reasoning", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: total, timeLimit: timeLimit, relationSet: relationSet } };
+      var rec = { drillId: "reasoning", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: total, timeLimit: timeLimit, relationSet: relationSet }, parts: parts };
       if (opts.onComplete) { if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec); }
     }
     /* Digits pick the option in the order the buttons are shown, so the printed
@@ -1765,6 +1837,12 @@
        a finished summary. One flag, so one handler covers every screen the drill
        puts up instead of a handler per screen. */
     var screen = "add";
+    /* One entry per card for the end screen: the front a player was asked,
+       whether they graded it right, and how long the card took. Reset for each
+       pass, since "Review due" reopens the queue and the summary is per pass. */
+    var parts = [];
+    /* When the current card's front appeared, read against the grade. */
+    var cardShownAt = 0;
 
     injectStyles();
     var wrap = el("div", "drill drill-spaced");
@@ -1837,6 +1915,7 @@
         return;
       }
       var idx = 0, got = 0;
+      parts = [];
       function step() {
         if (stopped) return;
         if (idx >= q.length) return finish(got, q.length);
@@ -1846,6 +1925,7 @@
         var graded = pressGuard();
         screen = "question";
         stage.textContent = card.front;
+        cardShownAt = performance.now();
         prompt.textContent = "";
         bar.innerHTML = "";
         var reveal = button("btn-primary nb-opt", "Show answer");
@@ -1872,6 +1952,7 @@
       }
       function gradeCard(card, correct) {
         if (correct) got++;
+        parts.push({ label: card.front, ok: correct, ms: Math.max(1, Math.round(performance.now() - cardShownAt)) });
         var updated = Spacing.grade(card, correct, Date.now(), { retention: retentionTarget });
         /* Spacing.grade returns the schedule fields only. clientId, the hint, the
            deck and the suspended flag have to ride along from the card being
@@ -1920,7 +2001,7 @@
       row.appendChild(again); row.appendChild(add);
       summary.appendChild(row);
       container.appendChild(summary);
-      if (opts.onComplete) opts.onComplete({ drillId: "spaced", value: got, unit: "cards", t: Date.now(), meta: { total: total } });
+      if (opts.onComplete) opts.onComplete({ drillId: "spaced", value: got, unit: "cards", t: Date.now(), meta: { total: total }, parts: parts });
     }
 
     /* One handler for the three screens the drill puts up. Enter submits on the
@@ -1986,6 +2067,11 @@
        click would. Off the opts name on purpose: that is the parameter holding
        onComplete. */
     var optionList = [];
+    /* One entry per trial for the end screen: the live rule and the stimulus it
+       pointed at, whether the answer was right, and the measured response time
+       the switch cost is computed from. */
+    var parts = [];
+    var curRuleLabel = "", curStimLabel = "";
 
     injectStyles();
     var wrap = el("div", "drill drill-switching");
@@ -2035,6 +2121,8 @@
       var labels = rule === "color" ? ["Blue", "Orange"] : rule === "shape" ? ["Circle", "Square"] : ["1", "2"];
       var correct = rule === "color" ? color : rule === "shape" ? shape : number - 1;
       optionList = labels;
+      curRuleLabel = rule === "color" ? "Color" : rule === "shape" ? "Shape" : "Number";
+      curStimLabel = labels[correct];
       labels.forEach(function (lab, idx) {
         bar.appendChild(optionButton(lab, idx, function () { answer(idx === correct); }));
       });
@@ -2042,6 +2130,7 @@
     }
     function answer(ok) {
       var rt = Math.max(1, Math.round(performance.now() - shownAt));
+      parts.push({ label: curRuleLabel + " · " + curStimLabel, ok: ok, ms: rt });
       if (ok) correctCount++;
       if (lastRule !== null) {
         if (rule === lastRule) repeatTimes.push(rt); else switchTimes.push(rt);
@@ -2062,7 +2151,7 @@
       summary.appendChild(el("div", "drill-state", "Set complete"));
       summary.appendChild(el("div", "drill-note", correctCount + " of " + total + " correct" + (cost != null ? " · switch cost " + cost + " ms" : "")));
       container.appendChild(summary);
-      var rec = { drillId: "switching", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: total, accuracy: total > 0 ? correctCount / total : 0, switchCost: cost, dimensions: DIMS.length, cueVisible: cueVisible } };
+      var rec = { drillId: "switching", value: correctCount, unit: "correct", t: Date.now(), meta: { trials: total, accuracy: total > 0 ? correctCount / total : 0, switchCost: cost, dimensions: DIMS.length, cueVisible: cueVisible }, parts: parts };
       if (opts.onComplete) { if (bankPartial) reportEndlessPartial(opts, rec); else opts.onComplete(rec); }
     }
     /* Two options, one digit each, in the order they are drawn. The rule changes
