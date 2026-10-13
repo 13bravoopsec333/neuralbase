@@ -641,8 +641,17 @@ function buildToggleRow(id, entry, current) {
   return seg;
 }
 
+/* A single-select is a segmented bar on one hairline track while every label fits
+   that track on one line. Past four options they cannot all fit a 280px rail, and
+   the overflow was clipped, so the labels read as nothing. A longer set is a
+   wrapping chip bank instead: the same buttons and the same pressed state, one
+   hairline box each, so every option stays legible. No registry drill has five or
+   six options today; the rule is here so a longer set cannot come back clipped. */
+var SEG_BAR_MAX = 4;
+
 function buildChoiceRow(id, entry, current) {
-  var seg = segGroup(entry, 'tr-seg-bar');
+  var long = entry.options.length > SEG_BAR_MAX;
+  var seg = segGroup(entry, long ? 'tr-seg-chips' : 'tr-seg-bar');
   entry.options.forEach(function (o) {
     var b = h('button', 'tr-seg-btn', o.label);
     b.type = 'button';
@@ -784,40 +793,46 @@ function injectStyles() {
        overrides the shell's safe-center, so the shell is pinned to the top of the
        frame and the stage keeps its full height. The shell grid itself lives in
        ui/p2.css, shared with the Circuit screen. */
-    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0;justify-content:flex-start;padding-top:var(--gap-4)}',
+    /* padding-top:0 hands the .content top padding straight to the rail and the
+       stage, so every pixel the shell is given goes to the settings column. */
+    '.tr-view{display:flex;flex-direction:column;gap:var(--gap-4);width:100%;max-width:none;margin-inline:0;flex:1 1 auto;min-height:0;justify-content:flex-start;padding-top:0}',
     /* The rail head: which drill the settings below belong to. A small-caps
        eyebrow, the drill name, then the family in mono, the identity block of the
-       instrument reference. */
-    '.p2-rail-head{display:flex;flex-direction:column;gap:3px}',
+       instrument reference. Tight gaps: it is a reference line, not a paragraph. */
+    '.p2-rail-head{display:flex;flex-direction:column;gap:2px}',
     '.p2-eyebrow{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}',
     '.p2-rail-drill{font-size:18px;font-weight:650;letter-spacing:-.01em;color:var(--ink)}',
     '.p2-rail-sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}',
     /* The rail pins: head, then a scrolling settings pane, then the foot. Start
        lives in the foot, so it cannot drift as a drill's settings grow; the
-       settings scroll under it instead. */
-    '.tr-view .p2-rail{overflow:hidden}',
-    '.tr-view .p2-rail-head{flex:none}',
+       settings scroll under it instead. The rail's own padding and gap are trimmed
+       to the compact rhythm of the rows it holds, so the settings column is the
+       full remaining height and the pane stops scrolling on a desktop viewport. */
+    '.tr-view .p2-rail{overflow:hidden;padding:10px var(--gap-3);gap:var(--gap-2)}',
+    '.tr-view .p2-rail-head{flex:none;padding-bottom:var(--gap-2)}',
     '.p2-set-block{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden}',
-    '.p2-rail-foot{flex:none;border-top:1px solid var(--line2);padding-top:var(--gap-4)}',
+    '.p2-rail-foot{flex:none;border-top:1px solid var(--line2);padding-top:var(--gap-2)}',
     /* The idle mount holds the settings panel; a run adopts its .drill node into
        the focus stage, so the mount never has to grow to fill anything. */
     '.tr-view .drill-mount{display:block;width:100%;min-height:0}',
     '.tr-view .drill{width:100%}',
     /* Settings: one field per setting, a small-caps label with the mono value
        beside it, the control under them, a hairline between fields. The rows carry
-       the padding, so each rule spans the rail's full width. */
+       the padding, so each rule spans the rail's full width. The rhythm is compact
+       on purpose: a rail that fits its column needs no internal scroll, and the
+       whole settings list stays readable at a glance instead of half off screen. */
     '.tr-setup{display:flex;flex-direction:column;width:100%}',
     '.tr-set-rows{display:flex;flex-direction:column;gap:0}',
-    '.tr-set-row{display:flex;flex-direction:column;gap:9px;min-width:0;padding:14px 0;border-bottom:1px solid var(--line)}',
-    '.tr-set-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3)}',
+    '.tr-set-row{display:flex;flex-direction:column;gap:4px;min-width:0;padding:6px 0;border-bottom:1px solid var(--line)}',
+    '.tr-set-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3);line-height:1.1}',
     '.tr-set-label{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}',
     '.tr-set-val{font-family:var(--mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}',
     /* Every setting is a real control. A single-select is a segmented bar on one
        hairline track, a toggle is a rocker switch with a lamp, a multi-select is a
        row of on/off chips. Every control reserves its box, so a state change
        repaints colour and border only and never the metrics. */
-    '.tr-seg{display:flex;flex-wrap:wrap;gap:6px;min-width:0}',
-    '.tr-seg-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:transparent;border:1px solid transparent;padding:5px 10px;border-radius:2px;min-height:32px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.35;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
+    '.tr-seg{display:flex;flex-wrap:wrap;gap:5px;min-width:0}',
+    '.tr-seg-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:transparent;border:1px solid transparent;padding:4px 9px;border-radius:2px;min-height:26px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.25;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.tr-seg-btn:not(:disabled):hover{color:var(--ink)}',
     '.tr-seg-btn[aria-pressed="true"]{color:' + ACC + ';background:' + ACC_S + '}',
     '.tr-seg-bar{flex-wrap:nowrap;gap:0;border:1px solid var(--line2);border-radius:2px;background:var(--panel);overflow:hidden}',
@@ -833,29 +848,29 @@ function injectStyles() {
     '.tr-seg-switch .tr-seg-btn[aria-pressed="true"]{outline:1px solid ' + ACC_E + ';outline-offset:-1px}',
     '.tr-seg-switch .tr-seg-btn[aria-pressed="true"] .led{background:' + ACC + ';border-color:' + ACC + '}',
     /* A multi-select reads as chips: a visible outline on every chip, the on ones filled. */
-    '.tr-seg-chips{gap:6px;padding:0}',
-    '.tr-seg-chips .tr-seg-btn{border-color:var(--line2);border-radius:2px;padding:6px 11px;background:var(--panel)}',
+    '.tr-seg-chips{gap:5px;padding:0}',
+    '.tr-seg-chips .tr-seg-btn{border-color:var(--line2);border-radius:2px;padding:5px 10px;background:var(--panel)}',
     '.tr-seg-chips .tr-seg-btn[aria-pressed="true"]{border-color:' + ACC_E + '}',
     /* A number past four values is a slider: a thin track, an accent thumb, a tick
        per value and the range ends, so the span is legible at a glance. */
-    '.tr-range-wrap{display:flex;flex-direction:column;gap:7px;width:100%;min-width:0}',
-    '.tr-range{-webkit-appearance:none;appearance:none;width:100%;height:18px;margin:0;background:transparent;cursor:pointer}',
+    '.tr-range-wrap{display:flex;flex-direction:column;gap:2px;width:100%;min-width:0}',
+    '.tr-range{-webkit-appearance:none;appearance:none;width:100%;height:13px;margin:0;background:transparent;cursor:pointer}',
     '.tr-range::-webkit-slider-runnable-track{height:2px;background:var(--line2)}',
-    '.tr-range::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:18px;margin-top:-8px;background:' + ACC + ';border:0;border-radius:1px}',
+    '.tr-range::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:13px;margin-top:-6px;background:' + ACC + ';border:0;border-radius:1px}',
     '.tr-range::-moz-range-track{height:2px;background:var(--line2)}',
-    '.tr-range::-moz-range-thumb{width:10px;height:18px;background:' + ACC + ';border:0;border-radius:1px}',
+    '.tr-range::-moz-range-thumb{width:10px;height:13px;background:' + ACC + ';border:0;border-radius:1px}',
     '.tr-scale{display:flex;align-items:flex-end;justify-content:space-between;padding:0 5px}',
-    '.tr-scale i{display:block;width:1px;height:5px;background:var(--line2)}',
-    '.tr-scale i.on{background:' + ACC + ';height:8px}',
-    '.tr-scale-ends{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--dim)}',
+    '.tr-scale i{display:block;width:1px;height:4px;background:var(--line2)}',
+    '.tr-scale i.on{background:' + ACC + ';height:6px}',
+    '.tr-scale-ends{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;line-height:1.2;color:var(--dim)}',
     /* The variant control: a two-column bank of chips, each its own hairline box
        with a lamp, the live one filled. Its label and value sit on the row head
        exactly like every other setting. */
-    '.tr-mode-block{display:flex;flex-direction:column;gap:9px;padding:14px 0;border-bottom:1px solid var(--line)}',
-    '.tr-mode-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3)}',
+    '.tr-mode-block{display:flex;flex-direction:column;gap:4px;padding:6px 0;border-bottom:1px solid var(--line)}',
+    '.tr-mode-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-3);line-height:1.1}',
     '.tr-field{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}',
-    '.tr-modeset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;min-width:0}',
-    '.tr-mode{display:flex;align-items:center;gap:8px;min-width:0;background:var(--panel);border:1px solid var(--line2);padding:8px 9px;min-height:34px;border-radius:2px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;line-height:1.35;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
+    '.tr-modeset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;min-width:0}',
+    '.tr-mode{display:flex;align-items:center;gap:7px;min-width:0;background:var(--panel);border:1px solid var(--line2);padding:4px 9px;min-height:26px;border-radius:2px;color:var(--muted);font-family:var(--sans);font-size:12.5px;font-weight:500;line-height:1.25;transition:color .15s ease,background-color .15s ease,border-color .15s ease}',
     '.tr-mode .m{width:7px;height:7px;flex:none;border:1px solid var(--dim)}',
     '.tr-mode-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.tr-mode:not(:disabled):hover{border-color:var(--dim);color:var(--ink)}',
@@ -863,15 +878,16 @@ function injectStyles() {
     '.tr-mode[aria-pressed="true"] .m{background:' + ACC + ';border-color:' + ACC + '}',
     '.tr-mode:disabled{opacity:.45;cursor:not-allowed}',
     '.tr-mode[aria-pressed="true"]:disabled{opacity:.7}',
-    '.tr-blurb{font-size:11.5px;color:var(--dim);margin:0;line-height:1.5}',
+    '.tr-blurb{font-size:11.5px;color:var(--dim);margin:0;line-height:1.35}',
     /* Every control carries a visible focus ring. */
     '.tr-seg-btn:focus-visible,.tr-mode:focus-visible,.tr-range:focus-visible,.tr-start:focus-visible,.nb-focus-btn:focus-visible,.nb-exit-btn:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
     /* A pressed segment carries its own 1px outline, which out-specifies the
        focus rule above. Keep the full focus ring visible on the active value. */
     '.tr-seg-bar .tr-seg-btn[aria-pressed="true"]:focus-visible,.tr-seg-switch .tr-seg-btn[aria-pressed="true"]:focus-visible{outline:2px solid ' + ACC + ';outline-offset:2px}',
     /* Start: the one primary action, full width at the foot of the rail, with the
-       machined corner radius so it belongs to the controls above it. */
-    '.tr-start{width:100%;padding:12px 18px;font-size:14px;border-radius:2px;min-width:0;letter-spacing:.01em}',
+       machined corner radius so it belongs to the controls above it. Its own height
+       is fixed, so the foot holds the same baseline whatever the drill's settings. */
+    '.tr-start{width:100%;padding:9px 16px;font-size:14px;border-radius:2px;min-width:0;letter-spacing:.01em}',
     /* On phones the drill screen stacks hero first, then the settings rail, then
        the filmstrip along the bottom. The rail gets the larger row so its own
        scrolling pane has real height, and its foot still pins Start just above the
